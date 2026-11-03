@@ -960,3 +960,27 @@ pub fn show_devtools(window_id: u32) {
         }
     }
 }
+
+/// Diagnostic (CI self test): bounds and visibility of a window's views.
+#[cfg(feature = "selftest")]
+pub fn layout_report(window_id: u32) -> String {
+    let fmt = |name: &str, v: &View| {
+        let b = v.bounds();
+        format!("{name}=({},{} {}x{} visible={} drawn={})", b.x, b.y, b.width, b.height, v.is_visible(), v.is_drawn())
+    };
+    with_window(window_id, |ctx| {
+        let mut out = vec![
+            fmt("top", &View::from(&ctx.top)),
+            fmt("side", &View::from(&ctx.side)),
+            fmt("column", &View::from(&ctx.column)),
+            fmt("content", &View::from(&ctx.content)),
+        ];
+        for t in &ctx.tabs {
+            if let Some(v) = &t.view {
+                out.push(fmt(&format!("onglet{}", t.id), &View::from(v)));
+            }
+        }
+        out.join(" ")
+    })
+    .unwrap_or_default()
+}
