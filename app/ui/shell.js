@@ -343,6 +343,10 @@ window.nfEvent = (ev) => {
       tabs = ev.tabs || [];
       if (MODE === 'side') { show('side', true); renderSide(); } else { renderTabs(); refreshPageInfo(); }
       break;
+    case 'unlocked':
+      // Unlocked elsewhere (another window): show the browser here too.
+      if (MODE === 'top' && document.getElementById('chrome').hidden) showChrome();
+      break;
     case 'locked':
     case 'lockdown':
       closePanel();

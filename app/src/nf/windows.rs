@@ -442,6 +442,7 @@ pub fn after_unlock(session: Vec<nf_storage::SessionTab>) {
     for id in ids {
         open_initial_tabs(id);
     }
+    push_event_all(&serde_json::json!({ "type": "unlocked" }));
     push_tabs_all();
 }
 
