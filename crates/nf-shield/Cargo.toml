@@ -1,0 +1,19 @@
+[package]
+name = "nf-shield"
+description = "NIGHTFALL Shield: ad and tracker blocking built on Brave's adblock-rust (MPL-2.0)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nf-core.workspace = true
+adblock.workspace = true
+psl.workspace = true
+url.workspace = true
+ureq.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

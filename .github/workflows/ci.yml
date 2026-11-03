@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  core:
+    name: Modules (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: ilammy/setup-nasm@v1
+        if: runner.os == 'Windows'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: core
+      - name: Build
+        run: cargo build --workspace
+      - name: Tests
+        run: cargo test --workspace
+      - name: Lockfile
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock
+          path: Cargo.lock
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  security-checks:
+    name: Contrôles de sécurité
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aucun commutateur Chromium affaiblissant dans le code de NIGHTFALL
+        run: |
+          set -e
+          # The forbidden list itself lives in crates/nf-security/src/switches.rs.
+          if grep -rnE '"(no-sandbox|disable-web-security|remote-debugging-port|disable-site-isolation-trials|ignore-certificate-errors)"' app/src --include=*.rs; then
+            echo "Un commutateur interdit est utilisé dans app/src" >&2
+            exit 1
+          fi
+      - name: Aucun secret dans le dépôt
+        run: |
+          set -e
+          if git ls-files | grep -E '\.(pem|p12|pfx|key|secret)$'; then
+            echo "Fichier de secret détecté" >&2
+            exit 1
+          fi
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
