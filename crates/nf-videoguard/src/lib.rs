@@ -46,6 +46,14 @@ pub struct VideoGuardConfig {
     pub actions: BTreeMap<String, Action>,
     /// Minimum segment length to auto-skip (seconds).
     pub min_duration: u32,
+    /// Fast-forward YouTube's own video ads that Shield did not block
+    /// (muted, then the "skip" button is pressed as soon as it appears).
+    #[serde(default = "yes")]
+    pub skip_video_ads: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for VideoGuardConfig {
@@ -59,7 +67,7 @@ impl Default for VideoGuardConfig {
             };
             actions.insert((*c).to_string(), a);
         }
-        Self { enabled: true, actions, min_duration: 1 }
+        Self { enabled: true, actions, min_duration: 1, skip_video_ads: true }
     }
 }
 
@@ -187,6 +195,24 @@ pub fn injection_script(video_id: &str, segments: &[Segment]) -> String {
     format!("{}\n;window.__nightfallVideoGuard && window.__nightfallVideoGuard({});", CONTENT_SCRIPT, data)
 }
 
+/// Script injected at the start of every YouTube page: the content script
+/// with its options (video ad fast-forward), before any segment is known.
+pub fn page_script(page_url: &str, cfg: &VideoGuardConfig) -> Option<String> {
+    if !cfg.enabled || !is_youtube(page_url) {
+        return None;
+    }
+    let opts = serde_json::json!({ "skipVideoAds": cfg.skip_video_ads });
+    Some(format!("{}\n;window.__nightfallVideoGuardInit && window.__nightfallVideoGuardInit({});", CONTENT_SCRIPT, opts))
+}
+
+pub fn is_youtube(page_url: &str) -> bool {
+    url::Url::parse(page_url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+        .map(|h| h == "youtube.com" || h.ends_with(".youtube.com") || h == "youtube-nocookie.com" || h.ends_with(".youtube-nocookie.com"))
+        .unwrap_or(false)
+}
+
 const CONTENT_SCRIPT: &str = include_str!("videoguard.js");
 
 #[cfg(test)]
@@ -239,5 +265,22 @@ mod tests {
         let s = injection_script("dQw4w9WgXcQ", &[Segment { category: "sponsor".into(), start: 1.0, end: 2.0, uuid: "u".into(), action: Action::Skip }]);
         assert!(s.contains("\"videoId\":\"dQw4w9WgXcQ\""));
         assert!(s.contains("__nightfallVideoGuard"));
+    }
+
+    #[test]
+    fn page_script_only_on_youtube() {
+        let cfg = VideoGuardConfig::default();
+        assert!(page_script("https://www.youtube.com/watch?v=dQw4w9WgXcQ", &cfg).unwrap().contains("skipVideoAds"));
+        assert!(page_script("https://www.youtube-nocookie.com/embed/x", &cfg).is_some());
+        assert!(page_script("https://notyoutube.com/", &cfg).is_none());
+        let off = VideoGuardConfig { enabled: false, ..cfg };
+        assert!(page_script("https://www.youtube.com/", &off).is_none());
+    }
+
+    #[test]
+    fn old_saved_config_gets_video_ad_skipping() {
+        let json = r#"{"enabled":true,"actions":{},"min_duration":1}"#;
+        let cfg: VideoGuardConfig = serde_json::from_str(json).unwrap();
+        assert!(cfg.skip_video_ads);
     }
 }

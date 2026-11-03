@@ -332,6 +332,11 @@ wrap_load_handler! {
                 if let Some(js) = state::shield().page_script(&url, &shield_token()) {
                     frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
                 }
+                // VideoGuard on YouTube (main frame and embedded players).
+                let vg = core().videoguard.clone();
+                if let Some(js) = nf_videoguard::page_script(&url, &vg) {
+                    frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
+                }
             }
         }
 
