@@ -26,6 +26,13 @@ wrap_app! {
                 // built-in resolver, so the system resolver is used instead.
                 #[cfg(all(feature = "selftest", target_os = "macos"))]
                 cl.append_switch_with_value(Some(&CefString::from("disable-features")), Some(&CefString::from("AsyncDns")));
+                // CI self test on macOS only: Chromium encrypts its cookie
+                // store with a Keychain key, and on a build machine the
+                // Keychain waits for an authorisation nobody can give, which
+                // stalls every web request. Released builds use the real
+                // Keychain.
+                #[cfg(all(feature = "selftest", target_os = "macos"))]
+                cl.append_switch(Some(&CefString::from("use-mock-keychain")));
             }
         }
 
