@@ -31,6 +31,8 @@ DisableProgramGroupPage=yes
 LicenseFile=..\..\LICENSE
 UninstallDisplayName=NIGHTFALL Browser
 MinVersion=10.0
+SetupIconFile=..\..\app\resources\win\nightfall.ico
+UninstallDisplayIcon={app}\nightfall.exe
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
