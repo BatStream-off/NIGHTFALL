@@ -306,6 +306,10 @@ wrap_load_handler! {
             }
             if let ClientKind::Ui { .. } = *self.kind {
                 state::log(&format!("interface chargée : {} (HTTP {http_status_code})", cef_to_string(&frame.url())));
+                // Start-up diagnostic, written to the NIGHTFALL log through
+                // on_console_message (only nightfall:// sources are logged).
+                const DIAG: &str = "console.log('diag origin=' + location.origin + ' scripts=' + document.scripts.length + ' api=' + (typeof api) + ' styles=' + document.styleSheets.length);";
+                frame.execute_java_script(Some(&CefString::from(DIAG)), Some(&CefString::from("nightfall://app/diag")), 0);
             }
             if let ClientKind::Tab { .. } = *self.kind {
                 let url = cef_to_string(&frame.url());

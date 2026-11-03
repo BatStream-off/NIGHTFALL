@@ -34,7 +34,12 @@ fn respond(status: i32, mime: &str, body: Vec<u8>, csp: bool) -> Option<Resource
         headers.append("Content-Security-Policy", CSP);
     }
     let text = if status == 200 { "OK" } else { "Error" };
-    Some(StreamResourceHandler::new(status, text.into(), mime.into(), Some(headers), Some(reader)))
+    // CEF expects a bare MIME type ("text/html"): with parameters
+    // ("text/html; charset=utf-8") Chromium does not recognise the type and
+    // renders nothing. The pages declare UTF-8 themselves (<meta charset>),
+    // and scripts and style sheets inherit the document encoding.
+    let bare = mime.split(';').next().unwrap_or(mime).trim();
+    Some(StreamResourceHandler::new(status, text.into(), bare.into(), Some(headers), Some(reader)))
 }
 
 fn json_response(v: &serde_json::Value) -> Option<ResourceHandler> {
