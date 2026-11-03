@@ -94,8 +94,18 @@ wrap_scheme_handler_factory! {
                     state::log("appel API refusé : pas de navigateur ou de frame");
                     return forbidden();
                 };
+                let Some(info) = state::browser_info(browser.identifier()) else {
+                    state::log(&format!("appel API refusé : navigateur inconnu id={}", browser.identifier()));
+                    return forbidden();
+                };
                 let frame_url = to_string(&frame.url());
-                if frame.is_main() == 0 || !frame_url.starts_with("nightfall://app/") {
+                // Interface views can only ever display nightfall:// pages
+                // (on_before_browse refuses anything else). Their very first
+                // call may arrive before Chromium has recorded the page
+                // address, which is then still empty.
+                let ui_first_load = matches!(info.kind, state::BrowserKind::Ui { .. })
+                    && (frame_url.is_empty() || frame_url == "about:blank");
+                if frame.is_main() == 0 || !(frame_url.starts_with("nightfall://app/") || ui_first_load) {
                     state::log("appel API refusé : origine non NIGHTFALL");
                     return forbidden();
                 }
@@ -103,10 +113,6 @@ wrap_scheme_handler_factory! {
                     state::log("appel API refusé : méthode non POST");
                     return forbidden();
                 }
-                let Some(info) = state::browser_info(browser.identifier()) else {
-                    state::log(&format!("appel API refusé : navigateur inconnu id={}", browser.identifier()));
-                    return forbidden();
-                };
                 let body = read_post_body(request);
                 let value: serde_json::Value = if body.is_empty() {
                     serde_json::Value::Object(Default::default())
