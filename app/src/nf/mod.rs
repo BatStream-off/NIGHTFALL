@@ -48,6 +48,8 @@ pub fn load_cef() -> Library {
 
 fn startup_core(paths: ProfilePaths) -> Result<(), String> {
     paths.ensure().map_err(|e| format!("profil : {e}"))?;
+    state::set_log_file(paths.logs().join("nightfall.log"));
+    state::log(&format!("démarrage de NIGHTFALL {}", nf_core::VERSION));
     let args: Vec<String> = std::env::args().collect();
     let mut signals = security::startup_signals(&args);
 

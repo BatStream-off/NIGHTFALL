@@ -116,6 +116,10 @@ wrap_window_delegate! {
             prepare_window_close(self.window_id);
             1
         }
+
+        fn window_runtime_style(&self) -> RuntimeStyle {
+            RuntimeStyle::ALLOY
+        }
     }
 }
 
@@ -135,6 +139,12 @@ wrap_browser_view_delegate! {
         fn chrome_toolbar_type(&self, _browser_view: Option<&mut BrowserView>) -> ChromeToolbarType {
             ChromeToolbarType::NONE
         }
+
+        // CEF allows only one Chrome-style BrowserView per window; NIGHTFALL
+        // needs several (interface + one per tab), so all use Alloy style.
+        fn browser_runtime_style(&self) -> RuntimeStyle {
+            RuntimeStyle::ALLOY
+        }
     }
 }
 
@@ -148,6 +158,10 @@ wrap_browser_view_delegate! {
     impl BrowserViewDelegate {
         fn chrome_toolbar_type(&self, _browser_view: Option<&mut BrowserView>) -> ChromeToolbarType {
             ChromeToolbarType::NONE
+        }
+
+        fn browser_runtime_style(&self) -> RuntimeStyle {
+            RuntimeStyle::ALLOY
         }
 
         fn on_popup_browser_view_created(
@@ -190,6 +204,10 @@ wrap_window_delegate! {
                 window.set_title(Some(&CefString::from("NIGHTFALL · Outils de développement")));
                 window.show();
             }
+        }
+
+        fn window_runtime_style(&self) -> RuntimeStyle {
+            RuntimeStyle::ALLOY
         }
 
         fn can_close(&self, _window: Option<&mut Window>) -> i32 {

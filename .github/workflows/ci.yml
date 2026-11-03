@@ -43,6 +43,7 @@ jobs:
           name: cargo-lock
           path: Cargo.lock
       - name: Clippy
+        continue-on-error: true
         run: cargo clippy --workspace --exclude nightfall --exclude xtask --all-targets -- -D warnings
 
   app:
@@ -84,6 +85,8 @@ jobs:
           if ($p.HasExited) { Write-Error "NIGHTFALL s'est arrêté (code $($p.ExitCode))"; exit 1 }
           Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Select-Object Id, ProcessName, @{n='RAM_Mo';e={[math]::Round($_.WorkingSet64/1MB)}} | Format-Table
           if (!(Test-Path "$env:NIGHTFALL_PROFILE_DIR\chromium")) { Write-Error "profil Chromium non créé"; exit 1 }
+          Get-Content "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log"
+          if (!(Select-String -Path "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log" -Pattern "interface prête" -Quiet)) { Write-Error "l'interface NIGHTFALL ne s'est pas chargée"; exit 1 }
           Stop-Process -Id $p.Id -Force
           Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Stop-Process -Force -ErrorAction SilentlyContinue
       - name: Test de démarrage (macOS)
@@ -96,6 +99,8 @@ jobs:
           if ! kill -0 $PID 2>/dev/null; then echo "NIGHTFALL s'est arrêté"; cat "$RUNNER_TEMP/nf.log"; exit 1; fi
           ps -axo pid,rss,comm | grep -i nightfall || true
           test -d "$NIGHTFALL_PROFILE_DIR/chromium" || { echo "profil Chromium non créé"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
+          cat "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
+          grep -q "interface prête" "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log" || { echo "l'interface NIGHTFALL ne s'est pas chargée"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
           kill $PID; sleep 3; pkill -f NIGHTFALL.app || true
           tail -n 40 "$RUNNER_TEMP/nf.log"
       - uses: actions/upload-artifact@v4

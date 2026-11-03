@@ -50,7 +50,12 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
     }
     let w = caller.window_id();
     match cmd {
-        "state" => state_json(w),
+        "state" => {
+            if matches!(caller.kind, BrowserKind::Ui { side: false, .. }) {
+                state::log(&format!("interface prête (fenêtre {w})"));
+            }
+            state_json(w)
+        }
         "setup" => setup(body),
         "recovery.confirm" => recovery_confirm(),
         "unlock" => unlock(body),

@@ -39,7 +39,7 @@ pub fn validate(pin: &str) -> Result<(), PinError> {
     }
     // Short repeating motif: 121212, 123123, 12341234...
     for period in 2..=len / 2 {
-        if len % period == 0 && d.chunks(period).all(|c| c == &d[..period]) {
+        if len.is_multiple_of(period) && d.chunks(period).all(|c| c == &d[..period]) {
             return Err(PinError::Pattern);
         }
     }

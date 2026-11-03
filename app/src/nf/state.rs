@@ -229,7 +229,21 @@ pub fn take_internal_for_tab(tab_id: u32) -> bool {
     false
 }
 
+static LOG_FILE: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+/// Set the log file (inside the profile) once the profile is known.
+pub fn set_log_file(path: std::path::PathBuf) {
+    let _ = LOG_FILE.set(path);
+}
+
+/// Write a redacted log line to stderr and to `<profile>/logs/nightfall.log`.
 pub fn log(line: &str) {
+    use std::io::Write;
     let clean = nf_core::redact::sanitize(line);
     eprintln!("[NIGHTFALL] {clean}");
+    if let Some(path) = LOG_FILE.get() {
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            let _ = writeln!(f, "{} {clean}", nf_core::unix_now());
+        }
+    }
 }
