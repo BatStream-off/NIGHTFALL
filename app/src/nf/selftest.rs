@@ -9,6 +9,7 @@ use super::api::{self, Caller};
 use super::state::{self, core, BrowserKind};
 use super::ui_thread::on_ui_delayed;
 use super::windows;
+use cef::{ImplBrowser, ImplFrame};
 use serde_json::{json, Value};
 
 const PIN: &str = "739204";
@@ -196,11 +197,44 @@ fn step_unlock() {
     state::log(&format!("selftest: protection du code = {}", status["status"]["lock"]["backend"]));
     // End on a real web page so CI can check on screen that web content is
     // actually displayed (example.com: light page with dark text).
+    // Shield on a real page: scriptlet, CSS hiding rule, procedural rule.
+    step("Shield : scriptlet, masquage et règle procédurale");
+    let mut cfg = state::shield().config();
+    cfg.custom_filters = "||ads.nightfall-selftest.invalid^\nexample.com##+js(set-constant, nfShieldTest, 42)\nexample.com##h1\nexample.com##p:has-text(/documentation|documentación/)\n".into();
+    state::shield().set_config(cfg);
     windows::navigate_active(1, "https://example.com/");
     wait_for("affichage final de https://example.com", 40, || active_tab_loaded("https://example.com"), || {
         state::log(&format!("selftest: disposition {}", windows::layout_report(1)));
-        DONE.store(true, std::sync::atomic::Ordering::SeqCst);
-        state::log("SELFTEST OK");
-        finish();
+        on_ui_delayed(1500, || {
+            if let Some(b) = windows::active_browser(1) {
+                if let Some(f) = b.main_frame() {
+                    let js = "console.log('shield-check ' + JSON.stringify({ scriptlet: window.nfShieldTest === 42, \
+                        h1: getComputedStyle(document.querySelector('h1')).display === 'none', \
+                        procedural: [...document.querySelectorAll('p')].some(function (p) { return p.style.display === 'none'; }) }));";
+                    f.execute_java_script(Some(&cef::CefString::from(js)), Some(&cef::CefString::from("nightfall://selftest")), 0);
+                }
+            }
+            wait_for("résultat du contrôle Shield", 20, || CONSOLE.lock().map(|c| c.is_some()).unwrap_or(false), || {
+                let res = CONSOLE.lock().ok().and_then(|c| c.clone()).unwrap_or_default();
+                state::log(&format!("selftest: {res}"));
+                if !res.contains("\"scriptlet\":true") || !res.contains("\"h1\":true") || !res.contains("\"procedural\":true") {
+                    return fail(&format!("Shield sur example.com : {res}"));
+                }
+                DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+                state::log("SELFTEST OK");
+                finish();
+            });
+        });
     });
+}
+
+static CONSOLE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Console messages from the self test's own scripts.
+pub fn console_result(msg: &str) {
+    if msg.starts_with("shield-check") {
+        if let Ok(mut c) = CONSOLE.lock() {
+            *c = Some(msg.to_string());
+        }
+    }
 }

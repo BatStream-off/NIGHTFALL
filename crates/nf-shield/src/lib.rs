@@ -3,7 +3,11 @@
 //! Network and cosmetic filtering with Brave's `adblock` engine (MPL-2.0),
 //! which understands EasyList / EasyPrivacy / uBlock Origin syntax.
 //! No uBlock Origin code or resource (GPL) is included: filter lists are
-//! downloaded by the user's browser from their publishers at runtime.
+//! downloaded by the user's browser from their publishers at runtime, and
+//! the scriptlets used by `##+js(...)` rules are NIGHTFALL's own
+//! implementations (see `scriptlets/`).
+
+pub mod scriptlets;
 
 use adblock::lists::{FilterSet, ParseOptions};
 use adblock::request::Request;
@@ -30,6 +34,10 @@ pub struct FilterList {
     /// Unix time of the last successful download.
     #[serde(default)]
     pub updated: Option<i64>,
+    /// Lists maintained by the uBlock Origin project may use "trusted"
+    /// scriptlets (uBO grants this to its own lists only).
+    #[serde(default)]
+    pub trusted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,25 +53,50 @@ pub struct ShieldConfig {
 
 impl Default for ShieldConfig {
     fn default() -> Self {
-        let list = |id: &str, name: &str, url: &str, enabled| FilterList {
-            id: id.into(),
-            name: name.into(),
-            url: url.into(),
-            enabled,
-            updated: None,
-        };
         Self {
             enabled: true,
             block_popups: true,
-            lists: vec![
-                list("easylist", "EasyList (publicités)", "https://easylist.to/easylist/easylist.txt", true),
-                list("easyprivacy", "EasyPrivacy (traqueurs)", "https://easylist.to/easylist/easyprivacy.txt", true),
-                list("liste_fr", "Liste FR (sites francophones)", "https://easylist-downloads.adblockplus.org/liste_fr.txt", true),
-                list("fanboy_annoyance", "Fanboy Annoyances (bandeaux, pop-ups)", "https://secure.fanboy.co.nz/fanboy-annoyance.txt", false),
-            ],
+            lists: default_lists(),
             custom_filters: String::new(),
             allowlist: BTreeSet::new(),
         }
+    }
+}
+
+fn default_lists() -> Vec<FilterList> {
+    let list = |id: &str, name: &str, url: &str, enabled, trusted| FilterList {
+        id: id.into(),
+        name: name.into(),
+        url: url.into(),
+        enabled,
+        updated: None,
+        trusted,
+    };
+    const UBO: &str = "https://ublockorigin.github.io/uAssets/filters/";
+    vec![
+        list("easylist", "EasyList (publicités)", "https://easylist.to/easylist/easylist.txt", true, false),
+        list("easyprivacy", "EasyPrivacy (traqueurs)", "https://easylist.to/easylist/easyprivacy.txt", true, false),
+        list("liste_fr", "Liste FR (sites francophones)", "https://easylist-downloads.adblockplus.org/liste_fr.txt", true, false),
+        list("ubo_filters", "uBlock filters (publicités, YouTube)", &format!("{UBO}filters.txt"), true, true),
+        list("ubo_quick_fixes", "uBlock filters – Correctifs rapides", &format!("{UBO}quick-fixes.txt"), true, true),
+        list("ubo_privacy", "uBlock filters – Vie privée", &format!("{UBO}privacy.txt"), true, true),
+        list("ubo_unbreak", "uBlock filters – Réparations", &format!("{UBO}unbreak.txt"), true, true),
+        list("ubo_badware", "uBlock filters – Sites malveillants", &format!("{UBO}badware.txt"), true, true),
+        list("fanboy_annoyance", "Fanboy Annoyances (bandeaux, pop-ups)", "https://secure.fanboy.co.nz/fanboy-annoyance.txt", false, false),
+    ]
+}
+
+impl ShieldConfig {
+    /// Add lists introduced by a newer NIGHTFALL version to a saved
+    /// configuration, keeping the user's own choices for existing lists.
+    pub fn with_new_default_lists(mut self) -> Self {
+        for d in default_lists() {
+            match self.lists.iter_mut().find(|l| l.id == d.id) {
+                Some(l) => l.trusted = d.trusted,
+                None => self.lists.push(d),
+            }
+        }
+        self
     }
 }
 
@@ -83,6 +116,8 @@ pub struct Cosmetic {
     pub generichide: bool,
     pub exceptions: Vec<String>,
 }
+
+const COSMETIC_RUNTIME: &str = include_str!("cosmetic.js");
 
 pub struct Shield {
     cache_dir: PathBuf,
@@ -153,14 +188,19 @@ impl Shield {
         for l in cfg.lists.iter().filter(|l| l.enabled) {
             if let Ok(text) = std::fs::read_to_string(self.list_path(&l.id)) {
                 count += text.lines().filter(|x| !x.trim().is_empty() && !x.starts_with('!')).count();
-                set.add_filter_list(text, ParseOptions::default());
+                let mut opts = ParseOptions::default();
+                if l.trusted {
+                    opts.permissions = scriptlets::TRUSTED;
+                }
+                set.add_filter_list(text, opts);
             }
         }
         if !cfg.custom_filters.trim().is_empty() {
             count += cfg.custom_filters.lines().filter(|x| !x.trim().is_empty()).count();
             set.add_filter_list(cfg.custom_filters.clone(), ParseOptions::default());
         }
-        let engine = Engine::new_with_filter_set(set);
+        let mut engine = Engine::new_with_filter_set(set);
+        engine.use_resources(scriptlets::resources());
         *self.engine.write().unwrap() = Arc::new(engine);
         *self.rules_loaded.lock().unwrap() = count;
     }
@@ -250,6 +290,66 @@ impl Shield {
         Some(Cosmetic { css, generichide: res.generichide, exceptions })
     }
 
+    /// Script injected at document start: scriptlets (`##+js(...)`), CSS
+    /// hiding rules, procedural filters, and the generic class/id observer.
+    /// `token` prefixes the page's reports of new classes and ids.
+    pub fn page_script(&self, page_url: &str, token: &str) -> Option<String> {
+        if !self.is_active_for(page_url) {
+            return None;
+        }
+        let engine = self.engine.read().unwrap().clone();
+        let res = engine.url_cosmetic_resources(page_url);
+        let mut selectors: Vec<&String> = res.hide_selectors.iter().collect();
+        selectors.sort();
+        let mut css = String::new();
+        for chunk in selectors.chunks(200) {
+            let joined: Vec<&str> = chunk.iter().map(|s| s.as_str()).collect();
+            css.push_str(&joined.join(","));
+            css.push_str("{display:none!important}\n");
+        }
+        let mut procedural: Vec<&String> = res.procedural_actions.iter().collect();
+        procedural.sort();
+        if css.is_empty() && procedural.is_empty() && res.injected_script.is_empty() && res.generichide {
+            return None;
+        }
+        let data = serde_json::json!({
+            "css": css,
+            "procedural": procedural,
+            "generic": !res.generichide,
+            "token": token,
+        });
+        let mut script = String::new();
+        if !res.injected_script.is_empty() {
+            // Scriptlets first: they must run before the page's own scripts.
+            script.push_str("(function(){\n");
+            script.push_str(&res.injected_script);
+            script.push_str("\n})();\n");
+        }
+        script.push_str(COSMETIC_RUNTIME);
+        script.push('(');
+        script.push_str(&data.to_string());
+        script.push_str(");\n");
+        Some(script)
+    }
+
+    /// CSS for generic class/id rules matching what the page reported.
+    pub fn generic_css(&self, page_url: &str, classes: &[String], ids: &[String]) -> String {
+        if !self.is_active_for(page_url) {
+            return String::new();
+        }
+        let engine = self.engine.read().unwrap().clone();
+        let res = engine.url_cosmetic_resources(page_url);
+        if res.generichide {
+            return String::new();
+        }
+        let sels = engine.hidden_class_id_selectors(classes, ids, &res.exceptions);
+        if sels.is_empty() {
+            String::new()
+        } else {
+            format!("{}{{display:none!important}}", sels.join(","))
+        }
+    }
+
     /// Generic class/id based hiding for elements seen in the page.
     pub fn class_id_css(&self, classes: &[String], ids: &[String], exceptions: &[String]) -> String {
         let engine = self.engine.read().unwrap().clone();
@@ -294,6 +394,14 @@ impl Shield {
         }
         self.rebuild();
         errors
+    }
+
+    /// True when an enabled list is missing on disk or older than `max_age`
+    /// seconds (uBlock's quick fixes change several times a day).
+    pub fn needs_update(&self, now: i64, max_age: i64) -> bool {
+        self.config().lists.iter().filter(|l| l.enabled).any(|l| {
+            !self.list_path(&l.id).exists() || l.updated.map(|u| now - u > max_age).unwrap_or(true)
+        })
     }
 
     /// True when at least one enabled list is present on disk.
@@ -393,5 +501,46 @@ mod tests {
         assert_eq!(request_type_from_cef(3), "script");
         assert_eq!(request_type_from_cef(14), "xmlhttprequest");
         assert_eq!(request_type_from_cef(999), "other");
+    }
+
+    #[test]
+    fn page_script_with_scriptlets_and_procedural_rules() {
+        let (_d, s) = shield_with(
+            "example.com##+js(set-constant, nfShieldTest, 42)\nexample.com##+js(json-prune, playerAds adPlacements)\nexample.com##p:has-text(documentation)\nexample.com##.pub\n",
+        );
+        let js = s.page_script("https://example.com/", "TOKEN:").expect("script");
+        assert!(js.contains("function nfSetConstant"), "{js}");
+        assert!(js.contains("nfSetConstant(\"nfShieldTest\", \"42\")"), "{js}");
+        assert!(js.contains("function nfJsonPrune"));
+        assert!(js.contains("function nfUtils"));
+        assert!(js.contains("has-text"));
+        assert!(js.contains(".pub{display:none!important}"));
+        assert!(js.contains("TOKEN:"));
+        // Other sites get no site-specific scriptlet.
+        let other = s.page_script("https://other.test/", "T").unwrap_or_default();
+        assert!(!other.contains("nfShieldTest"));
+    }
+
+    #[test]
+    fn trusted_scriptlets_need_a_trusted_list() {
+        let (_d, s) = shield_with("example.com##+js(trusted-replace-fetch-response, ads, x)\n");
+        let js = s.page_script("https://example.com/", "T").unwrap_or_default();
+        assert!(!js.contains("nfTrustedReplaceFetchResponse("), "custom filters are not trusted");
+    }
+
+    #[test]
+    fn generic_class_rules() {
+        let (_d, s) = shield_with("##.ad-banner\n###sponsor-box\n");
+        let css = s.generic_css("https://site.test/", &["ad-banner".into(), "content".into()], &["sponsor-box".into()]);
+        assert!(css.contains(".ad-banner"));
+        assert!(css.contains("#sponsor-box"));
+        assert!(!css.contains("content"));
+    }
+
+    #[test]
+    fn saved_configuration_gains_new_lists() {
+        let old = ShieldConfig { lists: default_lists().into_iter().take(3).collect(), ..Default::default() };
+        let cfg = old.with_new_default_lists();
+        assert!(cfg.lists.iter().any(|l| l.id == "ubo_filters" && l.trusted && l.enabled));
     }
 }

@@ -587,7 +587,7 @@ fn open_stores(c: &mut Core, mk: nf_crypto::SecretKey) -> Result<(), String> {
             c.videoguard = v;
         }
         if let Ok(Some(sh)) = st.setting::<nf_shield::ShieldConfig>("shield") {
-            state::shield().set_config(sh);
+            state::shield().set_config(sh.with_new_default_lists());
         }
     }
     c.unlocked = Some(Unlocked { master: mk, storage, vault, cookies_key: Some(cookies_key) });
@@ -610,14 +610,29 @@ fn after_unlock_ui() {
         // Let the cookie store apply the restored cookies before pages load.
         on_ui_delayed(250, move || windows::after_unlock(session));
     });
-    // Download filter lists on first use.
+    refresh_filter_lists_if_needed();
+}
+
+static LISTS_UPDATING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Download missing lists, and refresh lists older than 12 hours, in the
+/// background (never twice at the same time).
+pub fn refresh_filter_lists_if_needed() {
+    use std::sync::atomic::Ordering;
     let sh = state::shield();
-    if !sh.has_cached_lists() {
-        background(
-            move || sh.update_lists(nf_core::unix_now()),
-            |_| core().save_settings(),
-        );
+    if !sh.needs_update(nf_core::unix_now(), 12 * 3600) || LISTS_UPDATING.swap(true, Ordering::SeqCst) {
+        return;
     }
+    background(
+        move || sh.update_lists(nf_core::unix_now()),
+        |errors| {
+            LISTS_UPDATING.store(false, Ordering::SeqCst);
+            for e in &errors {
+                state::log(&format!("Shield : {e}"));
+            }
+            core().save_settings();
+        },
+    );
 }
 
 /// Lock now: hide everything, seal cookies, then forget the keys.
