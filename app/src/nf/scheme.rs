@@ -77,7 +77,9 @@ wrap_scheme_handler_factory! {
                 return respond(404, "text/plain", b"introuvable".to_vec(), false);
             };
             let path = rest.split(['?', '#']).next().unwrap_or("");
-            if path.starts_with("api/") || path.ends_with(".html") {
+            // The first requests are logged to diagnose start-up problems.
+            static SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            if SEEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 40 {
                 state::log(&format!("schéma : {path}"));
             }
 

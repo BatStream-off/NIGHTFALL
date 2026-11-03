@@ -10,6 +10,7 @@ async function api(cmd, body) {
     });
     return await r.json();
   } catch (e) {
+    console.error('NIGHTFALL api ' + cmd + ' : ' + e);
     return { ok: false, error: String(e) };
   }
 }
