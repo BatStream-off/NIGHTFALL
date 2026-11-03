@@ -377,13 +377,19 @@ pub fn apply_mode(id: u32, locked: bool) {
                 l.set_flex_for_view(Some(&mut side), 0);
             }
         }
+        // Flex weights changed: the cached box layouts must be recomputed.
         ctx.top.invalidate_layout();
         ctx.side.invalidate_layout();
+        ctx.content.invalidate_layout();
+        ctx.column.invalidate_layout();
         ctx.column.layout();
         if let Some(w) = &ctx.window {
+            w.invalidate_layout();
             w.layout();
         }
     });
+    #[cfg(feature = "selftest")]
+    state::log(&format!("selftest: apply_mode(verrouillé={locked}) -> {}", layout_report(id)));
 }
 
 /// Resize the top interface view (panels, warning banner).
