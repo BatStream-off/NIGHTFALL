@@ -65,6 +65,13 @@ wrap_client! {
             Some(NfKeyboard::new(self.kind.clone()))
         }
 
+        fn permission_handler(&self) -> Option<PermissionHandler> {
+            match *self.kind {
+                ClientKind::Tab { .. } => Some(super::permissions::NfPermission::new(self.kind.clone())),
+                ClientKind::Ui { .. } => None,
+            }
+        }
+
         fn download_handler(&self) -> Option<DownloadHandler> {
             match *self.kind {
                 ClientKind::Tab { .. } => Some(super::downloads::NfDownload::new(self.kind.clone())),
@@ -104,6 +111,23 @@ wrap_display_handler! {
                 blocked_map().insert(id, 0);
                 on_navigation(window_id, tab_id, private, &url);
             }
+        }
+
+        fn on_console_message(
+            &self,
+            _browser: Option<&mut Browser>,
+            _level: LogSeverity,
+            message: Option<&CefString>,
+            source: Option<&CefString>,
+            line: i32,
+        ) -> i32 {
+            // Only NIGHTFALL's own pages are logged (never web page content).
+            let source = source.map(|s| s.to_string()).unwrap_or_default();
+            if source.starts_with("nightfall://") {
+                let msg = message.map(|m| m.to_string()).unwrap_or_default();
+                state::log(&format!("console {source}:{line} {msg}"));
+            }
+            0
         }
 
         fn on_title_change(&self, _browser: Option<&mut Browser>, title: Option<&CefString>) {
@@ -177,6 +201,7 @@ wrap_life_span_handler! {
     impl LifeSpanHandler {
         fn on_after_created(&self, browser: Option<&mut Browser>) {
             let Some(browser) = browser else { return };
+            state::log(&format!("navigateur créé id={} type={:?}", browser.identifier(), *self.kind));
             let kind = match *self.kind {
                 ClientKind::Ui { window_id, side } => BrowserKind::Ui { window_id, side },
                 ClientKind::Tab { window_id, tab_id, private } => BrowserKind::Tab { window_id, tab_id, private },

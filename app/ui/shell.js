@@ -233,6 +233,19 @@ async function refreshPageInfo() {
   $('#b-key').classList.toggle('on', info.passwords > 0);
 }
 
+// ------------------------------------------------------------------ permissions
+function askPermission(ev) {
+  const b = $('#banner');
+  b.className = '';
+  b.textContent = '';
+  const done = (allow) => { api('permission.answer', { id: ev.id, allow }); b.hidden = true; resize(); };
+  b.append(el('span', { text: `${host(ev.origin) || ev.origin} ${ev.what}.` }),
+    el('button', { class: 'primary', text: 'Autoriser', onclick: () => done(true) }),
+    el('button', { text: 'Refuser', onclick: () => done(false) }));
+  b.hidden = false;
+  resize();
+}
+
 // ------------------------------------------------------------------ panels
 function closePanel() { panelOpen = null; show('panel', false); resize(); }
 
@@ -347,6 +360,9 @@ window.nfEvent = (ev) => {
       break;
     case 'page_info':
       refreshPageInfo();
+      break;
+    case 'permission':
+      if (MODE === 'top') askPermission(ev);
       break;
     case 'popup_blocked':
       if (MODE === 'top') toast('Pop-up bloquée par NIGHTFALL Shield');
