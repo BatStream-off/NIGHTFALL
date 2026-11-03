@@ -154,7 +154,11 @@ wrap_browser_view_delegate! {
 
     impl ViewDelegate {
         fn preferred_size(&self, _view: Option<&mut View>) -> Size {
-            Size { width: self.width.load(Ordering::Relaxed), height: self.height.load(Ordering::Relaxed) }
+            // CEF ignores a preferred size with a zero dimension (it is
+            // "empty") and falls back to the view's current size, which
+            // stopped the web content area from ever getting any room.
+            // The cross axis is stretched by the layout anyway.
+            Size { width: self.width.load(Ordering::Relaxed).max(1), height: self.height.load(Ordering::Relaxed).max(1) }
         }
     }
 
@@ -361,8 +365,10 @@ pub fn apply_mode(id: u32, locked: bool) {
     with_window(id, |ctx| {
         let mut top = View::from(&ctx.top);
         let mut side = View::from(&ctx.side);
+        let mut content = View::from(&ctx.content);
         if let Some(l) = &ctx.col_layout {
             l.set_flex_for_view(Some(&mut top), if locked { 1 } else { 0 });
+            l.set_flex_for_view(Some(&mut content), if locked { 0 } else { 1 });
         }
         if locked {
             ctx.content.set_visible(0);
@@ -377,13 +383,19 @@ pub fn apply_mode(id: u32, locked: bool) {
                 l.set_flex_for_view(Some(&mut side), 0);
             }
         }
+        // Flex weights changed: the cached box layouts must be recomputed.
         ctx.top.invalidate_layout();
         ctx.side.invalidate_layout();
+        ctx.content.invalidate_layout();
+        ctx.column.invalidate_layout();
         ctx.column.layout();
         if let Some(w) = &ctx.window {
+            w.invalidate_layout();
             w.layout();
         }
     });
+    #[cfg(feature = "selftest")]
+    state::log(&format!("selftest: apply_mode(verrouillé={locked}) -> {}", layout_report(id)));
 }
 
 /// Resize the top interface view (panels, warning banner).
@@ -442,6 +454,7 @@ pub fn after_unlock(session: Vec<nf_storage::SessionTab>) {
     for id in ids {
         open_initial_tabs(id);
     }
+    push_event_all(&serde_json::json!({ "type": "unlocked" }));
     push_tabs_all();
 }
 
@@ -958,4 +971,29 @@ pub fn show_devtools(window_id: u32) {
             h.show_dev_tools(Some(&wi), None, Some(&settings), None);
         }
     }
+}
+
+/// Diagnostic (CI self test): bounds and visibility of a window's views.
+#[cfg(feature = "selftest")]
+pub fn layout_report(window_id: u32) -> String {
+    let fmt = |name: &str, v: &View| {
+        let b = v.bounds();
+        let p = v.preferred_size();
+        format!("{name}=({},{} {}x{} préféré {}x{} visible={} drawn={})", b.x, b.y, b.width, b.height, p.width, p.height, v.is_visible(), v.is_drawn())
+    };
+    with_window(window_id, |ctx| {
+        let mut out = vec![
+            fmt("top", &View::from(&ctx.top)),
+            fmt("side", &View::from(&ctx.side)),
+            fmt("column", &View::from(&ctx.column)),
+            fmt("content", &View::from(&ctx.content)),
+        ];
+        for t in &ctx.tabs {
+            if let Some(v) = &t.view {
+                out.push(fmt(&format!("onglet{}", t.id), &View::from(v)));
+            }
+        }
+        out.join(" ")
+    })
+    .unwrap_or_default()
 }

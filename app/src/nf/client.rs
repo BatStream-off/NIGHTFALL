@@ -316,7 +316,8 @@ wrap_load_handler! {
                 state::log(&format!("interface chargée : {} (HTTP {http_status_code})", cef_to_string(&frame.url())));
                 // Start-up diagnostic, written to the NIGHTFALL log through
                 // on_console_message (only nightfall:// sources are logged).
-                const DIAG: &str = "console.log('diag origin=' + location.origin + ' scripts=' + document.scripts.length + ' api=' + (typeof api) + ' styles=' + document.styleSheets.length);";
+                const DIAG: &str = "console.log('diag origin=' + location.origin + ' scripts=' + document.scripts.length + ' api=' + (typeof api) + ' styles=' + document.styleSheets.length);\
+                    setTimeout(function(){ var l=document.getElementById('lock'); console.log('diag5s taille=' + innerWidth + 'x' + innerHeight + ' visible=' + document.visibilityState + ' lock=' + (l ? !l.hidden : 'absent') + ' mode=' + location.search); }, 5000);";
                 frame.execute_java_script(Some(&CefString::from(DIAG)), Some(&CefString::from("nightfall://app/diag")), 0);
             }
             if let ClientKind::Tab { .. } = *self.kind {

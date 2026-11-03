@@ -47,6 +47,16 @@ jobs:
           security list-keychains -d user -s nf-ci.keychain $(security list-keychains -d user | tr -d '"')
           security default-keychain -d user -s nf-ci.keychain
           perl -e 'alarm 180; exec @ARGV' cargo test -p nf-hwkey keychain_round_trip -- --nocapture
+      - name: Rendu de l'interface (navigateur sans affichage)
+        if: runner.os == 'Linux'
+        run: |
+          rm -rf "$RUNNER_TEMP/ui" && cp -r app/ui "$RUNNER_TEMP/ui"
+          sed -i "s#'nightfall://app/api/'#'/api/'#" "$RUNNER_TEMP/ui/nf.js"
+          NF_UI_DIR="$RUNNER_TEMP/ui" NF_PORT=8765 python3 ci/ui_mock_server.py &
+          NF_UI_DIR="$RUNNER_TEMP/ui" NF_PORT=8766 NF_UNLOCKED=1 python3 ci/ui_mock_server.py &
+          sleep 1
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y > /dev/null && npm install --silent playwright@1 && npx playwright install --with-deps chromium > /dev/null
+          cp "$GITHUB_WORKSPACE/ci/ui_render_test.js" . && node ui_render_test.js
       - name: Lockfile
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -78,6 +88,7 @@ jobs:
       - name: Tests de l'application
         run: cargo test -p nightfall
       - name: Compilation et empaquetage (CEF inclus)
+        id: pkg
         run: cargo xtask package
       - name: Archive portable et installateur Windows
         if: runner.os == 'Windows'
@@ -134,6 +145,7 @@ jobs:
           kill $PID; sleep 3; pkill -f NIGHTFALL.app || true
           tail -n 40 "$RUNNER_TEMP/nf.log"
       - name: Auto-test de bout en bout (navigateur réel)
+        if: always() && steps.pkg.outcome == 'success'
         shell: bash
         env:
           NIGHTFALL_FEATURES: selftest
@@ -155,6 +167,16 @@ jobs:
             sleep 2
           done
           sleep 3
+          # Screenshot of the unlocked browser at the end of the self test.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -Command 'Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $sb=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp=New-Object System.Drawing.Bitmap $sb.Width,$sb.Height; [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($sb.Location,[System.Drawing.Point]::Empty,$sb.Size); $s=New-Object System.Drawing.Bitmap $bmp,960,([int](960*$sb.Height/$sb.Width)); $s.Save("$env:RUNNER_TEMP\shot2.png",[System.Drawing.Imaging.ImageFormat]::Png)'
+          else
+            screencapture -x "$RUNNER_TEMP/shot2.png" && sips -Z 960 "$RUNNER_TEMP/shot2.png" > /dev/null
+          fi
+          echo NFSHOT2-BEGIN; base64 < "$RUNNER_TEMP/shot2.png" | tr -d '\n\r'; echo; echo NFSHOT2-END
+          python3 -m pip install --quiet --break-system-packages pillow 2>/dev/null || python -m pip install --quiet pillow
+          WEBFAIL=0
+          if [ "$RUNNER_OS" = "Windows" ]; then python ci/check_web.py "$RUNNER_TEMP/shot2.png" || WEBFAIL=1; else python3 ci/check_web.py "$RUNNER_TEMP/shot2.png" || WEBFAIL=1; fi
           kill $PID 2>/dev/null || true
           if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM nightfall.exe > /dev/null 2>&1 || true; else pkill -f selftest-dist || true; fi
           cat "$LOG" || true
@@ -167,6 +189,7 @@ jobs:
           echo "--- réseau de la machine ---"; curl -sS -o /dev/null -w "curl http://example.com -> %{http_code}\n" http://example.com || true
           if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; scutil --dns | head -n 30 || true; fi
           grep -q "SELFTEST OK" "$LOG"
+          [ "$WEBFAIL" = 0 ]
       - uses: actions/upload-artifact@v4
         with:
           name: NIGHTFALL-${{ runner.os }}
