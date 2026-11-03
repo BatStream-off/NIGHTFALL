@@ -19,6 +19,8 @@ static ASSETS: &[(&str, &[u8], &str)] = &[
     asset!("nf.js", "text/javascript; charset=utf-8"),
     asset!("emblem.png", "image/png"),
     asset!("favicon.png", "image/png"),
+    // Plain magenta page: used by the CI display test.
+    asset!("probe.html", "text/html; charset=utf-8"),
     asset!("newtab.html", "text/html; charset=utf-8"),
     asset!("newtab.js", "text/javascript; charset=utf-8"),
     asset!("settings.html", "text/html; charset=utf-8"),

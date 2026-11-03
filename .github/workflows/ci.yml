@@ -167,6 +167,17 @@ jobs:
           echo "--- réseau de la machine ---"; curl -sS -o /dev/null -w "curl http://example.com -> %{http_code}\n" http://example.com || true
           if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; scutil --dns | head -n 30 || true; fi
           grep -q "SELFTEST OK" "$LOG"
+      - name: Expériences d'affichage (diagnostic)
+        if: always()
+        shell: bash
+        env:
+          NIGHTFALL_DIST_DIR: ${{ runner.temp }}/selftest-dist
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -File ci/ui_experiments.ps1 -Bin "$NIGHTFALL_DIST_DIR/NIGHTFALL/nightfall.exe"
+          else
+            bash ci/ui_experiments.sh "$NIGHTFALL_DIST_DIR/NIGHTFALL.app/Contents/MacOS/nightfall"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: NIGHTFALL-${{ runner.os }}
