@@ -158,7 +158,9 @@ pub fn run_main(main_args: &MainArgs, cmd_line: &CommandLine, sandbox_info: *mut
     let cef_log = paths.logs().join("chromium.log").display().to_string();
     let settings = Settings {
         log_file: CefString::from(cef_log.as_str()),
-        log_severity: cef::LogSeverity::WARNING,
+        // The CI self test records more detail; released builds keep
+        // warnings and errors only.
+        log_severity: if cfg!(feature = "selftest") { cef::LogSeverity::INFO } else { cef::LogSeverity::WARNING },
         no_sandbox: !cfg!(feature = "sandbox") as _,
         root_cache_path: CefString::from(chromium.as_str()),
         cache_path: CefString::from(chromium.as_str()),

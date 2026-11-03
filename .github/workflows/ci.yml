@@ -141,6 +141,13 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM nightfall.exe > /dev/null 2>&1 || true; else pkill -f selftest-dist || true; fi
           cat "$LOG" || true
           echo "--- sortie du processus ---"; tail -n 40 "$RUNNER_TEMP/selftest.out" || true
+          echo "--- journal Chromium (réseau) ---"; grep -iE "net|dns|proxy|socket|sandbox|error" "$NIGHTFALL_PROFILE_DIR/logs/chromium.log" | tail -n 60 || true
+          echo "--- journal Chromium (fin) ---"; ls -la "$NIGHTFALL_PROFILE_DIR/logs" || true; tail -n 30 "$NIGHTFALL_PROFILE_DIR/logs/chromium.log" 2>/dev/null || true
+          echo "--- requêtes vers example.com (netlog) ---"; python3 ci/netlog_summary.py "$NIGHTFALL_PROFILE_DIR/logs/netlog.json" 2>&1 | head -n 160 || true
+          grep -o '"net_error":-[0-9]*' "$NIGHTFALL_PROFILE_DIR/logs/netlog.json" 2>/dev/null | sort | uniq -c || true
+          grep -oE '"(host|url)":"[^"]*example[^"]*"' "$NIGHTFALL_PROFILE_DIR/logs/netlog.json" 2>/dev/null | sort | uniq -c | head || true
+          echo "--- réseau de la machine ---"; curl -sS -o /dev/null -w "curl http://example.com -> %{http_code}\n" http://example.com || true
+          if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; scutil --dns | head -n 30 || true; fi
           grep -q "SELFTEST OK" "$LOG"
       - uses: actions/upload-artifact@v4
         with:

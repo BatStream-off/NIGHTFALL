@@ -11,8 +11,8 @@ Légende :
 
 | Élément | État | Détail |
 | --- | --- | --- |
-| Compilation Windows (x64) et macOS (Apple Silicon) | voir dernière CI | Workflow `CI`, job *Application* |
-| Démarrage de l'application + chargement de l'interface | voir dernière CI | Test de démarrage : processus vivant après 25 s, profil créé, interface chargée (`interface prête`) |
+| Compilation Windows (x64) et macOS (Apple Silicon) | ✅ | Workflow `CI`, job *Application* |
+| Démarrage de l'application + chargement de l'interface | ✅ Windows, ✅ macOS | Test de démarrage : processus vivant après 25 s, profil créé, interface chargée (`interface prête`) |
 | Style des vues CEF | Alloy | CEF n'accepte qu'**une seule** vue en style Chrome par fenêtre (erreur observée en CI : `Cannot add multiple Chrome style BrowserViews`). NIGHTFALL a besoin de plusieurs vues (interface + une par onglet), donc toutes sont en style Alloy. |
 | Installateur Windows (Inno Setup), version portable .zip, image .dmg macOS | voir dernière CI | Artefacts téléchargeables. Non signés (budget 0 €). |
 
@@ -22,7 +22,7 @@ Légende :
 | --- | --- | --- |
 | Cryptographie (XChaCha20-Poly1305, HKDF, HMAC) | ✅ | Chiffrement, falsification, unicité des nonces |
 | NIGHTFALL LOCK (code, Argon2id, secret matériel, temporisation, Recovery Key) | ✅ | Création, déverrouillage, temporisation progressive, seuil de 20 échecs, compteur falsifié, profil copié sans secret matériel = inutilisable, purge cryptographique |
-| Secret matériel TPM (Windows) / Trousseau (macOS) | 🟡 | Compile sur Windows et macOS ; le test complet sur une vraie puce TPM reste à faire sur ta machine |
+| Secret matériel TPM (Windows) / Trousseau (macOS) | ✅ DPAPI Windows, ✅ Trousseau macOS (test unitaire), 🟡 TPM | Les machines de test GitHub n'ont pas de puce TPM : NIGHTFALL y a basculé sur DPAPI, comme prévu. Le Trousseau est testé par un aller-retour réel. Le TPM reste à valider sur ta machine. |
 | Base chiffrée SQLCipher (favoris, historique, réglages, téléchargements, sessions) | ✅ | Fichier illisible sans la clé, dossiers, recherche, filtres de date |
 | Security Core : commutateurs interdits, anti-phishing, risques des extensions, format du Session Vault | ✅ | Typosquatting, homographes, sous-domaines trompeurs, IP + HTTP |
 | Emergency : purge limitée au profil, règles d'Auto-Purge | ✅ | Fichiers témoins hors profil et liens symboliques intacts, signal isolé = pas de purge |
@@ -35,7 +35,12 @@ Légende :
 
 ## Auto-test de bout en bout (dans le vrai navigateur, en CI)
 
-Feature `selftest`, réservée aux tests. Le scénario : création du code → Recovery Key → page d'accueil → navigation réelle vers `https://example.com` → historique enregistré → Shield bloque une requête → verrouillage + Session Vault écrit → mauvais code refusé → déverrouillage → ajout au coffre (aucun mot de passe en clair sur disque) → purge d'urgence des mots de passe → Security Center. État : voir la dernière CI (`SELFTEST OK`).
+Feature `selftest`, réservée aux tests et jamais livrée (un contrôle de sécurité de la CI le vérifie). Le scénario : création du code → Recovery Key → page d'accueil → navigation réelle (HTTP puis HTTPS) vers `example.com` → historique enregistré → Shield bloque une requête → verrouillage + Session Vault écrit → mauvais code refusé → déverrouillage → ajout au coffre (aucun mot de passe en clair sur disque) → purge d'urgence des mots de passe → Security Center.
+
+| Système | État |
+| --- | --- |
+| Windows | ✅ `SELFTEST OK` (secret de l'appareil : DPAPI) |
+| macOS | 🟡 l'interface, le code, la Recovery Key et la page d'accueil passent ; la navigation vers un site échoue sur la machine de test (`ERR_TIMED_OUT`), cause en cours d'analyse. Sur macOS, l'auto-test utilise une clé logicielle à la place du Trousseau, car une demande d'autorisation du système ne peut pas recevoir de réponse sur une machine de test. |
 
 ## À valider manuellement (ta machine)
 
