@@ -39,8 +39,16 @@ Feature `selftest`, réservée aux tests et jamais livrée (un contrôle de séc
 
 | Système | État |
 | --- | --- |
-| Windows | ✅ `SELFTEST OK` (secret de l'appareil : DPAPI) |
-| macOS | 🟡 l'interface, le code, la Recovery Key et la page d'accueil passent ; la navigation vers un site échoue sur la machine de test (`ERR_TIMED_OUT`), cause en cours d'analyse. Sur macOS, l'auto-test utilise une clé logicielle à la place du Trousseau, car une demande d'autorisation du système ne peut pas recevoir de réponse sur une machine de test. |
+| Windows | ✅ `SELFTEST OK` (secret de l'appareil : DPAPI, car les machines de test n'ont pas de TPM) |
+| macOS | ✅ `SELFTEST OK`, avec deux adaptations propres à la machine de test (voir ci-dessous) |
+
+Adaptations de l'auto-test macOS (feature `selftest` uniquement, jamais présentes dans les versions livrées) :
+- le secret de l'appareil est un fichier local à la place du Trousseau, et Chromium utilise un Trousseau simulé (`use-mock-keychain`). Sur une machine de test, toute demande d'accès au Trousseau attend une autorisation que personne ne peut donner. Le Trousseau réel est vérifié séparément par un test unitaire ;
+- le résolveur DNS du système est utilisé à la place de celui de Chromium (configuration réseau particulière des machines de test).
+
+Comportement vérifié : une adresse en `http://` est automatiquement ouverte en `https://` quand le site le permet (mise à niveau HTTPS de Chromium).
+
+**À savoir sur un vrai Mac :** au premier lancement, macOS peut demander si NIGHTFALL peut utiliser le Trousseau (pour le secret de l'appareil et pour le chiffrement des cookies de Chromium). Il faut accepter. Comme l'application n'est pas signée par un compte développeur Apple (budget 0 €), cette demande peut revenir après chaque mise à jour.
 
 ## À valider manuellement (ta machine)
 

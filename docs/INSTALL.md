@@ -25,6 +25,8 @@ Désinstallation : *Paramètres → Applications → NIGHTFALL Browser*. Le dés
 
 L'application porte une signature « ad hoc » (gratuite), pas de signature Apple Developer ID, qui coûte 99 $ par an. Elle n'est donc pas notarisée.
 
+3. macOS peut ensuite demander si **NIGHTFALL peut utiliser des informations confidentielles stockées dans votre trousseau**. Saisissez votre mot de passe de session et choisissez **Toujours autoriser**. Le Trousseau protège le secret qui lie votre profil à ce Mac ainsi que la clé de chiffrement des cookies. Si vous refusez, NIGHTFALL ne peut pas créer votre code ni charger de sites. La demande peut réapparaître après une mise à jour, car l'application n'a pas de signature Apple stable.
+
 Désinstallation : supprimez `NIGHTFALL.app` des Applications. Votre profil chiffré se trouve dans `~/Library/Application Support/NIGHTFALL`. Supprimez ce dossier si vous voulez aussi effacer vos données.
 
 ## Premier lancement
