@@ -15,6 +15,12 @@ wrap_app! {
             if let Some(cl) = command_line {
                 // French interface strings for Chromium's own dialogs.
                 cl.append_switch_with_value(Some(&CefString::from("lang")), Some(&CefString::from("fr")));
+                // CI self test only: record network events for diagnosis.
+                #[cfg(feature = "selftest")]
+                if let Ok(dir) = std::env::var("NIGHTFALL_PROFILE_DIR") {
+                    let path = std::path::Path::new(&dir).join("logs").join("netlog.json");
+                    cl.append_switch_with_value(Some(&CefString::from("log-net-log")), Some(&CefString::from(path.display().to_string().as_str())));
+                }
             }
         }
 

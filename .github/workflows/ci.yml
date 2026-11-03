@@ -142,6 +142,10 @@ jobs:
           cat "$LOG" || true
           echo "--- sortie du processus ---"; tail -n 40 "$RUNNER_TEMP/selftest.out" || true
           echo "--- journal Chromium (réseau) ---"; grep -iE "net|dns|proxy|socket|sandbox|error" "$NIGHTFALL_PROFILE_DIR/logs/chromium.log" | tail -n 60 || true
+          echo "--- journal Chromium (fin) ---"; ls -la "$NIGHTFALL_PROFILE_DIR/logs" || true; tail -n 30 "$NIGHTFALL_PROFILE_DIR/logs/chromium.log" 2>/dev/null || true
+          echo "--- erreurs réseau (netlog) ---"; python3 -c "import json,sys; d=json.load(open(sys.argv[1])); c=d['constants']; et={v:k for k,v in c['logEventTypes'].items()}; ne={v:k for k,v in c['netError'].items()}; [print(et.get(e['type']), e.get('params')) for e in d['events'] if 'net_error' in (e.get('params') or {}) ][:60]" "$NIGHTFALL_PROFILE_DIR/logs/netlog.json" 2>&1 | head -n 60 || true
+          grep -o '"net_error":-[0-9]*' "$NIGHTFALL_PROFILE_DIR/logs/netlog.json" 2>/dev/null | sort | uniq -c || true
+          grep -oE '"(host|url)":"[^"]*example[^"]*"' "$NIGHTFALL_PROFILE_DIR/logs/netlog.json" 2>/dev/null | sort | uniq -c | head || true
           echo "--- réseau de la machine ---"; curl -sS -o /dev/null -w "curl http://example.com -> %{http_code}\n" http://example.com || true
           if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; fi
           grep -q "SELFTEST OK" "$LOG"
