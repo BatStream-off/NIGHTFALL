@@ -109,7 +109,16 @@ fn step_setup() {
 
 fn step_navigate() {
     step("navigation vers example.com");
-    if !expect_ok("navigation", &call("navigate", json!({ "input": "example.com" }))) {
+    // Plain HTTP first, then HTTPS: tells a network problem from a TLS one.
+    if !expect_ok("navigation", &call("navigate", json!({ "input": "http://example.com/" }))) {
+        return;
+    }
+    wait_for("chargement de http://example.com", 60, || active_tab_loaded("http://example.com"), step_https);
+}
+
+fn step_https() {
+    step("navigation HTTPS");
+    if !expect_ok("navigation HTTPS", &call("navigate", json!({ "input": "https://example.com/" }))) {
         return;
     }
     wait_for("chargement de https://example.com", 60, || active_tab_loaded("https://example.com"), step_shield);

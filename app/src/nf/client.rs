@@ -277,6 +277,8 @@ wrap_load_handler! {
     impl LoadHandler {
         fn on_loading_state_change(&self, _browser: Option<&mut Browser>, is_loading: i32, can_go_back: i32, can_go_forward: i32) {
             if let ClientKind::Tab { window_id, tab_id, .. } = *self.kind {
+                #[cfg(feature = "selftest")]
+                state::log(&format!("onglet {tab_id} : chargement {}", if is_loading != 0 { "en cours" } else { "terminé" }));
                 windows::update_tab(window_id, tab_id, move |t| {
                     t.loading = is_loading != 0;
                     t.can_back = can_go_back != 0;
