@@ -154,7 +154,11 @@ wrap_browser_view_delegate! {
 
     impl ViewDelegate {
         fn preferred_size(&self, _view: Option<&mut View>) -> Size {
-            Size { width: self.width.load(Ordering::Relaxed), height: self.height.load(Ordering::Relaxed) }
+            // CEF ignores a preferred size with a zero dimension (it is
+            // "empty") and falls back to the view's current size, which
+            // stopped the web content area from ever getting any room.
+            // The cross axis is stretched by the layout anyway.
+            Size { width: self.width.load(Ordering::Relaxed).max(1), height: self.height.load(Ordering::Relaxed).max(1) }
         }
     }
 
