@@ -3,11 +3,19 @@
 
 async function api(cmd, body) {
   try {
-    const r = await fetch('nightfall://app/api/' + cmd, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body || {}),
-    });
+    let r;
+    // A refused call (403) was not executed, so it is safe to retry: this
+    // covers the first call of a page made before its address is recorded.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      r = await fetch('nightfall://app/api/' + cmd, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      if (r.status !== 403) break;
+      await new Promise((ok) => setTimeout(ok, 200));
+    }
+    if (r.status === 403) return { ok: false, error: 'interdit' };
     return await r.json();
   } catch (e) {
     console.error('NIGHTFALL api ' + cmd + ' : ' + e);
