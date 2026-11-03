@@ -21,6 +21,11 @@ wrap_app! {
                     let path = std::path::Path::new(&dir).join("logs").join("netlog.json");
                     cl.append_switch_with_value(Some(&CefString::from("log-net-log")), Some(&CefString::from(path.display().to_string().as_str())));
                 }
+                // CI self test on macOS only: the build machines' DNS setup
+                // (IPv6 resolver without an IPv6 route) defeats Chromium's
+                // built-in resolver, so the system resolver is used instead.
+                #[cfg(all(feature = "selftest", target_os = "macos"))]
+                cl.append_switch_with_value(Some(&CefString::from("disable-features")), Some(&CefString::from("AsyncDns")));
             }
         }
 

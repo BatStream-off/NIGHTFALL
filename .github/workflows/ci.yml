@@ -147,7 +147,7 @@ jobs:
           grep -o '"net_error":-[0-9]*' "$NIGHTFALL_PROFILE_DIR/logs/netlog.json" 2>/dev/null | sort | uniq -c || true
           grep -oE '"(host|url)":"[^"]*example[^"]*"' "$NIGHTFALL_PROFILE_DIR/logs/netlog.json" 2>/dev/null | sort | uniq -c | head || true
           echo "--- réseau de la machine ---"; curl -sS -o /dev/null -w "curl http://example.com -> %{http_code}\n" http://example.com || true
-          if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; fi
+          if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; scutil --dns | head -n 30 || true; fi
           grep -q "SELFTEST OK" "$LOG"
       - uses: actions/upload-artifact@v4
         with:
