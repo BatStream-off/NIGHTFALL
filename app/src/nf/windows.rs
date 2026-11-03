@@ -141,6 +141,9 @@ wrap_window_delegate! {
         }
 
         fn window_runtime_style(&self) -> RuntimeStyle {
+            if ui_experiment().starts_with("chromewin") {
+                return RuntimeStyle::CHROME;
+            }
             RuntimeStyle::ALLOY
         }
     }

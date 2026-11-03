@@ -1,7 +1,7 @@
 # CI diagnosis (Windows): see ui_experiments.sh.
 param([string]$Bin)
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-foreach ($exp in @("direct", "direct-shell", "full", "nobg")) {
+foreach ($exp in @("direct", "direct-shell", "full", "nobg", "chromewin", "chromewin-shell")) {
   $env:NIGHTFALL_PROFILE_DIR = "$env:RUNNER_TEMP\nf-exp-$exp"
   $env:NIGHTFALL_UI_EXPERIMENT = $exp
   $p = Start-Process -FilePath $Bin -PassThru

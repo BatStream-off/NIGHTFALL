@@ -3,7 +3,7 @@
 # print a screenshot of each (base64) plus the share of magenta pixels.
 set -u
 BIN="$1"
-for exp in direct direct-shell full nobg; do
+for exp in direct direct-shell full nobg chromewin chromewin-shell; do
   export NIGHTFALL_PROFILE_DIR="$RUNNER_TEMP/nf-exp-$exp"
   export NIGHTFALL_UI_EXPERIMENT="$exp"
   "$BIN" > "$RUNNER_TEMP/exp-$exp.out" 2>&1 &
