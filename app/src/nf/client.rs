@@ -284,10 +284,32 @@ wrap_load_handler! {
             }
         }
 
-        fn on_load_end(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>, _http_status_code: i32) {
+        fn on_load_error(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            error_code: Errorcode,
+            error_text: Option<&CefString>,
+            failed_url: Option<&CefString>,
+        ) {
+            if let ClientKind::Ui { .. } = *self.kind {
+                let url = failed_url.map(|u| u.to_string()).unwrap_or_default();
+                let text = error_text.map(|t| t.to_string()).unwrap_or_default();
+                state::log(&format!("interface : échec du chargement {url} ({} {text})", { let raw: cef::sys::cef_errorcode_t = error_code.into(); raw as i32 }));
+            }
+        }
+
+        fn on_load_end(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>, http_status_code: i32) {
             let (Some(_browser), Some(frame)) = (browser, frame) else { return };
             if frame.is_main() == 0 {
                 return;
+            }
+            if let ClientKind::Ui { .. } = *self.kind {
+                state::log(&format!("interface chargée : {} (HTTP {http_status_code})", cef_to_string(&frame.url())));
+                // Start-up diagnostic, written to the NIGHTFALL log through
+                // on_console_message (only nightfall:// sources are logged).
+                const DIAG: &str = "console.log('diag origin=' + location.origin + ' scripts=' + document.scripts.length + ' api=' + (typeof api) + ' styles=' + document.styleSheets.length);";
+                frame.execute_java_script(Some(&CefString::from(DIAG)), Some(&CefString::from("nightfall://app/diag")), 0);
             }
             if let ClientKind::Tab { .. } = *self.kind {
                 let url = cef_to_string(&frame.url());

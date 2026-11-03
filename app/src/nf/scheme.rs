@@ -34,7 +34,12 @@ fn respond(status: i32, mime: &str, body: Vec<u8>, csp: bool) -> Option<Resource
         headers.append("Content-Security-Policy", CSP);
     }
     let text = if status == 200 { "OK" } else { "Error" };
-    Some(StreamResourceHandler::new(status, text.into(), mime.into(), Some(headers), Some(reader)))
+    // CEF expects a bare MIME type ("text/html"): with parameters
+    // ("text/html; charset=utf-8") Chromium does not recognise the type and
+    // renders nothing. The pages declare UTF-8 themselves (<meta charset>),
+    // and scripts and style sheets inherit the document encoding.
+    let bare = mime.split(';').next().unwrap_or(mime).trim();
+    Some(StreamResourceHandler::new(status, text.into(), bare.into(), Some(headers), Some(reader)))
 }
 
 fn json_response(v: &serde_json::Value) -> Option<ResourceHandler> {
@@ -77,7 +82,9 @@ wrap_scheme_handler_factory! {
                 return respond(404, "text/plain", b"introuvable".to_vec(), false);
             };
             let path = rest.split(['?', '#']).next().unwrap_or("");
-            if path.starts_with("api/") || path.ends_with(".html") {
+            // The first requests are logged to diagnose start-up problems.
+            static SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            if SEEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 40 {
                 state::log(&format!("schéma : {path}"));
             }
 

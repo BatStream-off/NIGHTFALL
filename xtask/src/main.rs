@@ -75,23 +75,43 @@ fn bundle(release: bool) -> Result<PathBuf> {
 
 #[cfg(target_os = "windows")]
 fn bundle(release: bool) -> Result<PathBuf> {
+    // Done by hand rather than with cef::build_util::win::bundle: that helper
+    // picks the sandbox layout from xtask's own `cef` features, which do not
+    // include `sandbox`, and would copy the wrong executable.
+    //
+    // Sandbox layout: CEF's bootstrap.exe renamed nightfall.exe, which loads
+    // nightfall.dll (our cdylib) and calls RunWinMain.
     cargo_build(release)?;
     let target = target_dir(release);
-    // cef's bundler copies the .pdb next to the DLL; create an empty one if
-    // the release profile did not produce it.
-    let pdb = target.join(format!("{APP}.pdb"));
-    if !pdb.exists() {
-        std::fs::write(&pdb, b"")?;
-    }
     let out = dist_dir().join("NIGHTFALL");
     if out.exists() {
         std::fs::remove_dir_all(&out)?;
     }
-    std::fs::create_dir_all(&out)?;
-    let exe = cef::build_util::win::bundle(&out, &target, APP).map_err(|e| anyhow::anyhow!("bundle Windows : {e}"))?;
-    let _ = std::fs::remove_file(out.join(format!("{APP}.pdb")));
-    println!("Application : {}", exe.display());
+    std::fs::create_dir_all(out.join("locales"))?;
+    let cef_dir = cef::sys::get_cef_dir().context("dossier CEF introuvable")?;
+    copy_files(&cef_dir, &out)?;
+    copy_files(&cef_dir.join("locales"), &out.join("locales"))?;
+    std::fs::copy(target.join(format!("{APP}.dll")), out.join(format!("{APP}.dll"))).context("nightfall.dll")?;
+    std::fs::copy(cef_dir.join("bootstrap.exe"), out.join(format!("{APP}.exe"))).context("bootstrap.exe")?;
+    std::fs::write(out.join(format!("{APP}.exe.manifest")), WIN_MANIFEST)?;
+    println!("Application : {}", out.join(format!("{APP}.exe")).display());
     Ok(out)
+}
+
+#[cfg(target_os = "windows")]
+const WIN_MANIFEST: &str = include_str!("nightfall.exe.manifest");
+
+/// Copies the regular files of `src` (not sub-directories, not .exe).
+#[cfg(target_os = "windows")]
+fn copy_files(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_file() && path.extension().map(|e| e != "exe").unwrap_or(true) {
+            std::fs::copy(&path, dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
