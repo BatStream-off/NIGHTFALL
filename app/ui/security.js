@@ -92,7 +92,8 @@ async function load() {
     cats.append(el('li', {}, el('span', { class: 'grow', text: label }), sel));
   }
   root.append(card('NIGHTFALL VideoGuard',
-    sw('Activer VideoGuard', 'Saute les segments sponsorisés des vidéos YouTube. Ne bloque pas les publicités YouTube (rôle de Shield).', vg.enabled, async (v) => { vg.enabled = v; check(await api('videoguard.set', { config: vg }), 'VideoGuard mis à jour'); }),
+    sw('Activer VideoGuard', 'Saute les segments sponsorisés des vidéos YouTube, avec un bouton pour revenir en arrière.', vg.enabled, async (v) => { vg.enabled = v; check(await api('videoguard.set', { config: vg }), 'VideoGuard mis à jour'); }),
+    sw('Accélérer les publicités vidéo', 'Si une publicité YouTube passe malgré Shield, VideoGuard la coupe et l\'avance jusqu\'à la fin.', vg.skip_video_ads !== false, async (v) => { vg.skip_video_ads = v; check(await api('videoguard.set', { config: vg }), 'VideoGuard mis à jour'); }),
     cats, el('p', { class: 'muted small', text: ST.videoguard.attribution + ' Seul un préfixe de hachage de l\'identifiant de la vidéo est envoyé.' }),
   ));
 
