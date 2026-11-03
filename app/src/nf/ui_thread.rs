@@ -14,7 +14,9 @@ wrap_task! {
         fn execute(&self) {
             let job = self.job.lock().ok().and_then(|mut j| j.take());
             if let Some(job) = job {
-                job();
+                // A failing task must not take the whole browser down: the
+                // panic is logged (see the hook in mod.rs) and dropped.
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
             }
         }
     }

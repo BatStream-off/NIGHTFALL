@@ -13,12 +13,24 @@ use serde_json::{json, Value};
 
 const PIN: &str = "739204";
 
+/// Last step reached, reported by the watchdog if the test gets stuck.
+static STEP: std::sync::Mutex<&'static str> = std::sync::Mutex::new("début");
+static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn step(name: &'static str) {
+    if let Ok(mut s) = STEP.lock() {
+        *s = name;
+    }
+    state::log(&format!("selftest: étape {name}"));
+}
+
 fn call(cmd: &str, body: Value) -> Value {
     let caller = Caller { kind: BrowserKind::Ui { window_id: 1, side: false } };
     api::handle(&caller, cmd, &body)
 }
 
 fn fail(msg: &str) {
+    DONE.store(true, std::sync::atomic::Ordering::SeqCst);
     state::log(&format!("SELFTEST FAIL: {msg}"));
     finish();
 }
@@ -47,7 +59,7 @@ fn wait_for(what: &'static str, tries: u32, cond: fn() -> bool, next: fn()) {
         if cond() {
             next();
         } else if tries == 0 {
-            fail(&format!("délai dépassé : {what}"));
+            fail(&format!("délai dépassé : {what} ; onglets = {}", windows::tabs_state(1)));
         } else {
             wait_for(what, tries - 1, cond, next);
         }
@@ -66,10 +78,20 @@ pub fn start() {
         return;
     }
     state::log("selftest: début");
+    // Watchdog on its own thread: reports where the test is stuck even if
+    // the UI thread is blocked.
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(200));
+        if !DONE.load(std::sync::atomic::Ordering::SeqCst) {
+            let at = STEP.lock().map(|s| *s).unwrap_or("?");
+            state::log(&format!("SELFTEST FAIL: bloqué à l'étape « {at} »"));
+        }
+    });
     on_ui_delayed(3000, step_setup);
 }
 
 fn step_setup() {
+    step("création du code (Argon2id + secret de l'appareil)");
     let r = call("setup", json!({ "pin": PIN, "confirm": PIN }));
     if !expect_ok("création du code", &r) {
         return;
@@ -77,15 +99,26 @@ fn step_setup() {
     if r["recoveryKey"].as_str().map(|k| k.len()) != Some(39) {
         return fail("Recovery Key absente");
     }
+    step("confirmation de la Recovery Key");
     if !expect_ok("confirmation recovery", &call("recovery.confirm", json!({}))) {
         return;
     }
+    step("ouverture du premier onglet");
     wait_for("onglet Nouvel onglet", 30, || active_tab_loaded("nightfall://app/newtab"), step_navigate);
 }
 
 fn step_navigate() {
-    state::log("selftest: page d'accueil chargée");
-    if !expect_ok("navigation", &call("navigate", json!({ "input": "example.com" }))) {
+    step("navigation vers example.com");
+    // Plain HTTP first, then HTTPS: tells a network problem from a TLS one.
+    if !expect_ok("navigation", &call("navigate", json!({ "input": "http://example.com/" }))) {
+        return;
+    }
+    wait_for("chargement de http://example.com", 60, || active_tab_loaded("http://example.com"), step_https);
+}
+
+fn step_https() {
+    step("navigation HTTPS");
+    if !expect_ok("navigation HTTPS", &call("navigate", json!({ "input": "https://example.com/" }))) {
         return;
     }
     wait_for("chargement de https://example.com", 60, || active_tab_loaded("https://example.com"), step_shield);
@@ -98,6 +131,7 @@ fn step_shield() {
         .and_then(|s| s.history(&nf_storage::HistoryQuery::default()).ok())
         .map(|h| h.iter().any(|e| e.url.starts_with("https://example.com")))
         .unwrap_or(false);
+    step("historique et Shield");
     if !has_history {
         return fail("historique non enregistré");
     }
@@ -112,12 +146,13 @@ fn step_shield() {
 }
 
 fn step_lock() {
-    state::log("selftest: Shield a bloqué la requête");
+    step("verrouillage");
     api::lock_now();
     wait_for("verrouillage + Session Vault", 20, || !core().is_unlocked() && core().unlocked.is_none(), step_unlock);
 }
 
 fn step_unlock() {
+    step("déverrouillage et coffre");
     let vault_file = core().paths.session_vault();
     if !vault_file.exists() {
         return fail("Session Vault non écrit au verrouillage");
@@ -155,6 +190,7 @@ fn step_unlock() {
         return;
     }
     state::log(&format!("selftest: protection du code = {}", status["status"]["lock"]["backend"]));
+    DONE.store(true, std::sync::atomic::Ordering::SeqCst);
     state::log("SELFTEST OK");
     finish();
 }

@@ -53,6 +53,18 @@ fn startup_core(paths: ProfilePaths) -> Result<(), String> {
     paths.ensure().map_err(|e| format!("profil : {e}"))?;
     state::set_log_file(paths.logs().join("nightfall.log"));
     state::log(&format!("démarrage de NIGHTFALL {}", nf_core::VERSION));
+    // Internal errors are written to the log (location and message only:
+    // NIGHTFALL's panic messages never contain page content or secrets).
+    std::panic::set_hook(Box::new(|info| {
+        let at = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        let msg = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        state::log(&format!("ERREUR INTERNE {at} : {}", nf_core::redact::sanitize(&msg)));
+    }));
     let args: Vec<String> = std::env::args().collect();
     let mut signals = security::startup_signals(&args);
 

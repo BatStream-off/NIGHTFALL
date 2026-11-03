@@ -70,12 +70,33 @@ thread_local! {
     static WINDOWS: RefCell<Vec<WinCtx>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Access the window list. CEF may call back into NIGHTFALL synchronously
+/// while the list is being used (layout, browser creation...): such a nested
+/// access is refused (logged with its location) instead of panicking.
+#[track_caller]
+fn windows_mut<R>(f: impl FnOnce(&mut Vec<WinCtx>) -> R) -> Option<R> {
+    let caller = std::panic::Location::caller();
+    WINDOWS.with(|w| match w.try_borrow_mut() {
+        Ok(mut g) => Some(f(&mut g)),
+        Err(_) => {
+            state::log(&format!("accès réentrant aux fenêtres refusé ({}:{})", caller.file(), caller.line()));
+            None
+        }
+    })
+}
+
+/// True while the window list is in use higher up the stack.
+fn windows_busy() -> bool {
+    WINDOWS.with(|w| w.try_borrow_mut().is_err())
+}
+
+#[track_caller]
 pub fn with_window<R>(id: u32, f: impl FnOnce(&mut WinCtx) -> R) -> Option<R> {
-    WINDOWS.with(|w| w.borrow_mut().iter_mut().find(|c| c.id == id).map(f))
+    windows_mut(|v| v.iter_mut().find(|c| c.id == id).map(f)).flatten()
 }
 
 pub fn window_ids() -> Vec<u32> {
-    WINDOWS.with(|w| w.borrow().iter().map(|c| c.id).collect())
+    windows_mut(|v| v.iter().map(|c| c.id).collect()).unwrap_or_default()
 }
 
 fn now() -> i64 {
@@ -278,7 +299,9 @@ pub fn create_window(private: bool, urls: Vec<String>) {
             pending_popups: Vec::new(),
             initial_urls: urls,
         };
-        WINDOWS.with(|w| w.borrow_mut().push(ctx));
+        if windows_mut(|v| v.push(ctx)).is_none() {
+            return;
+        }
         let mut delegate = NfWindowDelegate::new(id);
         window_create_top_level(Some(&mut delegate));
     });
@@ -420,40 +443,36 @@ pub fn on_locked() {
 }
 
 fn prepare_window_close(id: u32) {
-    let (is_last_window, private) = WINDOWS.with(|w| {
-        let w = w.borrow();
-        (w.len() == 1, w.iter().find(|c| c.id == id).map(|c| c.private).unwrap_or(false))
-    });
+    let (is_last_window, private) =
+        windows_mut(|w| (w.len() == 1, w.iter().find(|c| c.id == id).map(|c| c.private).unwrap_or(false))).unwrap_or((false, false));
     if is_last_window || !private {
         super::session::save_session_snapshot();
     }
-    with_window(id, |ctx| {
-        for t in &ctx.tabs {
-            if let Some(b) = t.view.as_ref().and_then(|v| v.browser()) {
-                if let Some(h) = b.host() {
-                    h.close_browser(1);
-                }
-            }
-        }
-        for v in [&ctx.top, &ctx.side] {
-            if let Some(b) = v.browser() {
-                if let Some(h) = b.host() {
-                    h.close_browser(1);
-                }
-            }
-        }
-    });
+    // Collect first, close after: closing calls back into NIGHTFALL.
+    let hosts: Vec<BrowserHost> = with_window(id, |ctx| {
+        let tabs = ctx.tabs.iter().filter_map(|t| t.view.as_ref().and_then(|v| v.browser()));
+        let ui = [&ctx.top, &ctx.side].into_iter().filter_map(|v| v.browser());
+        tabs.chain(ui).filter_map(|b| b.host()).collect()
+    })
+    .unwrap_or_default();
+    for h in hosts {
+        h.close_browser(1);
+    }
     if is_last_window {
         super::session::seal_cookies_then(|| {});
     }
 }
 
 fn on_window_destroyed(id: u32) {
-    let remaining = WINDOWS.with(|w| {
-        let mut w = w.borrow_mut();
+    if windows_busy() {
+        super::ui_thread::on_ui_delayed(0, move || on_window_destroyed(id));
+        return;
+    }
+    let remaining = windows_mut(|w| {
         w.retain(|c| c.id != id);
         w.len()
-    });
+    })
+    .unwrap_or(1);
     if remaining == 0 {
         // Give the Session Vault time to seal the cookies, then quit.
         super::ui_thread::on_ui_delayed(1200, || {
@@ -610,15 +629,14 @@ pub fn activate_tab_title(window_id: u32) {
 }
 
 pub fn close_tab(window_id: u32, tab_id: u32) {
+    let mut closing: Option<BrowserHost> = None;
     let (was_active, next) = with_window(window_id, |ctx| {
         let Some(idx) = ctx.tabs.iter().position(|t| t.id == tab_id) else {
             return (false, None);
         };
         let tab = ctx.tabs.remove(idx);
         if let Some(view) = &tab.view {
-            if let Some(h) = view.browser().and_then(|b| b.host()) {
-                h.close_browser(1);
-            }
+            closing = view.browser().and_then(|b| b.host());
             let mut v = View::from(view);
             ctx.content.remove_child_view(Some(&mut v));
         }
@@ -631,6 +649,9 @@ pub fn close_tab(window_id: u32, tab_id: u32) {
         (was_active, next)
     })
     .unwrap_or((false, None));
+    if let Some(h) = closing {
+        h.close_browser(1);
+    }
     match next {
         Some(n) if was_active => activate_tab(window_id, n),
         Some(_) => push_tabs(window_id),
@@ -665,22 +686,26 @@ pub fn move_tab(window_id: u32, tab_id: u32, to_index: usize) {
 
 /// Unload a tab to free memory; it reloads when activated.
 pub fn discard_tab(window_id: u32, tab_id: u32) {
-    with_window(window_id, |ctx| {
+    let closing = with_window(window_id, |ctx| {
         if ctx.active == Some(tab_id) {
-            return;
+            return None;
         }
+        let mut closing = None;
         if let Some(t) = ctx.tabs.iter_mut().find(|t| t.id == tab_id) {
             if let Some(view) = t.view.take() {
-                if let Some(h) = view.browser().and_then(|b| b.host()) {
-                    h.close_browser(1);
-                }
+                closing = view.browser().and_then(|b| b.host());
                 let mut v = View::from(&view);
                 ctx.content.remove_child_view(Some(&mut v));
             }
             t.discarded = true;
             t.loading = false;
         }
-    });
+        closing
+    })
+    .flatten();
+    if let Some(h) = closing {
+        h.close_browser(1);
+    }
     push_tabs(window_id);
 }
 
@@ -694,6 +719,10 @@ pub fn active_browser(window_id: u32) -> Option<Browser> {
 
 pub fn tab_browser(window_id: u32, tab_id: u32) -> Option<Browser> {
     with_window(window_id, |ctx| ctx.tabs.iter().find(|t| t.id == tab_id)?.view.as_ref()?.browser()).flatten()
+}
+
+pub fn tab_url(window_id: u32, tab_id: u32) -> Option<String> {
+    with_window(window_id, |ctx| ctx.tabs.iter().find(|t| t.id == tab_id).map(|t| t.url.clone())).flatten()
 }
 
 pub fn active_tab_id(window_id: u32) -> Option<u32> {
@@ -730,7 +759,12 @@ pub fn navigate_active(window_id: u32, url: &str) {
 
 // ---------------------------------------------------------------- tab events
 
-pub fn update_tab(window_id: u32, tab_id: u32, f: impl FnOnce(&mut Tab)) {
+pub fn update_tab(window_id: u32, tab_id: u32, f: impl FnOnce(&mut Tab) + Send + 'static) {
+    if windows_busy() {
+        // Called back by CEF while the window list is in use: apply later.
+        super::ui_thread::on_ui_delayed(0, move || update_tab(window_id, tab_id, f));
+        return;
+    }
     with_window(window_id, |ctx| {
         if let Some(t) = ctx.tabs.iter_mut().find(|t| t.id == tab_id) {
             f(t);
@@ -797,6 +831,15 @@ fn exec_js(view: &BrowserView, code: &str) {
 /// Send an event to the window's interface views.
 pub fn push_event(window_id: u32, event: &serde_json::Value) {
     let code = format!("window.nfEvent && window.nfEvent({event});");
+    if windows_busy() {
+        super::ui_thread::on_ui_delayed(0, move || {
+            with_window(window_id, |ctx| {
+                exec_js(&ctx.top, &code);
+                exec_js(&ctx.side, &code);
+            });
+        });
+        return;
+    }
     with_window(window_id, |ctx| {
         exec_js(&ctx.top, &code);
         exec_js(&ctx.side, &code);
@@ -810,6 +853,10 @@ pub fn push_event_all(event: &serde_json::Value) {
 }
 
 pub fn push_tabs(window_id: u32) {
+    if windows_busy() {
+        super::ui_thread::on_ui_delayed(0, move || push_tabs(window_id));
+        return;
+    }
     let st = tabs_state(window_id);
     push_event(window_id, &st);
 }
@@ -830,8 +877,8 @@ pub fn exec_in_tab(window_id: u32, tab_id: u32, code: &str) {
 /// Session snapshot (non-private windows only).
 pub fn session_tabs() -> Vec<nf_storage::SessionTab> {
     let mut out = Vec::new();
-    WINDOWS.with(|w| {
-        for (wi, ctx) in w.borrow().iter().filter(|c| !c.private).enumerate() {
+    windows_mut(|w| {
+        for (wi, ctx) in w.iter().filter(|c| !c.private).enumerate() {
             for (ti, t) in ctx.tabs.iter().enumerate() {
                 if t.url.is_empty() || t.url.starts_with("nightfall://app/newtab") {
                     continue;
@@ -853,8 +900,8 @@ pub fn session_tabs() -> Vec<nf_storage::SessionTab> {
 /// Inputs for the performance policy.
 pub fn tab_activity() -> Vec<(u32, nf_perf::TabActivity)> {
     let mut out = Vec::new();
-    WINDOWS.with(|w| {
-        for ctx in w.borrow().iter() {
+    windows_mut(|w| {
+        for ctx in w.iter() {
             for t in &ctx.tabs {
                 out.push((
                     ctx.id,
@@ -877,7 +924,7 @@ pub fn tab_activity() -> Vec<(u32, nf_perf::TabActivity)> {
 
 /// Close every private window (used by Emergency Lockdown).
 pub fn close_private_windows() {
-    let ids: Vec<u32> = WINDOWS.with(|w| w.borrow().iter().filter(|c| c.private).map(|c| c.id).collect());
+    let ids: Vec<u32> = windows_mut(|w| w.iter().filter(|c| c.private).map(|c| c.id).collect()).unwrap_or_default();
     for id in ids {
         if let Some(w) = with_window(id, |c| c.window.clone()).flatten() {
             w.close();

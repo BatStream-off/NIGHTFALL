@@ -133,10 +133,10 @@ wrap_display_handler! {
         fn on_title_change(&self, _browser: Option<&mut Browser>, title: Option<&CefString>) {
             let title = title.map(|t| t.to_string()).unwrap_or_default();
             if let ClientKind::Tab { window_id, tab_id, private } = *self.kind {
-                let mut url = String::new();
-                windows::update_tab(window_id, tab_id, |t| {
-                    t.title = title.clone();
-                    url = t.url.clone();
+                let url = windows::tab_url(window_id, tab_id).unwrap_or_default();
+                let new_title = title.clone();
+                windows::update_tab(window_id, tab_id, move |t| {
+                    t.title = new_title;
                 });
                 if !private && (url.starts_with("http://") || url.starts_with("https://")) {
                     if let Some(s) = core().storage() {
@@ -160,9 +160,10 @@ fn on_navigation(window_id: u32, tab_id: u32, private: bool, url: &str) {
             warning = Some(v);
         }
     }
-    windows::update_tab(window_id, tab_id, |t| {
-        t.url = url.to_string();
-        t.warning = warning.clone();
+    let (new_url, new_warning) = (url.to_string(), warning.clone());
+    windows::update_tab(window_id, tab_id, move |t| {
+        t.url = new_url;
+        t.warning = new_warning;
         t.crashed = false;
     });
     if let Some(w) = &warning {
@@ -276,7 +277,9 @@ wrap_load_handler! {
     impl LoadHandler {
         fn on_loading_state_change(&self, _browser: Option<&mut Browser>, is_loading: i32, can_go_back: i32, can_go_forward: i32) {
             if let ClientKind::Tab { window_id, tab_id, .. } = *self.kind {
-                windows::update_tab(window_id, tab_id, |t| {
+                #[cfg(feature = "selftest")]
+                state::log(&format!("onglet {tab_id} : chargement {}", if is_loading != 0 { "en cours" } else { "terminé" }));
+                windows::update_tab(window_id, tab_id, move |t| {
                     t.loading = is_loading != 0;
                     t.can_back = can_go_back != 0;
                     t.can_forward = can_go_forward != 0;
@@ -292,10 +295,15 @@ wrap_load_handler! {
             error_text: Option<&CefString>,
             failed_url: Option<&CefString>,
         ) {
-            if let ClientKind::Ui { .. } = *self.kind {
-                let url = failed_url.map(|u| u.to_string()).unwrap_or_default();
-                let text = error_text.map(|t| t.to_string()).unwrap_or_default();
-                state::log(&format!("interface : échec du chargement {url} ({} {text})", { let raw: cef::sys::cef_errorcode_t = error_code.into(); raw as i32 }));
+            let code = { let raw: cef::sys::cef_errorcode_t = error_code.into(); raw as i32 };
+            let text = error_text.map(|t| t.to_string()).unwrap_or_default();
+            match *self.kind {
+                ClientKind::Ui { .. } => {
+                    let url = failed_url.map(|u| u.to_string()).unwrap_or_default();
+                    state::log(&format!("interface : échec du chargement {url} ({code} {text})"));
+                }
+                // Web pages: the error only, never the address (privacy).
+                ClientKind::Tab { .. } => state::log(&format!("onglet : échec du chargement ({code} {text})")),
             }
         }
 
