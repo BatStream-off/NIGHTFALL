@@ -1,5 +1,5 @@
 'use strict';
-const WALLS = ['nebula', 'city', 'graphite', 'midnight'];
+const WALLS = ['city', 'nebula', 'midnight', 'graphite'];
 let data = null;
 
 function tick() {
@@ -12,7 +12,7 @@ function tile(title, url, onRemove) {
   const a = el('a', { class: 'tile', href: url, title: url },
     el('span', { class: 'ic', text: (title || host(url) || '?').charAt(0).toUpperCase() }),
     el('span', { class: 'nm', text: title || host(url) }));
-  if (onRemove) a.append(el('button', { class: 'rm', title: 'Retirer', text: '×', onclick: (e) => { e.preventDefault(); onRemove(); } }));
+  if (onRemove) a.append(el('button', { class: 'rm', title: 'Retirer ce raccourci', 'aria-label': 'Retirer ce raccourci', text: '✕', onclick: (e) => { e.preventDefault(); onRemove(); } }));
   return a;
 }
 
@@ -25,19 +25,20 @@ async function saveShortcuts() {
 }
 
 function render() {
-  document.body.dataset.wall = data.wallpaper || 'nebula';
+  document.body.dataset.wall = data.wallpaper || 'city';
   const sc = $('#shortcuts');
   sc.textContent = '';
   data.shortcuts.forEach((s, i) => sc.append(tile(s.title, s.url, () => { data.shortcuts.splice(i, 1); saveShortcuts(); render(); })));
   const top = $('#top');
   top.textContent = '';
   for (const t of data.topSites || []) top.append(tile(t.title, t.url));
-  $('#top-title').hidden = !(data.topSites || []).length;
+  $('#top-group').hidden = !(data.topSites || []).length;
+  $('#shortcuts-group').hidden = !data.shortcuts.length;
 }
 
 async function load() {
   data = await api('newtab.data');
-  if (!data.ok) { data = { shortcuts: [], topSites: [], wallpaper: 'nebula' }; }
+  if (!data.ok) { data = { shortcuts: [], topSites: [], wallpaper: 'city' }; }
   render();
 }
 

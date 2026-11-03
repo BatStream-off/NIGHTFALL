@@ -8,6 +8,24 @@
   <link rel="stylesheet" href="shell.css">
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+      <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5"/></symbol>
+      <symbol id="i-reload" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.2h-4.2"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M4.5 10.5 12 4l7.5 6.5V19a1 1 0 0 1-1 1h-4v-5.5h-5V20h-4a1 1 0 0 1-1-1z"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.2 19.6 7.6v8.8L12 20.8l-7.6-4.4V7.6z"/><path d="m8.8 12.2 2.2 2.2 4.3-4.6"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 4 2.4 5 5.4.7-4 3.7 1 5.4L12 16.2l-4.8 2.6 1-5.4-4-3.7 5.4-.7z"/></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8.5" cy="15.5" r="4"/><path d="m11.3 12.7 8.2-8.2M16.5 7.5l2.5 2.5M14.5 9.5l1.8 1.8"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="1.8"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.1"/><circle cx="12" cy="12" r="1.1"/><circle cx="12" cy="18.5" r="1.1"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></symbol>
+      <symbol id="i-secure" viewBox="0 0 24 24"><rect x="6" y="11" width="12" height="8.5" rx="1.6"/><path d="M9 11V8.8a3 3 0 0 1 6 0V11"/></symbol>
+      <symbol id="i-insecure" viewBox="0 0 24 24"><path d="M12 4.5 20.5 19h-17z"/><path d="M12 10v4M12 16.6v.1"/></symbol>
+      <symbol id="i-internal" viewBox="0 0 24 24"><path d="M12 4.5 18.5 8.25v7.5L12 19.5l-6.5-3.75v-7.5z"/></symbol>
+    </defs>
+  </svg>
   <!-- Startup animation (first window only, can be disabled in Settings) -->
   <div id="splash" hidden>
     <div class="splash-stage">
@@ -18,10 +36,12 @@
 
   <!-- NIGHTFALL LOCK -->
   <div id="lock" hidden>
+    <div class="lock-sky" aria-hidden="true"><div class="moon"></div><img class="skyline" src="skyline.svg" alt=""></div>
     <div class="lock-card">
       <img class="lock-emblem" src="emblem.png" alt="">
       <div class="lock-title">NIGHTFALL</div>
       <div class="lock-tagline" id="tagline">Browse Beyond the Darkness.</div>
+      <div class="lock-sep" aria-hidden="true"></div>
 
       <form id="f-setup" class="lock-form" hidden autocomplete="off">
         <h2>Créer votre code NIGHTFALL</h2>
@@ -41,6 +61,7 @@
       </div>
 
       <form id="f-unlock" class="lock-form" hidden autocomplete="off">
+        <label class="sr" for="pin">Code NIGHTFALL</label>
         <input id="pin" type="password" inputmode="numeric" maxlength="12" placeholder="Code NIGHTFALL" autocomplete="off" autofocus>
         <div class="keypad" id="keypad"></div>
         <button class="primary" type="submit" id="unlock-btn">Déverrouiller</button>
@@ -64,24 +85,24 @@
   <!-- Browser chrome -->
   <div id="chrome" hidden>
     <div id="tabstrip">
-      <div id="private-badge" hidden title="Navigation privée : cookies et historique non conservés. Ne garantit pas l'anonymat sur Internet.">PRIVÉ</div>
+      <div id="private-badge" hidden title="Navigation privée : cookies et historique non conservés. Ne garantit pas l'anonymat sur Internet.">Privé</div>
       <div id="tabs"></div>
-      <button id="new-tab" class="icon" title="Nouvel onglet (Ctrl+T)">+</button>
+      <button id="new-tab" class="icon" title="Nouvel onglet (Ctrl+T)" aria-label="Nouvel onglet"><svg><use href="#i-plus"/></svg></button>
     </div>
     <div id="toolbar">
-      <button class="icon" id="b-back" title="Précédent">‹</button>
-      <button class="icon" id="b-fwd" title="Suivant">›</button>
-      <button class="icon" id="b-reload" title="Actualiser">↻</button>
-      <button class="icon" id="b-home" title="Accueil">⌂</button>
+      <button class="icon" id="b-back" title="Précédent" aria-label="Précédent"><svg><use href="#i-back"/></svg></button>
+      <button class="icon" id="b-fwd" title="Suivant" aria-label="Suivant"><svg><use href="#i-fwd"/></svg></button>
+      <button class="icon" id="b-reload" title="Actualiser" aria-label="Actualiser"><svg><use href="#i-reload"/></svg></button>
+      <button class="icon" id="b-home" title="Accueil" aria-label="Accueil"><svg><use href="#i-home"/></svg></button>
       <div id="omnibox">
-        <span id="sec-icon" title=""></span>
+        <span id="sec-icon" title=""><svg><use href="#i-internal"/></svg></span>
         <input id="address" spellcheck="false" placeholder="Rechercher ou saisir une adresse" autocomplete="off">
       </div>
-      <button class="icon pill" id="b-shield" title="NIGHTFALL Shield">⛨ <span id="shield-count">0</span></button>
-      <button class="icon" id="b-star" title="Favori (Ctrl+D)">☆</button>
-      <button class="icon" id="b-key" title="Mots de passe">⚿</button>
-      <button class="icon" id="b-lock" title="Verrouiller (Ctrl+Maj+L)">⏻</button>
-      <button class="icon" id="b-menu" title="Menu">⋮</button>
+      <button class="icon pill" id="b-shield" title="NIGHTFALL Shield : éléments bloqués sur cette page" aria-label="NIGHTFALL Shield"><svg><use href="#i-shield"/></svg><span id="shield-count">0</span></button>
+      <button class="icon" id="b-star" title="Ajouter aux favoris (Ctrl+D)" aria-label="Favori"><svg><use href="#i-star"/></svg></button>
+      <button class="icon" id="b-key" title="Mots de passe" aria-label="Mots de passe"><svg><use href="#i-key"/></svg></button>
+      <button class="icon" id="b-lock" title="Verrouiller NIGHTFALL (Ctrl+Maj+L)" aria-label="Verrouiller"><svg><use href="#i-lock"/></svg></button>
+      <button class="icon" id="b-menu" title="Menu" aria-label="Menu"><svg><use href="#i-menu"/></svg></button>
     </div>
     <div id="banner" hidden></div>
     <div id="panel" hidden></div>
@@ -89,7 +110,7 @@
 
   <!-- Vertical tabs (side view) -->
   <div id="side" hidden>
-    <div class="side-head"><img src="emblem.png" alt=""><span>Onglets</span><button id="side-new" class="icon">+</button></div>
+    <div class="side-head"><img src="emblem.png" alt=""><span>Onglets</span><button id="side-new" class="icon" title="Nouvel onglet" aria-label="Nouvel onglet"><svg><use href="#i-plus"/></svg></button></div>
     <div id="side-tabs"></div>
   </div>
 

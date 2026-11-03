@@ -9,7 +9,10 @@ Le code de NIGHTFALL est publié sous **MPL-2.0** (voir `LICENSE`). Le budget du
 | `cef-rs` (tauri-apps) | Apache-2.0 OR MIT | Bindings Rust ; `app/src/nf/mac.rs` est adapté de l'exemple `cefsimple` | Mention de copyright |
 | adblock-rust (Brave) | MPL-2.0 | Moteur de NIGHTFALL Shield | Publier toute modification des fichiers MPL (aucune pour l'instant) |
 | EasyList, EasyPrivacy, Liste FR, Fanboy | GPL-3.0 ou CC BY-SA 3.0 | Téléchargées par le navigateur de l'utilisateur, jamais intégrées au dépôt | Attribution (Security Center) |
-| uBlock Origin | GPL-3.0-or-later | Étudié pour son architecture uniquement : **aucun code ni ressource copié** | Aucune |
+| uBlock filters (listes uAssets) | GPL-3.0 | Téléchargées par le navigateur de l'utilisateur, jamais intégrées au dépôt | Attribution (Security Center) |
+| uBlock Origin (code, scriptlets, ressources) | GPL-3.0-or-later | **Non utilisé** : les scriptlets des règles `##+js(...)` sont des implémentations originales de NIGHTFALL (MPL-2.0, `crates/nf-shield/scriptlets/`) qui reprennent seulement les noms et arguments documentés | Aucune |
+| Chakra Petch (police) | SIL OFL 1.1 | Titres et chiffres de l'interface, sous-ensemble intégré (`app/ui/fonts/`) | Licence jointe (`OFL-ChakraPetch.txt`) |
+| electron/rcedit | MIT | Outil de compilation en CI (icône de nightfall.exe), non distribué | Aucune |
 | SponsorBlock (API et données) | CC BY-NC-SA 4.0 | Interrogée à l'exécution par NIGHTFALL VideoGuard | Attribution, **usage non commercial** |
 | Extension SponsorBlock | LGPL-3.0 | Non utilisée (client réécrit en Rust) | Aucune |
 | SQLCipher, OpenSSL (intégrés via rusqlite) | BSD-3-Clause / Apache-2.0 | Base de données chiffrée | Mentions de licence |

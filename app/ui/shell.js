@@ -13,6 +13,15 @@ let activeTab = null;
 let panelOpen = null;
 let warning = null;
 
+function svgIcon(name) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  const use = document.createElementNS(NS, 'use');
+  use.setAttribute('href', '#i-' + name);
+  svg.append(use);
+  return svg;
+}
+
 function show(id, on) { const e = document.getElementById(id); if (e) e.hidden = !on; }
 function msg(text) { $('#lock-msg').textContent = text || ''; }
 
@@ -155,9 +164,10 @@ function renderTabs() {
       title: t.title + (t.discarded ? ' (en veille)' : ''),
       draggable: 'true',
     },
+      el('span', { class: 't-edge' }),
       el('span', { class: 't-icon', text: t.crashed ? '!' : (t.title || '?').trim().charAt(0).toUpperCase() }),
       el('span', { class: 't-title', text: t.title || 'Nouvel onglet' }),
-      el('button', { class: 't-close', title: 'Fermer', text: '×', onclick: (e) => { e.stopPropagation(); api('tab.close', { id: t.id }); } }),
+      el('button', { class: 't-close', title: 'Fermer l\'onglet', 'aria-label': 'Fermer l\'onglet', onclick: (e) => { e.stopPropagation(); api('tab.close', { id: t.id }); } }, svgIcon('close')),
     );
     node.addEventListener('mousedown', (e) => {
       if (e.button === 1) { e.preventDefault(); api('tab.close', { id: t.id }); }
@@ -186,9 +196,10 @@ function renderTabs() {
     $('#shield-count').textContent = a.blocked || 0;
     const icon = $('#sec-icon');
     icon.className = '';
-    if (a.url.startsWith('https://')) { icon.textContent = '🔒'; icon.className = 'secure'; icon.title = 'Connexion chiffrée (TLS vérifié par Chromium)'; }
-    else if (a.url.startsWith('http://')) { icon.textContent = '⚠'; icon.className = 'insecure'; icon.title = 'Connexion non chiffrée'; }
-    else { icon.textContent = '◆'; icon.title = 'Page NIGHTFALL'; }
+    icon.textContent = '';
+    if (a.url.startsWith('https://')) { icon.append(svgIcon('secure')); icon.className = 'secure'; icon.title = 'Connexion chiffrée (TLS vérifié par Chromium)'; }
+    else if (a.url.startsWith('http://')) { icon.append(svgIcon('insecure')); icon.className = 'insecure'; icon.title = 'Connexion non chiffrée'; }
+    else { icon.append(svgIcon('internal')); icon.className = 'internal'; icon.title = 'Page NIGHTFALL'; }
     setWarning(a.warning);
   }
 }
@@ -199,7 +210,7 @@ function renderSide() {
   for (const t of tabs) {
     const node = el('div', { class: 'vtab' + (t.active ? ' active' : ''), title: t.url },
       el('span', { class: 't-title', text: (t.pinned ? '📌 ' : '') + (t.title || 'Nouvel onglet') }),
-      el('button', { class: 't-close', text: '×', onclick: (e) => { e.stopPropagation(); api('tab.close', { id: t.id }); } }),
+      el('button', { class: 't-close', title: 'Fermer l\'onglet', 'aria-label': 'Fermer l\'onglet', onclick: (e) => { e.stopPropagation(); api('tab.close', { id: t.id }); } }, svgIcon('close')),
     );
     node.addEventListener('click', () => api('tab.activate', { id: t.id }));
     box.append(node);
@@ -212,7 +223,7 @@ function setWarning(text) {
   if (!warning) { if (!b.hidden) { b.hidden = true; resize(); } return; }
   b.className = 'danger';
   b.textContent = '';
-  b.append(el('span', { text: '⚠ ' + warning }), el('button', { text: 'Quitter ce site', onclick: () => api('nav.back') }));
+  b.append(svgIcon('insecure'), el('span', { text: warning }), el('button', { text: 'Quitter ce site', onclick: () => api('nav.back') }));
   b.hidden = false;
   resize();
 }
@@ -227,8 +238,8 @@ function resize() {
 async function refreshPageInfo() {
   const info = await api('page.info');
   if (!info.ok) return;
-  $('#b-star').textContent = info.bookmarked ? '★' : '☆';
-  $('#b-star').classList.toggle('on', info.bookmarked);
+  $('#b-star').classList.toggle('on', !!info.bookmarked);
+  $('#b-star').title = info.bookmarked ? 'Retirer des favoris (Ctrl+D)' : 'Ajouter aux favoris (Ctrl+D)';
   $('#b-shield').classList.toggle('on', info.shieldActive);
   $('#b-key').classList.toggle('on', info.passwords > 0);
 }
