@@ -8,6 +8,7 @@ pub mod downloads;
 pub mod idle;
 #[cfg(target_os = "macos")]
 pub mod mac;
+pub mod permissions;
 pub mod scheme;
 pub mod scheme_registration;
 pub mod security;
@@ -140,7 +141,12 @@ pub fn run_main(main_args: &MainArgs, cmd_line: &CommandLine, sandbox_info: *mut
     }
 
     let chromium = paths.chromium_profile().display().to_string();
+    // Chromium's own log (warnings and errors only) goes next to ours, so a
+    // start-up failure can be diagnosed without a debugger.
+    let cef_log = paths.logs().join("chromium.log").display().to_string();
     let settings = Settings {
+        log_file: CefString::from(cef_log.as_str()),
+        log_severity: cef::LogSeverity::WARNING,
         no_sandbox: !cfg!(feature = "sandbox") as _,
         root_cache_path: CefString::from(chromium.as_str()),
         cache_path: CefString::from(chromium.as_str()),

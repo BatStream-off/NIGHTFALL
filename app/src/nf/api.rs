@@ -142,6 +142,12 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             ok()
         }
         "page.info" => page_info(w),
+        "permission.answer" => {
+            let id: u64 = s(body, "id").parse().unwrap_or(0);
+            let allow = body.get("allow").and_then(Value::as_bool).unwrap_or(false);
+            on_ui(move || super::permissions::answer(id, allow));
+            ok()
+        }
         "devtools" => {
             on_ui(move || windows::show_devtools(w));
             ok()

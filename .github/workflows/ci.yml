@@ -82,11 +82,12 @@ jobs:
           $env:NIGHTFALL_PROFILE_DIR = "$env:RUNNER_TEMP\nf-profile"
           $p = Start-Process -FilePath "dist\NIGHTFALL\nightfall.exe" -PassThru
           Start-Sleep -Seconds 25
-          if ($p.HasExited) { Write-Error "NIGHTFALL s'est arrêté (code $($p.ExitCode))"; exit 1 }
+          $logs = "$env:NIGHTFALL_PROFILE_DIR\logs"
+          if ($p.HasExited) { Get-ChildItem -Recurse $env:NIGHTFALL_PROFILE_DIR -ErrorAction SilentlyContinue | Select-Object FullName; Get-Content "$logs\nightfall.log","$logs\chromium.log" -ErrorAction SilentlyContinue; Write-Error "NIGHTFALL s'est arrêté (code $($p.ExitCode))"; exit 1 }
           Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Select-Object Id, ProcessName, @{n='RAM_Mo';e={[math]::Round($_.WorkingSet64/1MB)}} | Format-Table
           if (!(Test-Path "$env:NIGHTFALL_PROFILE_DIR\chromium")) { Write-Error "profil Chromium non créé"; exit 1 }
           Get-Content "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log"
-          if (!(Select-String -Path "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log" -Pattern "interface prête" -Quiet)) { Write-Error "l'interface NIGHTFALL ne s'est pas chargée"; exit 1 }
+          if (!(Select-String -Path "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log" -Pattern "interface prête" -Quiet)) { Get-Content "$logs\chromium.log" -ErrorAction SilentlyContinue | Select-Object -Last 60; Write-Error "l'interface NIGHTFALL ne s'est pas chargée"; exit 1 }
           Stop-Process -Id $p.Id -Force
           Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Stop-Process -Force -ErrorAction SilentlyContinue
       - name: Test de démarrage (macOS)
@@ -100,7 +101,7 @@ jobs:
           ps -axo pid,rss,comm | grep -i nightfall || true
           test -d "$NIGHTFALL_PROFILE_DIR/chromium" || { echo "profil Chromium non créé"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
           cat "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
-          grep -q "interface prête" "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log" || { echo "l'interface NIGHTFALL ne s'est pas chargée"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
+          grep -q "interface prête" "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log" || { echo "l'interface NIGHTFALL ne s'est pas chargée"; tail -n 80 "$RUNNER_TEMP/nf.log"; tail -n 80 "$NIGHTFALL_PROFILE_DIR/logs/chromium.log" 2>/dev/null; exit 1; }
           kill $PID; sleep 3; pkill -f NIGHTFALL.app || true
           tail -n 40 "$RUNNER_TEMP/nf.log"
       - name: Auto-test de bout en bout (navigateur réel)

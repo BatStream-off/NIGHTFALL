@@ -77,19 +77,29 @@ wrap_scheme_handler_factory! {
                 return respond(404, "text/plain", b"introuvable".to_vec(), false);
             };
             let path = rest.split(['?', '#']).next().unwrap_or("");
+            if path.starts_with("api/") || path.ends_with(".html") {
+                state::log(&format!("schéma : {path}"));
+            }
 
             if let Some(cmd) = path.strip_prefix("api/") {
                 let forbidden = || respond(403, "text/plain", b"interdit".to_vec(), false);
-                let (Some(browser), Some(frame)) = (browser, frame) else { return forbidden() };
+                let (Some(browser), Some(frame)) = (browser, frame) else {
+                    state::log("appel API refusé : pas de navigateur ou de frame");
+                    return forbidden();
+                };
                 let frame_url = to_string(&frame.url());
                 if frame.is_main() == 0 || !frame_url.starts_with("nightfall://app/") {
                     state::log("appel API refusé : origine non NIGHTFALL");
                     return forbidden();
                 }
                 if to_string(&request.method()).to_ascii_uppercase() != "POST" {
+                    state::log("appel API refusé : méthode non POST");
                     return forbidden();
                 }
-                let Some(info) = state::browser_info(browser.identifier()) else { return forbidden() };
+                let Some(info) = state::browser_info(browser.identifier()) else {
+                    state::log(&format!("appel API refusé : navigateur inconnu id={}", browser.identifier()));
+                    return forbidden();
+                };
                 let body = read_post_body(request);
                 let value: serde_json::Value = if body.is_empty() {
                     serde_json::Value::Object(Default::default())
