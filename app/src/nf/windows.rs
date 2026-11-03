@@ -361,8 +361,10 @@ pub fn apply_mode(id: u32, locked: bool) {
     with_window(id, |ctx| {
         let mut top = View::from(&ctx.top);
         let mut side = View::from(&ctx.side);
+        let mut content = View::from(&ctx.content);
         if let Some(l) = &ctx.col_layout {
             l.set_flex_for_view(Some(&mut top), if locked { 1 } else { 0 });
+            l.set_flex_for_view(Some(&mut content), if locked { 0 } else { 1 });
         }
         if locked {
             ctx.content.set_visible(0);
@@ -972,7 +974,8 @@ pub fn show_devtools(window_id: u32) {
 pub fn layout_report(window_id: u32) -> String {
     let fmt = |name: &str, v: &View| {
         let b = v.bounds();
-        format!("{name}=({},{} {}x{} visible={} drawn={})", b.x, b.y, b.width, b.height, v.is_visible(), v.is_drawn())
+        let p = v.preferred_size();
+        format!("{name}=({},{} {}x{} préféré {}x{} visible={} drawn={})", b.x, b.y, b.width, b.height, p.width, p.height, v.is_visible(), v.is_drawn())
     };
     with_window(window_id, |ctx| {
         let mut out = vec![
