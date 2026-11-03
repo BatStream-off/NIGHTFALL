@@ -78,6 +78,7 @@ jobs:
       - name: Tests de l'application
         run: cargo test -p nightfall
       - name: Compilation et empaquetage (CEF inclus)
+        id: pkg
         run: cargo xtask package
       - name: Archive portable et installateur Windows
         if: runner.os == 'Windows'
@@ -134,6 +135,7 @@ jobs:
           kill $PID; sleep 3; pkill -f NIGHTFALL.app || true
           tail -n 40 "$RUNNER_TEMP/nf.log"
       - name: Auto-test de bout en bout (navigateur réel)
+        if: always() && steps.pkg.outcome == 'success'
         shell: bash
         env:
           NIGHTFALL_FEATURES: selftest
@@ -168,7 +170,7 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; scutil --dns | head -n 30 || true; fi
           grep -q "SELFTEST OK" "$LOG"
       - name: Expériences d'affichage (diagnostic)
-        if: always()
+        if: always() && steps.pkg.outcome == 'success'
         shell: bash
         env:
           NIGHTFALL_DIST_DIR: ${{ runner.temp }}/selftest-dist
