@@ -59,7 +59,7 @@ pub fn is_forbidden(arg: &str) -> bool {
     let lower = arg.trim_start_matches('-').to_ascii_lowercase();
     FORBIDDEN.iter().any(|f| {
         if f.contains('=') {
-            lower.starts_with(f)
+            lower.starts_with(&f.to_ascii_lowercase())
         } else {
             name == *f
         }

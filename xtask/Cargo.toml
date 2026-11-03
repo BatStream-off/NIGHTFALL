@@ -1,0 +1,12 @@
+[package]
+name = "xtask"
+description = "NIGHTFALL build, bundle and packaging tasks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+cef = { workspace = true, features = ["build-util"] }
+semver.workspace = true
+anyhow.workspace = true

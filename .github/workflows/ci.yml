@@ -33,9 +33,9 @@ jobs:
         with:
           key: core
       - name: Build
-        run: cargo build --workspace
+        run: cargo build --workspace --exclude nightfall --exclude xtask
       - name: Tests
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude nightfall --exclude xtask --no-fail-fast
       - name: Lockfile
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -43,7 +43,69 @@ jobs:
           name: cargo-lock
           path: Cargo.lock
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude nightfall --exclude xtask --all-targets -- -D warnings
+
+  app:
+    name: Application (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ilammy/setup-nasm@v1
+        if: runner.os == 'Windows'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: app
+      - name: Version
+        shell: bash
+        run: echo "VER=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)" >> "$GITHUB_ENV"
+      - name: Tests de l'application
+        run: cargo test -p nightfall
+      - name: Compilation et empaquetage (CEF inclus)
+        run: cargo xtask package
+      - name: Archive portable et installateur Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/NIGHTFALL -DestinationPath "dist/NIGHTFALL-$env:VER-windows-x64-portable.zip"
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:VER" packaging\windows\nightfall.iss
+      - name: Test de démarrage (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:NIGHTFALL_PROFILE_DIR = "$env:RUNNER_TEMP\nf-profile"
+          $p = Start-Process -FilePath "dist\NIGHTFALL\nightfall.exe" -PassThru
+          Start-Sleep -Seconds 25
+          if ($p.HasExited) { Write-Error "NIGHTFALL s'est arrêté (code $($p.ExitCode))"; exit 1 }
+          Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Select-Object Id, ProcessName, @{n='RAM_Mo';e={[math]::Round($_.WorkingSet64/1MB)}} | Format-Table
+          if (!(Test-Path "$env:NIGHTFALL_PROFILE_DIR\chromium")) { Write-Error "profil Chromium non créé"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+          Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+      - name: Test de démarrage (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          export NIGHTFALL_PROFILE_DIR="$RUNNER_TEMP/nf-profile"
+          ./dist/NIGHTFALL.app/Contents/MacOS/nightfall > "$RUNNER_TEMP/nf.log" 2>&1 &
+          PID=$!
+          sleep 25
+          if ! kill -0 $PID 2>/dev/null; then echo "NIGHTFALL s'est arrêté"; cat "$RUNNER_TEMP/nf.log"; exit 1; fi
+          ps -axo pid,rss,comm | grep -i nightfall || true
+          test -d "$NIGHTFALL_PROFILE_DIR/chromium" || { echo "profil Chromium non créé"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
+          kill $PID; sleep 3; pkill -f NIGHTFALL.app || true
+          tail -n 40 "$RUNNER_TEMP/nf.log"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NIGHTFALL-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*-setup.exe
+          if-no-files-found: error
 
   security-checks:
     name: Contrôles de sécurité
