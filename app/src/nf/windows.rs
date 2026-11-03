@@ -312,7 +312,7 @@ pub fn create_window(private: bool, urls: Vec<String>) {
 fn on_window_created(id: u32, window: Window) {
     let unlocked = core().is_unlocked();
     with_window(id, |ctx| {
-        let win_layout = window.set_to_box_layout(Some(&BoxLayoutSettings { horizontal: 1, ..Default::default() }));
+        let win_layout = window.set_to_box_layout(Some(&BoxLayoutSettings { horizontal: 1, cross_axis_alignment: AxisAlignment::STRETCH, ..Default::default() }));
         let mut side = View::from(&ctx.side);
         let mut column = View::from(&ctx.column);
         window.add_child_view(Some(&mut side));
@@ -321,7 +321,7 @@ fn on_window_created(id: u32, window: Window) {
             l.set_flex_for_view(Some(&mut side), 0);
             l.set_flex_for_view(Some(&mut column), 1);
         }
-        let col_layout = ctx.column.set_to_box_layout(Some(&BoxLayoutSettings { horizontal: 0, ..Default::default() }));
+        let col_layout = ctx.column.set_to_box_layout(Some(&BoxLayoutSettings { horizontal: 0, cross_axis_alignment: AxisAlignment::STRETCH, ..Default::default() }));
         let mut top = View::from(&ctx.top);
         let mut content = View::from(&ctx.content);
         ctx.column.add_child_view(Some(&mut top));
@@ -331,6 +331,7 @@ fn on_window_created(id: u32, window: Window) {
         }
         ctx.content.set_to_fill_layout();
         ctx.content.set_background_color(0xFF0A0C10);
+        ctx.column.set_background_color(0xFF0A0C10);
         ctx.win_layout = win_layout;
         ctx.col_layout = col_layout;
         window.set_title(Some(&CefString::from(if ctx.private { "NIGHTFALL · Navigation privée" } else { "NIGHTFALL" })));
