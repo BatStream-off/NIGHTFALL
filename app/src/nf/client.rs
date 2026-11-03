@@ -15,9 +15,9 @@ pub enum ClientKind {
 
 // --------------------------------------------------------- blocked counters
 
-static BLOCKED: OnceLock<Mutex<HashMap<u64, u64>>> = OnceLock::new();
+static BLOCKED: OnceLock<Mutex<HashMap<i32, u64>>> = OnceLock::new();
 
-fn blocked_map() -> std::sync::MutexGuard<'static, HashMap<u64, u64>> {
+fn blocked_map() -> std::sync::MutexGuard<'static, HashMap<i32, u64>> {
     let m = BLOCKED.get_or_init(|| Mutex::new(HashMap::new()));
     match m.lock() {
         Ok(g) => g,
@@ -25,7 +25,7 @@ fn blocked_map() -> std::sync::MutexGuard<'static, HashMap<u64, u64>> {
     }
 }
 
-pub fn blocked_count(browser_id: u64) -> u64 {
+pub fn blocked_count(browser_id: i32) -> u64 {
     blocked_map().get(&browser_id).copied().unwrap_or(0)
 }
 

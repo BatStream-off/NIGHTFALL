@@ -193,9 +193,9 @@ pub struct BrowserInfo {
     pub allow_internal_nav: bool,
 }
 
-static BROWSERS: OnceLock<Mutex<HashMap<u64, BrowserInfo>>> = OnceLock::new();
+static BROWSERS: OnceLock<Mutex<HashMap<i32, BrowserInfo>>> = OnceLock::new();
 
-pub fn browsers() -> MutexGuard<'static, HashMap<u64, BrowserInfo>> {
+pub fn browsers() -> MutexGuard<'static, HashMap<i32, BrowserInfo>> {
     let m = BROWSERS.get_or_init(|| Mutex::new(HashMap::new()));
     match m.lock() {
         Ok(g) => g,
@@ -203,7 +203,7 @@ pub fn browsers() -> MutexGuard<'static, HashMap<u64, BrowserInfo>> {
     }
 }
 
-pub fn browser_info(id: u64) -> Option<BrowserInfo> {
+pub fn browser_info(id: i32) -> Option<BrowserInfo> {
     browsers().get(&id).cloned()
 }
 

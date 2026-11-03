@@ -7,6 +7,7 @@
 use super::state::{self, core, BrowserKind, Core, Unlocked};
 use super::ui_thread::{background, on_ui, on_ui_delayed};
 use super::{downloads, security, session, windows};
+use cef::ImplBrowser;
 use nf_auth::{ArgonParams, NightfallLock, UnlockError};
 use nf_emergency::{PurgeCategory, PurgePlan};
 use serde_json::{json, Value};
@@ -103,7 +104,8 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         "navigate" => {
             let input = s(body, "input").trim().to_string();
             let url = resolve_input(&input, &core().settings);
-            on_ui(move || windows::navigate_active(w, &url));
+            let target = url.clone();
+            on_ui(move || windows::navigate_active(w, &target));
             json!({ "ok": true, "url": url })
         }
         "nav.back" | "nav.forward" | "nav.reload" | "nav.stop" | "nav.home" => {
