@@ -280,7 +280,7 @@ impl Shield {
         let mut selectors: Vec<&String> = res.hide_selectors.iter().collect();
         selectors.sort();
         let mut css = String::new();
-        for chunk in selectors.chunks(200) {
+        for chunk in selectors.chunks(20) {
             let joined: Vec<&str> = chunk.iter().map(|s| s.as_str()).collect();
             css.push_str(&joined.join(","));
             css.push_str("{display:none!important}\n");
@@ -302,7 +302,7 @@ impl Shield {
         let mut selectors: Vec<&String> = res.hide_selectors.iter().collect();
         selectors.sort();
         let mut css = String::new();
-        for chunk in selectors.chunks(200) {
+        for chunk in selectors.chunks(20) {
             let joined: Vec<&str> = chunk.iter().map(|s| s.as_str()).collect();
             css.push_str(&joined.join(","));
             css.push_str("{display:none!important}\n");

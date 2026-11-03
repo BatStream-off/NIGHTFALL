@@ -58,11 +58,14 @@ fn strip_header(src: &str) -> &str {
     }
 }
 
-fn fn_resource(name: &str, aliases: Vec<String>, deps: Vec<String>, permission: PermissionMask, src: &str) -> Resource {
+/// Scriptlets are `application/javascript` resources written as a named
+/// function (called with the filter's arguments); shared helpers they
+/// depend on are `fn/javascript` resources.
+fn js_resource(name: &str, aliases: Vec<String>, deps: Vec<String>, permission: PermissionMask, src: &str, mime: MimeType) -> Resource {
     Resource {
         name: name.to_string(),
         aliases,
-        kind: ResourceType::Mime(MimeType::FnJavascript),
+        kind: ResourceType::Mime(mime),
         content: STANDARD.encode(strip_header(src)),
         dependencies: deps,
         permission,
@@ -71,15 +74,16 @@ fn fn_resource(name: &str, aliases: Vec<String>, deps: Vec<String>, permission: 
 
 /// All scriptlet resources, ready for `Engine::use_resources`.
 pub fn resources() -> Vec<Resource> {
-    let mut out = vec![fn_resource("nf-utils.fn", vec![], vec![], PermissionMask::default(), UTILS)];
+    let mut out = vec![js_resource("nf-utils.fn", vec![], vec![], PermissionMask::default(), UTILS, MimeType::FnJavascript)];
     for d in defs() {
         let perm = if d.trusted { TRUSTED } else { PermissionMask::default() };
-        out.push(fn_resource(
+        out.push(js_resource(
             d.name,
             d.aliases.iter().map(|a| a.to_string()).collect(),
             vec!["nf-utils.fn".to_string()],
             perm,
             d.source,
+            MimeType::ApplicationJavascript,
         ));
     }
     out
