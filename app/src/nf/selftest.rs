@@ -36,7 +36,8 @@ fn fail(msg: &str) {
 }
 
 fn finish() {
-    on_ui_delayed(500, || {
+    // Windows stay open a few seconds so CI can take a screenshot.
+    on_ui_delayed(8000, || {
         for id in windows::window_ids() {
             windows::close_window(id);
         }

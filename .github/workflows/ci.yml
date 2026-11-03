@@ -167,6 +167,13 @@ jobs:
             sleep 2
           done
           sleep 3
+          # Screenshot of the unlocked browser at the end of the self test.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -Command 'Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $sb=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp=New-Object System.Drawing.Bitmap $sb.Width,$sb.Height; [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($sb.Location,[System.Drawing.Point]::Empty,$sb.Size); $s=New-Object System.Drawing.Bitmap $bmp,960,([int](960*$sb.Height/$sb.Width)); $s.Save("$env:RUNNER_TEMP\shot2.png",[System.Drawing.Imaging.ImageFormat]::Png)'
+          else
+            screencapture -x "$RUNNER_TEMP/shot2.png" && sips -Z 960 "$RUNNER_TEMP/shot2.png" > /dev/null
+          fi
+          echo NFSHOT2-BEGIN; base64 < "$RUNNER_TEMP/shot2.png" | tr -d '\n\r'; echo; echo NFSHOT2-END
           kill $PID 2>/dev/null || true
           if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM nightfall.exe > /dev/null 2>&1 || true; else pkill -f selftest-dist || true; fi
           cat "$LOG" || true
