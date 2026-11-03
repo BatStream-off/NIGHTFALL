@@ -357,6 +357,10 @@ wrap_request_handler! {
         ) -> i32 {
             let (Some(browser), Some(request)) = (browser, request) else { return 0 };
             let target = cef_to_string(&request.url());
+            #[cfg(feature = "selftest")]
+            if !target.starts_with("nightfall://") {
+                state::log(&format!("selftest: on_before_browse {target}"));
+            }
             let is_main = frame.map(|f| f.is_main() != 0).unwrap_or(true);
             match *self.kind {
                 ClientKind::Ui { .. } => {
@@ -437,6 +441,8 @@ wrap_resource_request_handler! {
             let url = cef_to_string(&request.url());
             let rtype = nf_shield::request_type_from_cef(request.resource_type().get_raw() as i32);
             if rtype == "main_frame" {
+                #[cfg(feature = "selftest")]
+                state::log(&format!("selftest: on_before_resource_load (main_frame) {url}"));
                 return ReturnValue::CONTINUE;
             }
             let id = browser.identifier();

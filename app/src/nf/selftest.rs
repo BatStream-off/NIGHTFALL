@@ -110,7 +110,8 @@ fn step_setup() {
 fn step_navigate() {
     step("navigation vers example.com");
     // Plain HTTP first, then HTTPS: tells a network problem from a TLS one.
-    if !expect_ok("navigation", &call("navigate", json!({ "input": "http://example.com/" }))) {
+    // In a new tab (no navigation away from an internal page).
+    if !expect_ok("navigation", &call("tab.new", json!({ "url": "http://example.com/" }))) {
         return;
     }
     wait_for("chargement de http://example.com", 60, || active_tab_loaded("http://example.com"), step_https);
