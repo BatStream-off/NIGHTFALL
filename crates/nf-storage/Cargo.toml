@@ -1,0 +1,16 @@
+[package]
+name = "nf-storage"
+description = "NIGHTFALL: encrypted SQLite (SQLCipher) storage for bookmarks, history, settings, downloads and sessions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nf-crypto.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

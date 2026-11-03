@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Favoris · NIGHTFALL</title>
+  <link rel="stylesheet" href="nf.css">
+  
+</head>
+<body>
+  <div class="page">
+    <div class="page-head"><img src="emblem.svg" alt=""><div><h1>Favoris</h1><div class="muted">Organisez vos sites en dossiers</div></div></div>
+    <div class="card">
+      <div class="row"><input id="q" class="grow" placeholder="Rechercher dans les favoris"><button id="add-folder">Nouveau dossier</button></div>
+    </div>
+    <div class="card"><div id="tree"></div></div>
+    <div class="card"><h2>Synchronisation facultative</h2><p class="muted">Choisissez un dossier déjà synchronisé par vos outils (OneDrive, iCloud Drive, Dropbox, clé USB…). Le fichier y est chiffré de bout en bout avec votre phrase de synchronisation. Aucun serveur NIGHTFALL.</p>
+      <div class="row"><input id="sync-folder" class="grow" placeholder="Chemin complet du dossier"><input id="sync-pass" type="password" class="grow" placeholder="Phrase de synchronisation (12 caractères min.)"><button id="sync-run" class="primary">Synchroniser</button></div></div>
+  </div>
+  <script src="nf.js"></script>
+  <script src="bookmarks.js"></script>
+</body>
+</html>

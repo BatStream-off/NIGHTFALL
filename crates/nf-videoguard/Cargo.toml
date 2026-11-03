@@ -1,0 +1,14 @@
+[package]
+name = "nf-videoguard"
+description = "NIGHTFALL VideoGuard: skip sponsored segments using the public SponsorBlock API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nf-crypto.workspace = true
+ureq.workspace = true
+url.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

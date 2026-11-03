@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Nouvel onglet</title>
+  <link rel="stylesheet" href="nf.css">
+  <style>
+    html, body { height: 100%; }
+    body { display: grid; place-items: center; overflow: hidden; }
+    body[data-wall="nebula"] { background: radial-gradient(900px 500px at 70% 10%, rgba(47,109,255,.22), transparent 60%), radial-gradient(700px 500px at 10% 90%, rgba(120,80,255,.14), transparent 60%), var(--obsidian); }
+    body[data-wall="city"] { background: linear-gradient(180deg, #0a0c10 0%, #0d1320 55%, #142036 100%); }
+    body[data-wall="graphite"] { background: linear-gradient(160deg, #15181f, #0a0c10); }
+    body[data-wall="midnight"] { background: radial-gradient(1200px 700px at 50% 120%, rgba(47,109,255,.28), transparent 60%), #05070a; }
+    .wrap { width: min(760px, 92vw); display: grid; gap: 22px; justify-items: center; margin-top: -6vh; }
+    .clock { font-size: 64px; font-weight: 200; letter-spacing: .04em; text-shadow: 0 0 30px rgba(47,109,255,.35); }
+    .date { color: var(--muted); margin-top: -18px; text-transform: capitalize; }
+    .search { width: 100%; display: flex; gap: 8px; }
+    .search input { height: 48px; font-size: 16px; border-radius: 14px; padding: 0 18px; background: rgba(15,18,24,.85); }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; width: 100%; }
+    .tile { display: grid; justify-items: center; gap: 6px; padding: 14px 8px; border-radius: 14px; background: rgba(23,27,35,.75); border: 1px solid var(--line); text-decoration: none; color: var(--text); position: relative; }
+    .tile:hover { border-color: var(--blue); box-shadow: var(--glow); }
+    .tile .ic { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--graphite-3); font-weight: 700; }
+    .tile .nm { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tile .rm { position: absolute; top: 4px; right: 6px; border: 0; background: transparent; color: var(--muted); padding: 0; display: none; }
+    .tile:hover .rm { display: block; }
+    .links { display: flex; gap: 10px; }
+    .section-title { justify-self: start; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+  </style>
+</head>
+<body data-wall="nebula">
+  <div class="wrap">
+    <div class="clock" id="clock"></div>
+    <div class="date" id="date"></div>
+    <form class="search" id="search"><input id="q" placeholder="Rechercher sur le Web ou saisir une adresse" autocomplete="off" autofocus></form>
+    <div class="section-title">Raccourcis</div>
+    <div class="tiles" id="shortcuts"></div>
+    <div class="section-title" id="top-title">Sites fréquents</div>
+    <div class="tiles" id="top"></div>
+    <div class="links">
+      <button id="add">Ajouter un raccourci</button>
+      <button id="wall">Changer de fond</button>
+      <button id="security">Security Center</button>
+      <button id="settings">Paramètres</button>
+    </div>
+  </div>
+  <script src="nf.js"></script>
+  <script src="newtab.js"></script>
+</body>
+</html>

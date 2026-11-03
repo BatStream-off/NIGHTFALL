@@ -1,0 +1,20 @@
+[package]
+name = "nf-auth"
+description = "NIGHTFALL LOCK: PIN-only authentication, key hierarchy, throttling, recovery key"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nf-core.workspace = true
+nf-crypto.workspace = true
+nf-hwkey.workspace = true
+argon2.workspace = true
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  core:
+    name: Modules (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: ilammy/setup-nasm@v1
+        if: runner.os == 'Windows'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: core
+      - name: Build
+        run: cargo build --workspace --exclude nightfall --exclude xtask
+      - name: Tests
+        run: cargo test --workspace --exclude nightfall --exclude xtask --no-fail-fast
+      - name: Lockfile
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock
+          path: Cargo.lock
+      - name: Clippy
+        continue-on-error: true
+        run: cargo clippy --workspace --exclude nightfall --exclude xtask --all-targets -- -D warnings
+
+  app:
+    name: Application (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ilammy/setup-nasm@v1
+        if: runner.os == 'Windows'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: app
+      - name: Version
+        shell: bash
+        run: echo "VER=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)" >> "$GITHUB_ENV"
+      - name: Tests de l'application
+        run: cargo test -p nightfall
+      - name: Compilation et empaquetage (CEF inclus)
+        run: cargo xtask package
+      - name: Archive portable et installateur Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/NIGHTFALL -DestinationPath "dist/NIGHTFALL-$env:VER-windows-x64-portable.zip"
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:VER" packaging\windows\nightfall.iss
+      - name: Test de démarrage (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:NIGHTFALL_PROFILE_DIR = "$env:RUNNER_TEMP\nf-profile"
+          $p = Start-Process -FilePath "dist\NIGHTFALL\nightfall.exe" -PassThru
+          Start-Sleep -Seconds 25
+          if ($p.HasExited) { Write-Error "NIGHTFALL s'est arrêté (code $($p.ExitCode))"; exit 1 }
+          Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Select-Object Id, ProcessName, @{n='RAM_Mo';e={[math]::Round($_.WorkingSet64/1MB)}} | Format-Table
+          if (!(Test-Path "$env:NIGHTFALL_PROFILE_DIR\chromium")) { Write-Error "profil Chromium non créé"; exit 1 }
+          Get-Content "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log"
+          if (!(Select-String -Path "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log" -Pattern "interface prête" -Quiet)) { Write-Error "l'interface NIGHTFALL ne s'est pas chargée"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+          Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+      - name: Test de démarrage (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          export NIGHTFALL_PROFILE_DIR="$RUNNER_TEMP/nf-profile"
+          ./dist/NIGHTFALL.app/Contents/MacOS/nightfall > "$RUNNER_TEMP/nf.log" 2>&1 &
+          PID=$!
+          sleep 25
+          if ! kill -0 $PID 2>/dev/null; then echo "NIGHTFALL s'est arrêté"; cat "$RUNNER_TEMP/nf.log"; exit 1; fi
+          ps -axo pid,rss,comm | grep -i nightfall || true
+          test -d "$NIGHTFALL_PROFILE_DIR/chromium" || { echo "profil Chromium non créé"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
+          cat "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
+          grep -q "interface prête" "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log" || { echo "l'interface NIGHTFALL ne s'est pas chargée"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
+          kill $PID; sleep 3; pkill -f NIGHTFALL.app || true
+          tail -n 40 "$RUNNER_TEMP/nf.log"
+      - name: Auto-test de bout en bout (navigateur réel)
+        shell: bash
+        env:
+          NIGHTFALL_FEATURES: selftest
+          NIGHTFALL_DIST_DIR: ${{ runner.temp }}/selftest-dist
+          NIGHTFALL_SELFTEST: "1"
+        run: |
+          cargo xtask bundle
+          export NIGHTFALL_PROFILE_DIR="$RUNNER_TEMP/nf-selftest-profile"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            BIN="$NIGHTFALL_DIST_DIR/NIGHTFALL/nightfall.exe"
+          else
+            BIN="$NIGHTFALL_DIST_DIR/NIGHTFALL.app/Contents/MacOS/nightfall"
+          fi
+          "$BIN" > "$RUNNER_TEMP/selftest.out" 2>&1 &
+          PID=$!
+          LOG="$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
+          for i in $(seq 1 120); do
+            if [ -f "$LOG" ] && grep -qE "SELFTEST (OK|FAIL)" "$LOG"; then break; fi
+            sleep 2
+          done
+          sleep 3
+          kill $PID 2>/dev/null || true
+          if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM nightfall.exe > /dev/null 2>&1 || true; else pkill -f selftest-dist || true; fi
+          cat "$LOG" || true
+          grep -q "SELFTEST OK" "$LOG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NIGHTFALL-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*-setup.exe
+          if-no-files-found: error
+
+  security-checks:
+    name: Contrôles de sécurité
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aucun commutateur Chromium affaiblissant dans le code de NIGHTFALL
+        run: |
+          set -e
+          # The forbidden list itself lives in crates/nf-security/src/switches.rs.
+          if grep -rnE '"(no-sandbox|disable-web-security|remote-debugging-port|disable-site-isolation-trials|ignore-certificate-errors)"' app/src --include=*.rs; then
+            echo "Un commutateur interdit est utilisé dans app/src" >&2
+            exit 1
+          fi
+      - name: Aucun secret dans le dépôt
+        run: |
+          set -e
+          if git ls-files | grep -E '\.(pem|p12|pfx|key|secret)$'; then
+            echo "Fichier de secret détecté" >&2
+            exit 1
+          fi
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources

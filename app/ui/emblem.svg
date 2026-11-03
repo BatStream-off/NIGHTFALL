@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="NIGHTFALL">
+  <!-- Provisional NIGHTFALL emblem: original design (hexagonal crest, crescent, N). -->
+  <defs>
+    <linearGradient id="nf-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9cc3ff"/>
+      <stop offset="0.55" stop-color="#3d7bff"/>
+      <stop offset="1" stop-color="#1a4fd6"/>
+    </linearGradient>
+    <mask id="nf-moon">
+      <rect width="120" height="120" fill="#fff"/>
+      <circle cx="71" cy="42" r="19" fill="#000"/>
+    </mask>
+  </defs>
+  <path d="M60 6 L107 33 L107 87 L60 114 L13 87 L13 33 Z" fill="#0c1017" stroke="url(#nf-g)" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M60 16 L98 38 L98 82 L60 104 L22 82 L22 38 Z" fill="none" stroke="#1d2533" stroke-width="1.5"/>
+  <circle cx="60" cy="48" r="20" fill="url(#nf-g)" mask="url(#nf-moon)"/>
+  <path d="M41 92 V68 L79 92 V68" fill="none" stroke="url(#nf-g)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

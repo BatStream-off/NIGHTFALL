@@ -1,0 +1,13 @@
+[package]
+name = "nf-core"
+description = "NIGHTFALL: shared types, profile paths and log redaction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

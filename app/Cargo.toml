@@ -1,0 +1,73 @@
+[package]
+name = "nightfall"
+description = "NIGHTFALL Browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# On Windows with the sandbox, CEF's bootstrap.exe loads this DLL and calls
+# RunWinMain (see src/lib.rs). Elsewhere the binaries are used directly.
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "nightfall"
+path = "src/main.rs"
+
+[[bin]]
+name = "nightfall_helper"
+path = "src/bin/nightfall_helper.rs"
+
+[features]
+default = ["sandbox"]
+sandbox = ["cef/sandbox"]
+# End-to-end self test driven through the internal API (CI only).
+selftest = []
+
+[package.metadata.cef.bundle]
+helper_name = "nightfall_helper"
+resources_path = "resources"
+
+[dependencies]
+cef = { workspace = true }
+nf-core.workspace = true
+nf-crypto.workspace = true
+nf-hwkey.workspace = true
+nf-auth.workspace = true
+nf-storage.workspace = true
+nf-security.workspace = true
+nf-emergency.workspace = true
+nf-shield.workspace = true
+nf-videoguard.workspace = true
+nf-vault.workspace = true
+nf-perf.workspace = true
+nf-downloads.workspace = true
+nf-sync.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.3"
+objc2-foundation = "0.3.2"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "NSApplication",
+    "NSEvent",
+    "NSResponder",
+    "NSUserInterfaceValidation",
+    "NSView",
+    "NSWindow",
+] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_SystemInformation",
+    "Win32_UI_Shell",
+] }
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winres = "0.1"

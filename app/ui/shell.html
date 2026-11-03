@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>NIGHTFALL</title>
+  <link rel="stylesheet" href="nf.css">
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <!-- Startup animation (first window only, can be disabled in Settings) -->
+  <div id="splash" hidden>
+    <div class="splash-stage">
+      <div class="splash-emblem"><img src="emblem.svg" alt=""><span class="sheen"></span></div>
+      <div class="splash-name">NIGHTFALL</div>
+    </div>
+  </div>
+
+  <!-- NIGHTFALL LOCK -->
+  <div id="lock" hidden>
+    <div class="lock-card">
+      <img class="lock-emblem" src="emblem.svg" alt="">
+      <div class="lock-title">NIGHTFALL</div>
+      <div class="lock-tagline" id="tagline">Browse Beyond the Darkness.</div>
+
+      <form id="f-setup" class="lock-form" hidden autocomplete="off">
+        <h2>Créer votre code NIGHTFALL</h2>
+        <p class="muted">6 à 12 chiffres. Évitez les suites (123456), les répétitions et les dates. 8 chiffres ou plus recommandés.</p>
+        <input id="setup-pin" type="password" inputmode="numeric" maxlength="12" placeholder="Nouveau code" autocomplete="new-password">
+        <input id="setup-confirm" type="password" inputmode="numeric" maxlength="12" placeholder="Confirmer le code" autocomplete="new-password">
+        <button class="primary" type="submit">Créer le code</button>
+        <p class="muted small">Aucune biométrie n'est utilisée. Le code protège la clé qui chiffre vos données locales.</p>
+      </form>
+
+      <div id="f-recovery-show" class="lock-form" hidden>
+        <h2>Votre Recovery Key</h2>
+        <p class="muted">Notez-la sur papier ou dans un endroit sûr <b>hors de cet ordinateur</b>. Elle ne sera plus jamais affichée. Sans votre code ni cette clé, vos données NIGHTFALL seront définitivement illisibles.</p>
+        <div id="rk" class="rk mono"></div>
+        <input id="rk-confirm" placeholder="Recopiez le premier groupe (4 caractères)" maxlength="4" autocomplete="off">
+        <button id="rk-done" class="primary">J'ai noté ma Recovery Key</button>
+      </div>
+
+      <form id="f-unlock" class="lock-form" hidden autocomplete="off">
+        <input id="pin" type="password" inputmode="numeric" maxlength="12" placeholder="Code NIGHTFALL" autocomplete="off" autofocus>
+        <div class="keypad" id="keypad"></div>
+        <button class="primary" type="submit" id="unlock-btn">Déverrouiller</button>
+        <button class="ghost link" type="button" id="use-recovery">Code oublié ? Utiliser la Recovery Key</button>
+      </form>
+
+      <form id="f-recovery-use" class="lock-form" hidden autocomplete="off">
+        <h2>Récupération</h2>
+        <input id="rc-code" class="mono" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off">
+        <input id="rc-pin" type="password" inputmode="numeric" maxlength="12" placeholder="Nouveau code" autocomplete="new-password">
+        <input id="rc-confirm" type="password" inputmode="numeric" maxlength="12" placeholder="Confirmer le nouveau code" autocomplete="new-password">
+        <button class="primary" type="submit">Récupérer l'accès</button>
+        <button class="ghost link" type="button" id="back-unlock">Retour</button>
+      </form>
+
+      <div id="lock-msg" class="lock-msg" role="alert"></div>
+      <div id="lock-hw" class="muted small"></div>
+    </div>
+  </div>
+
+  <!-- Browser chrome -->
+  <div id="chrome" hidden>
+    <div id="tabstrip">
+      <div id="private-badge" hidden title="Navigation privée : cookies et historique non conservés. Ne garantit pas l'anonymat sur Internet.">PRIVÉ</div>
+      <div id="tabs"></div>
+      <button id="new-tab" class="icon" title="Nouvel onglet (Ctrl+T)">+</button>
+    </div>
+    <div id="toolbar">
+      <button class="icon" id="b-back" title="Précédent">‹</button>
+      <button class="icon" id="b-fwd" title="Suivant">›</button>
+      <button class="icon" id="b-reload" title="Actualiser">↻</button>
+      <button class="icon" id="b-home" title="Accueil">⌂</button>
+      <div id="omnibox">
+        <span id="sec-icon" title=""></span>
+        <input id="address" spellcheck="false" placeholder="Rechercher ou saisir une adresse" autocomplete="off">
+      </div>
+      <button class="icon pill" id="b-shield" title="NIGHTFALL Shield">⛨ <span id="shield-count">0</span></button>
+      <button class="icon" id="b-star" title="Favori (Ctrl+D)">☆</button>
+      <button class="icon" id="b-key" title="Mots de passe">⚿</button>
+      <button class="icon" id="b-lock" title="Verrouiller (Ctrl+Maj+L)">⏻</button>
+      <button class="icon" id="b-menu" title="Menu">⋮</button>
+    </div>
+    <div id="banner" hidden></div>
+    <div id="panel" hidden></div>
+  </div>
+
+  <!-- Vertical tabs (side view) -->
+  <div id="side" hidden>
+    <div class="side-head"><img src="emblem.svg" alt=""><span>Onglets</span><button id="side-new" class="icon">+</button></div>
+    <div id="side-tabs"></div>
+  </div>
+
+  <script src="nf.js"></script>
+  <script src="shell.js"></script>
+</body>
+</html>
