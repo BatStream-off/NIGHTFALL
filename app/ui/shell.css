@@ -5,7 +5,7 @@ html, body { height: 100%; overflow: hidden; user-select: none; }
 /* ---------- Splash (1.8 s) ---------- */
 #splash { position: fixed; inset: 0; background: var(--obsidian); display: grid; place-items: center; z-index: 50; }
 .splash-stage { display: grid; justify-items: center; gap: 18px; animation: nf-out .4s ease-in 1.4s forwards; }
-.splash-emblem { position: relative; width: 132px; height: 132px; opacity: 0; transform: scale(.92); animation: nf-in .55s cubic-bezier(.2,.7,.2,1) .2s forwards; overflow: hidden; border-radius: 20px; }
+.splash-emblem { position: relative; width: 132px; height: 132px; -webkit-mask: url(emblem.png) center / contain no-repeat; mask: url(emblem.png) center / contain no-repeat; opacity: 0; transform: scale(.92); animation: nf-in .55s cubic-bezier(.2,.7,.2,1) .2s forwards; overflow: hidden; }
 .splash-emblem img { width: 100%; height: 100%; filter: drop-shadow(0 0 18px rgba(47,109,255,.45)); }
 .sheen { position: absolute; top: -20%; left: -60%; width: 40%; height: 140%; background: linear-gradient(100deg, transparent, rgba(120,170,255,.55), transparent); transform: skewX(-18deg); animation: nf-sheen .5s ease-in-out .65s forwards; }
 .splash-name { font-size: 30px; letter-spacing: .5em; padding-left: .5em; font-weight: 600; color: #dfe8ff; opacity: 0; animation: nf-fade .4s ease-out .9s forwards; text-shadow: 0 0 18px rgba(47,109,255,.5); }

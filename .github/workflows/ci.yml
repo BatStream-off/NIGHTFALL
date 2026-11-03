@@ -83,6 +83,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          # Icon of nightfall.exe (CEF's bootstrap launcher): rcedit (MIT, free).
+          Invoke-WebRequest -Uri "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe" -OutFile "$env:RUNNER_TEMP\rcedit.exe"
+          & "$env:RUNNER_TEMP\rcedit.exe" "dist\NIGHTFALL\nightfall.exe" --set-icon "app\resources\win\nightfall.ico" --set-version-string "ProductName" "NIGHTFALL" --set-version-string "FileDescription" "NIGHTFALL Browser"
+          if ($LASTEXITCODE -ne 0) { Write-Error "rcedit a échoué"; exit 1 }
           Compress-Archive -Path dist/NIGHTFALL -DestinationPath "dist/NIGHTFALL-$env:VER-windows-x64-portable.zip"
           choco install innosetup -y --no-progress
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:VER" packaging\windows\nightfall.iss
@@ -94,6 +98,14 @@ jobs:
           $p = Start-Process -FilePath "dist\NIGHTFALL\nightfall.exe" -PassThru
           Start-Sleep -Seconds 25
           $logs = "$env:NIGHTFALL_PROFILE_DIR\logs"
+          # Screenshot of what the user sees, printed in the log (base64).
+          Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+          $sb = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $sb.Width, $sb.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($sb.Location, [System.Drawing.Point]::Empty, $sb.Size)
+          $small = New-Object System.Drawing.Bitmap $bmp, 960, ([int](960 * $sb.Height / $sb.Width))
+          $small.Save("$env:RUNNER_TEMP\shot.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          Write-Output "NFSHOT-BEGIN"; [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:RUNNER_TEMP\shot.png")); Write-Output "NFSHOT-END"
           if ($p.HasExited) { Get-ChildItem -Recurse $env:NIGHTFALL_PROFILE_DIR -ErrorAction SilentlyContinue | Select-Object FullName; Get-Content "$logs\nightfall.log","$logs\chromium.log" -ErrorAction SilentlyContinue; Write-Error "NIGHTFALL s'est arrêté (code $($p.ExitCode))"; exit 1 }
           Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Select-Object Id, ProcessName, @{n='RAM_Mo';e={[math]::Round($_.WorkingSet64/1MB)}} | Format-Table
           if (!(Test-Path "$env:NIGHTFALL_PROFILE_DIR\chromium")) { Write-Error "profil Chromium non créé"; exit 1 }
@@ -110,6 +122,7 @@ jobs:
           sleep 25
           if ! kill -0 $PID 2>/dev/null; then echo "NIGHTFALL s'est arrêté"; cat "$RUNNER_TEMP/nf.log"; exit 1; fi
           ps -axo pid,rss,comm | grep -i nightfall || true
+          screencapture -x "$RUNNER_TEMP/shot.png" && sips -Z 960 "$RUNNER_TEMP/shot.png" >/dev/null && { echo NFSHOT-BEGIN; base64 -i "$RUNNER_TEMP/shot.png" | tr -d '\n'; echo; echo NFSHOT-END; } || echo "capture d'écran impossible"
           test -d "$NIGHTFALL_PROFILE_DIR/chromium" || { echo "profil Chromium non créé"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
           cat "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
           grep -q "interface prête" "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log" || { echo "l'interface NIGHTFALL ne s'est pas chargée"; tail -n 80 "$RUNNER_TEMP/nf.log"; tail -n 80 "$NIGHTFALL_PROFILE_DIR/logs/chromium.log" 2>/dev/null; exit 1; }
