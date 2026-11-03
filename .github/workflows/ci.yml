@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -157,6 +158,33 @@ jobs:
             dist/*.zip
             dist/*-setup.exe
           if-no-files-found: error
+
+  # Published only for a version tag, and only once every check above has
+  # passed (tests, start-up test, end-to-end self test, security checks).
+  release:
+    name: Publication (pré-version)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [core, app, security-checks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: NIGHTFALL-*
+          merge-multiple: true
+      - name: Sommes de contrôle SHA-256
+        run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Pré-version GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --prerelease \
+            --title "NIGHTFALL $GITHUB_REF_NAME (pré-version)" \
+            --notes-file docs/RELEASE_NOTES.md
 
   security-checks:
     name: Contrôles de sécurité
