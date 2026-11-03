@@ -194,7 +194,12 @@ fn step_unlock() {
         return;
     }
     state::log(&format!("selftest: protection du code = {}", status["status"]["lock"]["backend"]));
-    DONE.store(true, std::sync::atomic::Ordering::SeqCst);
-    state::log("SELFTEST OK");
-    finish();
+    // End on a real web page so CI can check on screen that web content is
+    // actually displayed (example.com: light page with dark text).
+    windows::navigate_active(1, "https://example.com/");
+    wait_for("affichage final de https://example.com", 40, || active_tab_loaded("https://example.com"), || {
+        DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+        state::log("SELFTEST OK");
+        finish();
+    });
 }

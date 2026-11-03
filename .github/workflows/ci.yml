@@ -174,6 +174,9 @@ jobs:
             screencapture -x "$RUNNER_TEMP/shot2.png" && sips -Z 960 "$RUNNER_TEMP/shot2.png" > /dev/null
           fi
           echo NFSHOT2-BEGIN; base64 < "$RUNNER_TEMP/shot2.png" | tr -d '\n\r'; echo; echo NFSHOT2-END
+          python3 -m pip install --quiet --break-system-packages pillow 2>/dev/null || python -m pip install --quiet pillow
+          WEBFAIL=0
+          if [ "$RUNNER_OS" = "Windows" ]; then python ci/check_web.py "$RUNNER_TEMP/shot2.png" || WEBFAIL=1; else python3 ci/check_web.py "$RUNNER_TEMP/shot2.png" || WEBFAIL=1; fi
           kill $PID 2>/dev/null || true
           if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM nightfall.exe > /dev/null 2>&1 || true; else pkill -f selftest-dist || true; fi
           cat "$LOG" || true
@@ -186,6 +189,7 @@ jobs:
           echo "--- réseau de la machine ---"; curl -sS -o /dev/null -w "curl http://example.com -> %{http_code}\n" http://example.com || true
           if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; scutil --dns | head -n 30 || true; fi
           grep -q "SELFTEST OK" "$LOG"
+          [ "$WEBFAIL" = 0 ]
       - uses: actions/upload-artifact@v4
         with:
           name: NIGHTFALL-${{ runner.os }}
