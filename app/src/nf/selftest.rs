@@ -59,7 +59,7 @@ fn wait_for(what: &'static str, tries: u32, cond: fn() -> bool, next: fn()) {
         if cond() {
             next();
         } else if tries == 0 {
-            fail(&format!("délai dépassé : {what}"));
+            fail(&format!("délai dépassé : {what} ; onglets = {}", windows::tabs_state(1)));
         } else {
             wait_for(what, tries - 1, cond, next);
         }

@@ -293,10 +293,15 @@ wrap_load_handler! {
             error_text: Option<&CefString>,
             failed_url: Option<&CefString>,
         ) {
-            if let ClientKind::Ui { .. } = *self.kind {
-                let url = failed_url.map(|u| u.to_string()).unwrap_or_default();
-                let text = error_text.map(|t| t.to_string()).unwrap_or_default();
-                state::log(&format!("interface : échec du chargement {url} ({} {text})", { let raw: cef::sys::cef_errorcode_t = error_code.into(); raw as i32 }));
+            let code = { let raw: cef::sys::cef_errorcode_t = error_code.into(); raw as i32 };
+            let text = error_text.map(|t| t.to_string()).unwrap_or_default();
+            match *self.kind {
+                ClientKind::Ui { .. } => {
+                    let url = failed_url.map(|u| u.to_string()).unwrap_or_default();
+                    state::log(&format!("interface : échec du chargement {url} ({code} {text})"));
+                }
+                // Web pages: the error only, never the address (privacy).
+                ClientKind::Tab { .. } => state::log(&format!("onglet : échec du chargement ({code} {text})")),
             }
         }
 

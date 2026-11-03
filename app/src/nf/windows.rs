@@ -448,22 +448,16 @@ fn prepare_window_close(id: u32) {
     if is_last_window || !private {
         super::session::save_session_snapshot();
     }
-    with_window(id, |ctx| {
-        for t in &ctx.tabs {
-            if let Some(b) = t.view.as_ref().and_then(|v| v.browser()) {
-                if let Some(h) = b.host() {
-                    h.close_browser(1);
-                }
-            }
-        }
-        for v in [&ctx.top, &ctx.side] {
-            if let Some(b) = v.browser() {
-                if let Some(h) = b.host() {
-                    h.close_browser(1);
-                }
-            }
-        }
-    });
+    // Collect first, close after: closing calls back into NIGHTFALL.
+    let hosts: Vec<BrowserHost> = with_window(id, |ctx| {
+        let tabs = ctx.tabs.iter().filter_map(|t| t.view.as_ref().and_then(|v| v.browser()));
+        let ui = [&ctx.top, &ctx.side].into_iter().filter_map(|v| v.browser());
+        tabs.chain(ui).filter_map(|b| b.host()).collect()
+    })
+    .unwrap_or_default();
+    for h in hosts {
+        h.close_browser(1);
+    }
     if is_last_window {
         super::session::seal_cookies_then(|| {});
     }
@@ -635,15 +629,14 @@ pub fn activate_tab_title(window_id: u32) {
 }
 
 pub fn close_tab(window_id: u32, tab_id: u32) {
+    let mut closing: Option<BrowserHost> = None;
     let (was_active, next) = with_window(window_id, |ctx| {
         let Some(idx) = ctx.tabs.iter().position(|t| t.id == tab_id) else {
             return (false, None);
         };
         let tab = ctx.tabs.remove(idx);
         if let Some(view) = &tab.view {
-            if let Some(h) = view.browser().and_then(|b| b.host()) {
-                h.close_browser(1);
-            }
+            closing = view.browser().and_then(|b| b.host());
             let mut v = View::from(view);
             ctx.content.remove_child_view(Some(&mut v));
         }
@@ -656,6 +649,9 @@ pub fn close_tab(window_id: u32, tab_id: u32) {
         (was_active, next)
     })
     .unwrap_or((false, None));
+    if let Some(h) = closing {
+        h.close_browser(1);
+    }
     match next {
         Some(n) if was_active => activate_tab(window_id, n),
         Some(_) => push_tabs(window_id),
@@ -690,22 +686,26 @@ pub fn move_tab(window_id: u32, tab_id: u32, to_index: usize) {
 
 /// Unload a tab to free memory; it reloads when activated.
 pub fn discard_tab(window_id: u32, tab_id: u32) {
-    with_window(window_id, |ctx| {
+    let closing = with_window(window_id, |ctx| {
         if ctx.active == Some(tab_id) {
-            return;
+            return None;
         }
+        let mut closing = None;
         if let Some(t) = ctx.tabs.iter_mut().find(|t| t.id == tab_id) {
             if let Some(view) = t.view.take() {
-                if let Some(h) = view.browser().and_then(|b| b.host()) {
-                    h.close_browser(1);
-                }
+                closing = view.browser().and_then(|b| b.host());
                 let mut v = View::from(&view);
                 ctx.content.remove_child_view(Some(&mut v));
             }
             t.discarded = true;
             t.loading = false;
         }
-    });
+        closing
+    })
+    .flatten();
+    if let Some(h) = closing {
+        h.close_browser(1);
+    }
     push_tabs(window_id);
 }
 
