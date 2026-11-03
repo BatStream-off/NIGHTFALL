@@ -20,7 +20,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .lock-sky { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
 .lock-sky .moon { position: absolute; left: 50%; top: 50%; width: 560px; height: 560px; transform: translate(-50%, -62%); border-radius: 50%; background: radial-gradient(circle, rgba(92, 214, 230, .10) 0%, rgba(58, 119, 232, .08) 32%, transparent 66%); }
 .lock-sky .skyline { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 26vh; min-height: 140px; object-fit: cover; object-position: bottom; opacity: .95; }
-.lock-card { position: relative; width: min(380px, 90vw); display: grid; justify-items: center; gap: 10px; padding: 28px 0 18vh; }
+.lock-card { position: relative; width: min(380px, 90vw); display: grid; justify-items: center; gap: 10px; padding: 24px 0 10vh; }
+#lock::-webkit-scrollbar { display: none; }
 .lock-emblem { width: 84px; height: 84px; filter: drop-shadow(0 0 22px rgba(58, 119, 232, .45)); }
 .lock-title { font: 600 22px/1 var(--display); letter-spacing: .4em; padding-left: .4em; margin-top: 6px; }
 .lock-tagline { color: var(--mist); font-size: 13px; }

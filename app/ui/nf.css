@@ -122,3 +122,9 @@ label { display: block; margin: 14px 0 6px; color: var(--mist); font-size: 13px;
 code, .mono { font-family: var(--mono); }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation-duration: .01ms !important; } }
+
+/* Quiet scrollbars matching the night palette */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1d2740; border: 2px solid transparent; background-clip: padding-box; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3858; background-clip: padding-box; border: 2px solid transparent; }
