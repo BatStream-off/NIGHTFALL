@@ -113,6 +113,15 @@ jobs:
         run: |
           cargo xtask bundle
           export NIGHTFALL_PROFILE_DIR="$RUNNER_TEMP/nf-selftest-profile"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # Dedicated unlocked keychain: the runner's login keychain may be
+            # locked, and a locked keychain waits for a password prompt.
+            security create-keychain -p nf-ci nf-ci.keychain
+            security set-keychain-settings nf-ci.keychain
+            security unlock-keychain -p nf-ci nf-ci.keychain
+            security list-keychains -d user -s nf-ci.keychain $(security list-keychains -d user | tr -d '"')
+            security default-keychain -d user -s nf-ci.keychain
+          fi
           if [ "$RUNNER_OS" = "Windows" ]; then
             BIN="$NIGHTFALL_DIST_DIR/NIGHTFALL/nightfall.exe"
           else
@@ -129,6 +138,7 @@ jobs:
           kill $PID 2>/dev/null || true
           if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM nightfall.exe > /dev/null 2>&1 || true; else pkill -f selftest-dist || true; fi
           cat "$LOG" || true
+          echo "--- sortie du processus ---"; tail -n 40 "$RUNNER_TEMP/selftest.out" || true
           grep -q "SELFTEST OK" "$LOG"
       - uses: actions/upload-artifact@v4
         with:
