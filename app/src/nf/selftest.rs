@@ -114,7 +114,9 @@ fn step_navigate() {
     if !expect_ok("navigation", &call("tab.new", json!({ "url": "http://example.com/" }))) {
         return;
     }
-    wait_for("chargement de http://example.com", 60, || active_tab_loaded("http://example.com"), step_https);
+    // Chromium upgrades plain HTTP navigations to HTTPS when the site
+    // supports it (HTTPS-Upgrades): the tab must end on https://.
+    wait_for("chargement de http://example.com (passage automatique en HTTPS)", 60, || active_tab_loaded("https://example.com"), step_https);
 }
 
 fn step_https() {
