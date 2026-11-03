@@ -5,6 +5,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# CI end-to-end test only: replaces the TPM/Keychain with a key file so the
+# test cannot hang on a system prompt. Never enabled in released builds
+# (checked by the "Contrôles de sécurité" CI job).
+insecure-software-backend-for-ci = []
+
 [dependencies]
 nf-core.workspace = true
 nf-crypto.workspace = true

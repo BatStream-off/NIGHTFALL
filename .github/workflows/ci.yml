@@ -36,6 +36,17 @@ jobs:
         run: cargo build --workspace --exclude nightfall --exclude xtask
       - name: Tests
         run: cargo test --workspace --exclude nightfall --exclude xtask --no-fail-fast
+      - name: Trousseau macOS (Keychain réel)
+        if: runner.os == 'macOS'
+        env:
+          NIGHTFALL_TEST_KEYCHAIN: "1"
+        run: |
+          security create-keychain -p nf-ci nf-ci.keychain
+          security set-keychain-settings nf-ci.keychain
+          security unlock-keychain -p nf-ci nf-ci.keychain
+          security list-keychains -d user -s nf-ci.keychain $(security list-keychains -d user | tr -d '"')
+          security default-keychain -d user -s nf-ci.keychain
+          perl -e 'alarm 180; exec @ARGV' cargo test -p nf-hwkey keychain_round_trip -- --nocapture
       - name: Lockfile
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -113,15 +124,6 @@ jobs:
         run: |
           cargo xtask bundle
           export NIGHTFALL_PROFILE_DIR="$RUNNER_TEMP/nf-selftest-profile"
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            # Dedicated unlocked keychain: the runner's login keychain may be
-            # locked, and a locked keychain waits for a password prompt.
-            security create-keychain -p nf-ci nf-ci.keychain
-            security set-keychain-settings nf-ci.keychain
-            security unlock-keychain -p nf-ci nf-ci.keychain
-            security list-keychains -d user -s nf-ci.keychain $(security list-keychains -d user | tr -d '"')
-            security default-keychain -d user -s nf-ci.keychain
-          fi
           if [ "$RUNNER_OS" = "Windows" ]; then
             BIN="$NIGHTFALL_DIST_DIR/NIGHTFALL/nightfall.exe"
           else
@@ -168,6 +170,17 @@ jobs:
           if git ls-files | grep -E '\.(pem|p12|pfx|key|secret)$'; then
             echo "Fichier de secret détecté" >&2
             exit 1
+          fi
+      - name: Le moteur de clé logiciel de CI n'est jamais activé par défaut
+        run: |
+          set -e
+          # Only the "selftest" feature (CI end-to-end test, never packaged) may enable it.
+          if grep -n "insecure-software-backend-for-ci" app/Cargo.toml | grep -v "^[0-9]*:selftest = "; then
+            echo "insecure-software-backend-for-ci activé hors selftest" >&2; exit 1
+          fi
+          if grep -nE '^default *=.*selftest' app/Cargo.toml; then echo "selftest activé par défaut" >&2; exit 1; fi
+          if grep -n "NIGHTFALL_FEATURES" .github/workflows/ci.yml | grep -v "NIGHTFALL_FEATURES: selftest" | grep -v "grep"; then
+            echo "fonctionnalités de compilation détournées hors auto-test" >&2; exit 1
           fi
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:

@@ -53,3 +53,26 @@ impl DeviceSecret for Keychain {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Real Keychain round trip. Runs only when NIGHTFALL_TEST_KEYCHAIN is
+    /// set (CI prepares an unlocked keychain first), because on a developer
+    /// machine it may show a system prompt.
+    #[test]
+    fn keychain_round_trip() {
+        if std::env::var_os("NIGHTFALL_TEST_KEYCHAIN").is_none() {
+            return;
+        }
+        let id = format!("test-{}", nf_crypto::hex(&nf_crypto::random_bytes(8).unwrap()));
+        let k = Keychain::create(&id).expect("création");
+        let a = k.secret("ctx").expect("lecture");
+        let reopened = Keychain::open(SERVICE, &id).expect("réouverture");
+        let b = reopened.secret("ctx").expect("lecture 2");
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        k.destroy().unwrap();
+        assert!(Keychain::open(SERVICE, &id).is_err());
+    }
+}

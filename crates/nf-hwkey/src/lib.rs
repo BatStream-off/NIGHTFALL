@@ -82,6 +82,13 @@ pub trait DeviceSecret: Send + Sync {
 /// Create a brand new device secret on the best backend available.
 /// `install_id` makes key names unique per installation.
 pub fn create(profile: &nf_core::ProfilePaths, install_id: &str) -> Result<Box<dyn DeviceSecret>, HwKeyError> {
+    // CI end-to-end test on macOS only (a Keychain prompt cannot be
+    // answered on a build machine). Windows keeps its real TPM/DPAPI path.
+    #[cfg(all(feature = "insecure-software-backend-for-ci", target_os = "macos"))]
+    {
+        let _ = install_id;
+        return Ok(Box::new(SoftwareSecret::create(profile.software_secret())?));
+    }
     #[cfg(target_os = "windows")]
     {
         match windows_impl::Tpm::create(install_id) {
@@ -92,7 +99,7 @@ pub fn create(profile: &nf_core::ProfilePaths, install_id: &str) -> Result<Box<d
             }
         }
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "insecure-software-backend-for-ci")))]
     {
         let _ = profile;
         return Ok(Box::new(macos::Keychain::create(install_id)?));
