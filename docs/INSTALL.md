@@ -4,7 +4,7 @@ Les versions compilées sont produites automatiquement par GitHub Actions, sans 
 
 ## Où trouver les fichiers
 
-- **Versions publiées** : onglet *Releases* du dépôt GitHub.
+- **Versions publiées** : https://github.com/BatStream-off/NIGHTFALL/releases (aucun compte GitHub nécessaire). Une version n'y est publiée qu'après la réussite de tous les tests et de l'auto-test sur Windows et macOS.
 - **Dernière compilation de développement** : onglet *Actions* → workflow *CI* → dernière exécution réussie → section *Artifacts* (`NIGHTFALL-Windows`, `NIGHTFALL-macOS`). Il faut être connecté à GitHub pour télécharger un artefact.
 
 ## Windows 10 / 11 (64 bits)
