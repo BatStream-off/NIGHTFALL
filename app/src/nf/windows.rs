@@ -140,6 +140,25 @@ wrap_window_delegate! {
             1
         }
 
+        // CEF's Rust bindings answer "no" by default: without these the
+        // window cannot be resized, maximised or minimised, and macOS hides
+        // its standard buttons.
+        fn can_resize(&self, _window: Option<&mut Window>) -> i32 {
+            1
+        }
+
+        fn can_maximize(&self, _window: Option<&mut Window>) -> i32 {
+            1
+        }
+
+        fn can_minimize(&self, _window: Option<&mut Window>) -> i32 {
+            1
+        }
+
+        fn with_standard_window_buttons(&self, _window: Option<&mut Window>) -> i32 {
+            1
+        }
+
         fn window_runtime_style(&self) -> RuntimeStyle {
             RuntimeStyle::ALLOY
         }
@@ -235,6 +254,22 @@ wrap_window_delegate! {
 
         fn window_runtime_style(&self) -> RuntimeStyle {
             RuntimeStyle::ALLOY
+        }
+
+        fn can_resize(&self, _window: Option<&mut Window>) -> i32 {
+            1
+        }
+
+        fn can_maximize(&self, _window: Option<&mut Window>) -> i32 {
+            1
+        }
+
+        fn can_minimize(&self, _window: Option<&mut Window>) -> i32 {
+            1
+        }
+
+        fn with_standard_window_buttons(&self, _window: Option<&mut Window>) -> i32 {
+            1
         }
 
         fn can_close(&self, _window: Option<&mut Window>) -> i32 {
@@ -346,7 +381,16 @@ fn on_window_created(id: u32, window: Window) {
                 window.set_window_app_icon(Some(&mut icon));
             }
         }
-        window.center_window(Some(&Size { width: 1280, height: 820 }));
+        // Fit the screen: 1280x820 at most, 92 % of the work area otherwise.
+        let mut size = Size { width: 1280, height: 820 };
+        if let Some(d) = display_get_primary() {
+            let wa = d.work_area();
+            if wa.width > 0 && wa.height > 0 {
+                size.width = size.width.min(wa.width * 92 / 100);
+                size.height = size.height.min(wa.height * 92 / 100);
+            }
+        }
+        window.center_window(Some(&size));
         ctx.window = Some(window.clone());
     });
     apply_mode(id, !unlocked);
