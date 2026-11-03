@@ -47,6 +47,16 @@ jobs:
           security list-keychains -d user -s nf-ci.keychain $(security list-keychains -d user | tr -d '"')
           security default-keychain -d user -s nf-ci.keychain
           perl -e 'alarm 180; exec @ARGV' cargo test -p nf-hwkey keychain_round_trip -- --nocapture
+      - name: Rendu de l'interface (navigateur sans affichage)
+        if: runner.os == 'Linux'
+        run: |
+          rm -rf "$RUNNER_TEMP/ui" && cp -r app/ui "$RUNNER_TEMP/ui"
+          sed -i "s#'nightfall://app/api/'#'/api/'#" "$RUNNER_TEMP/ui/nf.js"
+          NF_UI_DIR="$RUNNER_TEMP/ui" NF_PORT=8765 python3 ci/ui_mock_server.py &
+          NF_UI_DIR="$RUNNER_TEMP/ui" NF_PORT=8766 NF_UNLOCKED=1 python3 ci/ui_mock_server.py &
+          sleep 1
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y > /dev/null && npm install --silent playwright@1 && npx playwright install --with-deps chromium > /dev/null
+          node "$GITHUB_WORKSPACE/ci/ui_render_test.js"
       - name: Lockfile
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -169,17 +179,6 @@ jobs:
           echo "--- réseau de la machine ---"; curl -sS -o /dev/null -w "curl http://example.com -> %{http_code}\n" http://example.com || true
           if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; scutil --dns | head -n 30 || true; fi
           grep -q "SELFTEST OK" "$LOG"
-      - name: Expériences d'affichage (diagnostic)
-        if: always() && steps.pkg.outcome == 'success'
-        shell: bash
-        env:
-          NIGHTFALL_DIST_DIR: ${{ runner.temp }}/selftest-dist
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pwsh -File ci/ui_experiments.ps1 -Bin "$NIGHTFALL_DIST_DIR/NIGHTFALL/nightfall.exe"
-          else
-            bash ci/ui_experiments.sh "$NIGHTFALL_DIST_DIR/NIGHTFALL.app/Contents/MacOS/nightfall"
-          fi
       - uses: actions/upload-artifact@v4
         with:
           name: NIGHTFALL-${{ runner.os }}

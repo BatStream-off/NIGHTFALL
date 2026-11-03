@@ -141,9 +141,6 @@ wrap_window_delegate! {
         }
 
         fn window_runtime_style(&self) -> RuntimeStyle {
-            if ui_experiment().starts_with("chromewin") {
-                return RuntimeStyle::CHROME;
-            }
             RuntimeStyle::ALLOY
         }
     }
@@ -249,25 +246,11 @@ wrap_window_delegate! {
 
 // ---------------------------------------------------------------- windows
 
-/// CI display experiments (selftest builds only): NIGHTFALL_UI_EXPERIMENT.
-#[cfg(feature = "selftest")]
-fn ui_experiment() -> String {
-    std::env::var("NIGHTFALL_UI_EXPERIMENT").unwrap_or_default()
-}
-#[cfg(not(feature = "selftest"))]
-fn ui_experiment() -> String {
-    String::new()
-}
-
 fn ui_view(window_id: u32, mode: &str, private: bool, height: Arc<AtomicI32>, width: Arc<AtomicI32>) -> BrowserView {
-    let mut url = format!(
+    let url = format!(
         "nightfall://app/shell.html?mode={mode}&w={window_id}&private={}",
         if private { 1 } else { 0 }
     );
-    let exp = ui_experiment();
-    if !exp.is_empty() && !exp.ends_with("-shell") && mode == "top" {
-        url = "nightfall://app/probe.html".into();
-    }
     let mut client = make_client(ClientKind::Ui { window_id, side: mode == "side" });
     let mut delegate = UiViewDelegate::new(height, width);
     let settings = BrowserSettings { background_color: 0xFF0A0C10, ..Default::default() };
@@ -328,24 +311,6 @@ pub fn create_window(private: bool, urls: Vec<String>) {
 
 fn on_window_created(id: u32, window: Window) {
     let unlocked = core().is_unlocked();
-    let exp = ui_experiment();
-    if exp.starts_with("direct") || exp.starts_with("soft-") {
-        // Simplest possible layout: the top interface view alone in the window.
-        state::log(&format!("expérience d'affichage : {exp}"));
-        let top = with_window(id, |ctx| ctx.top.clone());
-        if let Some(top) = top {
-            window.set_to_fill_layout();
-            let mut v = View::from(&top);
-            window.add_child_view(Some(&mut v));
-            window.center_window(Some(&Size { width: 1280, height: 820 }));
-            with_window(id, |ctx| ctx.window = Some(window.clone()));
-            window.show();
-        }
-        return;
-    }
-    if exp.starts_with("nobg") {
-        state::log(&format!("expérience d'affichage : {exp}"));
-    }
     with_window(id, |ctx| {
         let win_layout = window.set_to_box_layout(Some(&BoxLayoutSettings { horizontal: 1, cross_axis_alignment: AxisAlignment::STRETCH, ..Default::default() }));
         let mut side = View::from(&ctx.side);
@@ -365,16 +330,12 @@ fn on_window_created(id: u32, window: Window) {
             l.set_flex_for_view(Some(&mut content), 1);
         }
         ctx.content.set_to_fill_layout();
-        if !exp.starts_with("nobg") {
-            ctx.content.set_background_color(0xFF0A0C10);
-            ctx.column.set_background_color(0xFF0A0C10);
-        }
+        ctx.content.set_background_color(0xFF0A0C10);
+        ctx.column.set_background_color(0xFF0A0C10);
         ctx.win_layout = win_layout;
         ctx.col_layout = col_layout;
         window.set_title(Some(&CefString::from(if ctx.private { "NIGHTFALL · Navigation privée" } else { "NIGHTFALL" })));
-        if !exp.starts_with("nobg") {
-            window.set_background_color(0xFF0A0C10);
-        }
+        window.set_background_color(0xFF0A0C10);
         if let Some(mut icon) = image_create() {
             if icon.add_png(1.0, Some(WINDOW_ICON)) != 0 {
                 window.set_window_icon(Some(&mut icon));

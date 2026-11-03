@@ -85,3 +85,4 @@ button.icon.on { color: var(--blue-2); }
 .vtab:hover { background: var(--graphite); }
 .vtab .t-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .vtab .t-close { border: 0; background: transparent; color: var(--muted); padding: 0 4px; }
+.lock-form input::placeholder { letter-spacing: normal; font-size: 14px; }
