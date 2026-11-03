@@ -200,7 +200,7 @@ fn step_unlock() {
     // Shield on a real page: scriptlet, CSS hiding rule, procedural rule.
     step("Shield : scriptlet, masquage et règle procédurale");
     let mut cfg = state::shield().config();
-    cfg.custom_filters = "||ads.nightfall-selftest.invalid^\nexample.com##+js(set-constant, nfShieldTest, 42)\nexample.com##h1\nexample.com##p:has-text(/documentation|documentación/)\n".into();
+    cfg.custom_filters = "||ads.nightfall-selftest.invalid^\nexample.com##+js(set-constant, nfShieldTest, 42)\nexample.com##.nf-selftest-pub\nexample.com##p:has-text(nightfall-procedural-test)\n##.nf-selftest-generic\n".into();
     state::shield().set_config(cfg);
     windows::navigate_active(1, "https://example.com/");
     wait_for("affichage final de https://example.com", 40, || active_tab_loaded("https://example.com"), || {
@@ -208,16 +208,23 @@ fn step_unlock() {
         on_ui_delayed(1500, || {
             if let Some(b) = windows::active_browser(1) {
                 if let Some(f) = b.main_frame() {
-                    let js = "console.log('shield-check ' + JSON.stringify({ scriptlet: window.nfShieldTest === 42, \
-                        h1: getComputedStyle(document.querySelector('h1')).display === 'none', \
-                        procedural: [...document.querySelectorAll('p')].some(function (p) { return p.style.display === 'none'; }) }));";
+                    // Elements created now: the hiding rules must catch them.
+                    let js = "(function () { \
+                        var pub = document.createElement('div'); pub.className = 'nf-selftest-pub'; pub.textContent = 'x'; document.body.appendChild(pub); \
+                        var p = document.createElement('p'); p.textContent = 'nightfall-procedural-test'; document.body.appendChild(p); \
+                        var g = document.createElement('div'); g.className = 'nf-selftest-generic'; g.textContent = 'x'; document.body.appendChild(g); \
+                        setTimeout(function () { console.log('shield-check ' + JSON.stringify({ \
+                          scriptlet: window.nfShieldTest === 42, \
+                          css: getComputedStyle(pub).display === 'none', \
+                          procedural: getComputedStyle(p).display === 'none', \
+                          generic: getComputedStyle(g).display === 'none' })); }, 1500); })();";
                     f.execute_java_script(Some(&cef::CefString::from(js)), Some(&cef::CefString::from("nightfall://selftest")), 0);
                 }
             }
             wait_for("résultat du contrôle Shield", 20, || CONSOLE.lock().map(|c| c.is_some()).unwrap_or(false), || {
                 let res = CONSOLE.lock().ok().and_then(|c| c.clone()).unwrap_or_default();
                 state::log(&format!("selftest: {res}"));
-                if !res.contains("\"scriptlet\":true") || !res.contains("\"h1\":true") || !res.contains("\"procedural\":true") {
+                if ["scriptlet", "css", "procedural", "generic"].iter().any(|k| !res.contains(&format!("\"{k}\":true"))) {
                     return fail(&format!("Shield sur example.com : {res}"));
                 }
                 DONE.store(true, std::sync::atomic::Ordering::SeqCst);
