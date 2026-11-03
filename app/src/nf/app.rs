@@ -26,6 +26,12 @@ wrap_app! {
                 // built-in resolver, so the system resolver is used instead.
                 #[cfg(all(feature = "selftest", target_os = "macos"))]
                 cl.append_switch_with_value(Some(&CefString::from("disable-features")), Some(&CefString::from("AsyncDns")));
+                // CI display experiment: software rendering only.
+                #[cfg(feature = "selftest")]
+                if std::env::var("NIGHTFALL_UI_EXPERIMENT").map(|e| e.contains("soft")).unwrap_or(false) {
+                    cl.append_switch(Some(&CefString::from("disable-gpu")));
+                    cl.append_switch(Some(&CefString::from("disable-gpu-compositing")));
+                }
                 // CI self test on macOS only: Chromium encrypts its cookie
                 // store with a Keychain key, and on a build machine the
                 // Keychain waits for an authorisation nobody can give, which

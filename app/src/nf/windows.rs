@@ -329,7 +329,7 @@ pub fn create_window(private: bool, urls: Vec<String>) {
 fn on_window_created(id: u32, window: Window) {
     let unlocked = core().is_unlocked();
     let exp = ui_experiment();
-    if exp.starts_with("direct") {
+    if exp.starts_with("direct") || exp.starts_with("soft-") {
         // Simplest possible layout: the top interface view alone in the window.
         state::log(&format!("expérience d'affichage : {exp}"));
         let top = with_window(id, |ctx| ctx.top.clone());
