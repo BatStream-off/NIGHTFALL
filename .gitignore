@@ -1,0 +1,14 @@
+/target
+**/*.rs.bk
+.DS_Store
+*.pdb
+/dist
+/bundle
+.idea/
+.vscode/
+*.log
+# Never commit local profiles or secrets
+*.secret
+*.db
+*.vault
+keystore.json
