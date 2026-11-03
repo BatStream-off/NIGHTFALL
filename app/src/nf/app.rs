@@ -40,6 +40,8 @@ wrap_browser_process_handler! {
                 .collect();
             windows::create_window(false, urls);
             timers::start();
+            #[cfg(feature = "selftest")]
+            super::selftest::start();
         }
     }
 }

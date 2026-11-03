@@ -24,6 +24,11 @@ fn cargo_build(release: bool) -> Result<()> {
     if release {
         cmd.arg("--release");
     }
+    if let Ok(features) = std::env::var("NIGHTFALL_FEATURES") {
+        if !features.is_empty() {
+            cmd.args(["--features", &features]);
+        }
+    }
     let status = cmd.status().context("cargo build")?;
     if !status.success() {
         bail!("la compilation de NIGHTFALL a échoué");
@@ -37,7 +42,7 @@ fn target_dir(release: bool) -> PathBuf {
 }
 
 fn dist_dir() -> PathBuf {
-    workspace_root().join("dist")
+    std::env::var_os("NIGHTFALL_DIST_DIR").map(PathBuf::from).unwrap_or_else(|| workspace_root().join("dist"))
 }
 
 #[cfg(target_os = "macos")]

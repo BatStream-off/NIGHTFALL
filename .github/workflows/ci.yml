@@ -103,6 +103,32 @@ jobs:
           grep -q "interface prête" "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log" || { echo "l'interface NIGHTFALL ne s'est pas chargée"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
           kill $PID; sleep 3; pkill -f NIGHTFALL.app || true
           tail -n 40 "$RUNNER_TEMP/nf.log"
+      - name: Auto-test de bout en bout (navigateur réel)
+        shell: bash
+        env:
+          NIGHTFALL_FEATURES: selftest
+          NIGHTFALL_DIST_DIR: ${{ runner.temp }}/selftest-dist
+          NIGHTFALL_SELFTEST: "1"
+        run: |
+          cargo xtask bundle
+          export NIGHTFALL_PROFILE_DIR="$RUNNER_TEMP/nf-selftest-profile"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            BIN="$NIGHTFALL_DIST_DIR/NIGHTFALL/nightfall.exe"
+          else
+            BIN="$NIGHTFALL_DIST_DIR/NIGHTFALL.app/Contents/MacOS/nightfall"
+          fi
+          "$BIN" > "$RUNNER_TEMP/selftest.out" 2>&1 &
+          PID=$!
+          LOG="$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
+          for i in $(seq 1 120); do
+            if [ -f "$LOG" ] && grep -qE "SELFTEST (OK|FAIL)" "$LOG"; then break; fi
+            sleep 2
+          done
+          sleep 3
+          kill $PID 2>/dev/null || true
+          if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM nightfall.exe > /dev/null 2>&1 || true; else pkill -f selftest-dist || true; fi
+          cat "$LOG" || true
+          grep -q "SELFTEST OK" "$LOG"
       - uses: actions/upload-artifact@v4
         with:
           name: NIGHTFALL-${{ runner.os }}

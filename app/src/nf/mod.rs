@@ -11,6 +11,8 @@ pub mod mac;
 pub mod scheme;
 pub mod scheme_registration;
 pub mod security;
+#[cfg(feature = "selftest")]
+pub mod selftest;
 pub mod session;
 pub mod state;
 pub mod timers;
