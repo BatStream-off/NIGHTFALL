@@ -133,10 +133,10 @@ wrap_display_handler! {
         fn on_title_change(&self, _browser: Option<&mut Browser>, title: Option<&CefString>) {
             let title = title.map(|t| t.to_string()).unwrap_or_default();
             if let ClientKind::Tab { window_id, tab_id, private } = *self.kind {
-                let mut url = String::new();
-                windows::update_tab(window_id, tab_id, |t| {
-                    t.title = title.clone();
-                    url = t.url.clone();
+                let url = windows::tab_url(window_id, tab_id).unwrap_or_default();
+                let new_title = title.clone();
+                windows::update_tab(window_id, tab_id, move |t| {
+                    t.title = new_title;
                 });
                 if !private && (url.starts_with("http://") || url.starts_with("https://")) {
                     if let Some(s) = core().storage() {
@@ -160,9 +160,10 @@ fn on_navigation(window_id: u32, tab_id: u32, private: bool, url: &str) {
             warning = Some(v);
         }
     }
-    windows::update_tab(window_id, tab_id, |t| {
-        t.url = url.to_string();
-        t.warning = warning.clone();
+    let (new_url, new_warning) = (url.to_string(), warning.clone());
+    windows::update_tab(window_id, tab_id, move |t| {
+        t.url = new_url;
+        t.warning = new_warning;
         t.crashed = false;
     });
     if let Some(w) = &warning {
@@ -276,7 +277,7 @@ wrap_load_handler! {
     impl LoadHandler {
         fn on_loading_state_change(&self, _browser: Option<&mut Browser>, is_loading: i32, can_go_back: i32, can_go_forward: i32) {
             if let ClientKind::Tab { window_id, tab_id, .. } = *self.kind {
-                windows::update_tab(window_id, tab_id, |t| {
+                windows::update_tab(window_id, tab_id, move |t| {
                     t.loading = is_loading != 0;
                     t.can_back = can_go_back != 0;
                     t.can_forward = can_go_forward != 0;
