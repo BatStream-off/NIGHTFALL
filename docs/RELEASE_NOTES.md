@@ -1,4 +1,14 @@
-**0.1.1 : corrige la fenêtre vide (grise) au premier lancement de la 0.1.0**, sur Windows et macOS. Nouvelle icône NIGHTFALL : application, barre des tâches, Dock, installateur et pages internes.
+**0.1.2**
+- **Fenêtre :** elle peut être agrandie, réduite, redimensionnée et fermée, avec les boutons standard de Windows et de macOS. Sa taille s'adapte à l'écran.
+- **NIGHTFALL Shield, bien plus efficace :**
+  - les listes uBlock filters sont ajoutées, dont les règles YouTube ;
+  - les scriptlets (règles `##+js`) sont écrits pour NIGHTFALL ;
+  - les règles procédurales sont prises en charge (`:has-text`, etc.) ;
+  - le masquage générique par classe et identifiant est ajouté ;
+  - l'injection se fait dès le début du chargement ;
+  - un défaut est corrigé : une seule règle invalide annulait jusqu'à 200 règles de masquage.
+- **VideoGuard :** si une publicité vidéo YouTube passe malgré Shield, elle est coupée et avancée jusqu'à la fin. Une indication s'affiche quand des segments sont repérés.
+- **Nouvelle interface :** palette de l'emblème, coins coupés hexagonaux, police Chakra Petch, icônes vectorielles, nouveaux onglets, écran de verrouillage avec une ville nocturne et nouvel onglet repensé.
 
 Première version utilisable de NIGHTFALL : navigateur Chromium (CEF) écrit en Rust, pour Windows 10/11 (64 bits) et macOS (Apple Silicon).
 
