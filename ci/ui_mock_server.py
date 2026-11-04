@@ -18,7 +18,9 @@ class H(http.server.SimpleHTTPRequestHandler):
             r = {"ok": True, "wallpaper": "city", "shortcuts": [
                 {"title": "YouTube", "url": "https://www.youtube.com/"}, {"title": "Wikipédia", "url": "https://fr.wikipedia.org/"},
                 {"title": "GitHub", "url": "https://github.com/"}, {"title": "Le Monde", "url": "https://www.lemonde.fr/"}],
-                "topSites": [{"title": "RTBF", "url": "https://www.rtbf.be/"}, {"title": "Reddit", "url": "https://www.reddit.com/"}]}
+                "topSites": [{"title": "RTBF", "url": "https://www.rtbf.be/"}, {"title": "Reddit", "url": "https://www.reddit.com/"},
+                             {"title": "OpenStreetMap", "url": "https://www.openstreetmap.org/"}, {"title": "Qwant", "url": "https://www.qwant.com/"}],
+                "stats": {"blocked": 735, "bytesSaved": 26738688, "secondsSaved": 37}}
         elif cmd == 'state':
             r = STATE
         else:
