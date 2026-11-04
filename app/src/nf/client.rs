@@ -273,6 +273,7 @@ wrap_life_span_handler! {
                 state::browsers().remove(&id);
                 blocked_map().remove(&id);
                 super::browsing::forget_browser(id);
+                super::https_first::done(id);
                 // Not closed by NIGHTFALL: the page closed itself
                 // (window.close() at the end of a login popup).
                 if let ClientKind::Tab { window_id, tab_id, .. } = *self.kind {
@@ -373,14 +374,23 @@ wrap_load_handler! {
 
         fn on_load_error(
             &self,
-            _browser: Option<&mut Browser>,
-            _frame: Option<&mut Frame>,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
             error_code: Errorcode,
             error_text: Option<&CefString>,
             failed_url: Option<&CefString>,
         ) {
             let code = { let raw: cef::sys::cef_errorcode_t = error_code.into(); raw as i32 };
             let text = error_text.map(|t| t.to_string()).unwrap_or_default();
+            // HTTPS-First: the upgraded https:// address does not work.
+            if let (ClientKind::Tab { .. }, Some(b), Some(f)) = (&*self.kind, browser, frame) {
+                if f.is_main() != 0 {
+                    let failed = failed_url.map(|u| u.to_string()).unwrap_or_default();
+                    if let Some(http) = super::https_first::on_load_error(b.identifier(), &failed, code) {
+                        load_later(b, super::https_first::warning_url(&http), true);
+                    }
+                }
+            }
             match *self.kind {
                 ClientKind::Ui { .. } => {
                     let url = failed_url.map(|u| u.to_string()).unwrap_or_default();
@@ -395,6 +405,12 @@ wrap_load_handler! {
             let Some(frame) = frame else { return };
             if let ClientKind::Tab { .. } = *self.kind {
                 let url = cef_to_string(&frame.url());
+                // Default page zoom (Paramètres > Apparence).
+                if frame.is_main() != 0 {
+                    if let Some(b) = _browser {
+                        super::prefs::apply_default_zoom(b, &url);
+                    }
+                }
                 if !(url.starts_with("http://") || url.starts_with("https://")) {
                     return;
                 }
@@ -402,6 +418,10 @@ wrap_load_handler! {
                 // injected as early as possible (before the page's scripts).
                 if let Some(js) = state::shield().page_script(&url, &shield_token()) {
                     frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
+                }
+                // Global Privacy Control, also readable by the page's scripts.
+                if super::prefs::GPC.load(std::sync::atomic::Ordering::Relaxed) {
+                    frame.execute_java_script(Some(&CefString::from(GPC_SCRIPT)), None, 0);
                 }
                 // VideoGuard on YouTube (main frame and embedded players).
                 let vg = core().videoguard.clone();
@@ -420,6 +440,8 @@ wrap_load_handler! {
             }
             if let ClientKind::Ui { .. } = *self.kind {
                 state::log(&format!("interface chargée : {} (HTTP {http_status_code})", cef_to_string(&frame.url())));
+            } else if http_status_code != 0 {
+                super::https_first::done(_browser.identifier());
             }
         }
     }
@@ -464,6 +486,38 @@ fn shield_generic_report(browser: &Browser, payload: &str) {
 
 // ------------------------------------------------------------------ request
 
+/// Requests sent with the Global Privacy Control header (self test).
+pub static GPC_SENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// `navigator.globalPrivacyControl`, as defined by the GPC specification.
+const GPC_SCRIPT: &str = "try{Object.defineProperty(Navigator.prototype,'globalPrivacyControl',{get:function(){return true},configurable:true,enumerable:true})}catch(e){}";
+
+/// Header added to a web request when Global Privacy Control is on. Only
+/// on document requests (pages and frames): on scripts or fetches, a
+/// non-standard header would turn cross-origin requests into CORS
+/// preflights and break sites.
+pub fn gpc_header(enabled: bool, url: &str, request_type: &str) -> Option<(&'static str, &'static str)> {
+    let web = url.starts_with("https://") || url.starts_with("http://");
+    (enabled && web && matches!(request_type, "main_frame" | "sub_frame")).then_some(("Sec-GPC", "1"))
+}
+
+/// Load `url` in the browser's main frame once the current callback has
+/// returned. `internal`: a NIGHTFALL page, allowed once for this tab.
+fn load_later(browser: &Browser, url: String, internal: bool) {
+    let id = browser.identifier();
+    if internal {
+        if let Some(info) = state::browsers().get_mut(&id) {
+            info.allow_internal_nav = true;
+        }
+    }
+    let b = browser.clone();
+    super::ui_thread::on_ui_delayed(0, move || {
+        if let Some(f) = b.main_frame() {
+            f.load_url(Some(&CefString::from(url.as_str())));
+        }
+    });
+}
+
 wrap_request_handler! {
     struct NfRequest {
         kind: Arc<ClientKind>,
@@ -492,6 +546,22 @@ wrap_request_handler! {
                 }
                 ClientKind::Tab { .. } => {
                     if !target.starts_with("nightfall://") {
+                        if is_main && target.starts_with("http://") {
+                            let enabled = super::prefs::HTTPS_FIRST.load(std::sync::atomic::Ordering::Relaxed);
+                            match super::https_first::on_navigation(browser.identifier(), &target, enabled) {
+                                super::https_first::Action::Continue => {}
+                                super::https_first::Action::Upgrade(https) => {
+                                    #[cfg(feature = "selftest")]
+                                    state::log(&format!("selftest: HTTPS-First {target} -> {https}"));
+                                    load_later(browser, https, false);
+                                    return 1;
+                                }
+                                super::https_first::Action::Warn(http) => {
+                                    load_later(browser, super::https_first::warning_url(&http), true);
+                                    return 1;
+                                }
+                            }
+                        }
                         return 0;
                     }
                     if !is_main {
@@ -611,6 +681,15 @@ wrap_resource_request_handler! {
             let (Some(browser), Some(request)) = (browser, request) else { return ReturnValue::CONTINUE };
             let url = cef_to_string(&request.url());
             let rtype = nf_shield::request_type_from_cef(request.resource_type().get_raw() as i32);
+            if let Some((name, value)) = gpc_header(super::prefs::GPC.load(std::sync::atomic::Ordering::Relaxed), &url, rtype) {
+                request.set_header_by_name(Some(&CefString::from(name)), Some(&CefString::from(value)), 1);
+                GPC_SENT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                #[cfg(feature = "selftest")]
+                if rtype == "main_frame" {
+                    let back = cef_to_string(&request.header_by_name(Some(&CefString::from(name))));
+                    state::log(&format!("selftest: en-tête {name} = {back:?} ({url})"));
+                }
+            }
             if rtype == "main_frame" {
                 #[cfg(feature = "selftest")]
                 state::log(&format!("selftest: on_before_resource_load (main_frame) {url}"));
@@ -741,5 +820,20 @@ wrap_keyboard_handler! {
                 None => 0,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_privacy_control_header() {
+        assert_eq!(gpc_header(true, "https://example.com/", "main_frame"), Some(("Sec-GPC", "1")));
+        assert_eq!(gpc_header(true, "http://example.com/frame", "sub_frame"), Some(("Sec-GPC", "1")));
+        assert_eq!(gpc_header(true, "https://cdn.example/x.js", "script"), None);
+        assert_eq!(gpc_header(false, "https://example.com/", "main_frame"), None);
+        assert_eq!(gpc_header(true, "nightfall://app/settings.html", "main_frame"), None);
+        assert_eq!(gpc_header(true, "data:text/html,x", "main_frame"), None);
     }
 }

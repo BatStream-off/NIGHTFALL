@@ -411,6 +411,16 @@ impl Storage {
         Ok(())
     }
 
+    /// Forget the download records started between `from` and `to`
+    /// (inclusive, unix seconds). Downloads still running are kept and the
+    /// downloaded files are never touched.
+    pub fn delete_downloads_range(&self, from: i64, to: i64) -> Result<usize> {
+        Ok(self.conn.execute(
+            "DELETE FROM downloads WHERE started >= ?1 AND started <= ?2 AND state NOT IN ('in_progress', 'paused')",
+            [from, to],
+        )?)
+    }
+
     // ---------- session restore ----------
 
     pub fn save_session(&self, tabs: &[SessionTab]) -> Result<()> {
@@ -539,6 +549,48 @@ mod tests {
         assert_eq!(s.delete_history_range(0, 250).unwrap(), 1);
         s.clear_history().unwrap();
         assert!(s.history(&HistoryQuery::default()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn clear_browsing_data_by_time_range() {
+        let s = Storage::open_in_memory(&key()).unwrap();
+        let now = 1_800_000_000;
+        s.record_visit("https://old.example/", "Ancien", now - 8 * 86_400).unwrap();
+        s.record_visit("https://day.example/", "Hier", now - 3_600 * 5).unwrap();
+        s.record_visit("https://recent.example/", "Récent", now - 600).unwrap();
+        // "Last hour": only the recent visit goes.
+        assert_eq!(s.delete_history_range(now - 3_600, i64::MAX).unwrap(), 1);
+        let left: Vec<String> = s.history(&HistoryQuery::default()).unwrap().into_iter().map(|h| h.url).collect();
+        assert_eq!(left, vec!["https://day.example/", "https://old.example/"]);
+        // "Last 7 days": the visit of 5 hours ago goes, the old one stays.
+        assert_eq!(s.delete_history_range(now - 7 * 86_400, i64::MAX).unwrap(), 1);
+        assert_eq!(s.history(&HistoryQuery::default()).unwrap().len(), 1);
+        // "All time".
+        assert_eq!(s.delete_history_range(0, i64::MAX).unwrap(), 1);
+        assert!(s.history(&HistoryQuery::default()).unwrap().is_empty());
+
+        let rec = |started: i64, state: &str| DownloadRecord {
+            id: 0,
+            url: "https://x.example/f.zip".into(),
+            path: format!("/tmp/f{started}.zip"),
+            mime: String::new(),
+            total_bytes: 1,
+            received_bytes: 1,
+            state: state.into(),
+            started,
+            finished: Some(started),
+            signature: "unknown".into(),
+            danger: String::new(),
+        };
+        s.insert_download(&rec(now - 30 * 86_400, "complete")).unwrap();
+        s.insert_download(&rec(now - 60, "complete")).unwrap();
+        s.insert_download(&rec(now - 30, "in_progress")).unwrap();
+        // Last 24 hours: the finished recent record goes, the running one stays.
+        assert_eq!(s.delete_downloads_range(now - 86_400, i64::MAX).unwrap(), 1);
+        let states: Vec<(i64, String)> = s.downloads().unwrap().into_iter().map(|d| (d.started, d.state)).collect();
+        assert_eq!(states, vec![(now - 30, "in_progress".to_string()), (now - 30 * 86_400, "complete".to_string())]);
+        assert_eq!(s.delete_downloads_range(0, i64::MAX).unwrap(), 1);
+        assert_eq!(s.downloads().unwrap().len(), 1);
     }
 
     #[test]

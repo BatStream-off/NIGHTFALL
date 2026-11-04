@@ -9,7 +9,7 @@ use super::api::{self, Caller};
 use super::state::{self, core, BrowserKind};
 use super::ui_thread::on_ui_delayed;
 use super::windows;
-use cef::{ImplBrowser, ImplBrowserHost, ImplFrame};
+use cef::{ImplBrowser, ImplBrowserHost, ImplFrame, ImplValue};
 use serde_json::{json, Value};
 
 const PIN: &str = "739204";
@@ -53,6 +53,25 @@ fn expect_ok(step: &str, v: &Value) -> bool {
         fail(&format!("{step}: {v}"));
         false
     }
+}
+
+/// Poll `cond` every 500 ms up to `tries` times, then call `next` with the
+/// outcome (true = condition met).
+fn wait_or(tries: u32, cond: fn() -> bool, next: fn(bool)) {
+    on_ui_delayed(500, move || {
+        if cond() {
+            next(true);
+        } else if tries == 0 {
+            next(false);
+        } else {
+            wait_or(tries - 1, cond, next);
+        }
+    });
+}
+
+fn active_tab_url_starts(prefix: &str) -> bool {
+    let st = windows::tabs_state(1);
+    st["tabs"].as_array().map(|tabs| tabs.iter().any(|t| t["active"].as_bool() == Some(true) && t["url"].as_str().unwrap_or("").starts_with(prefix))).unwrap_or(false)
 }
 
 /// Poll `cond` every 500 ms up to `tries` times, then run `next` or fail.
@@ -105,6 +124,10 @@ fn step_setup() {
     if !expect_ok("confirmation recovery", &call("recovery.confirm", json!({}))) {
         return;
     }
+    // No auto-lock during the test: a build machine has had no keyboard or
+    // mouse input for a long time (OS idle time), and the lock is tested
+    // explicitly below.
+    core().settings.auto_lock_minutes = 0;
     step("ouverture du premier onglet");
     wait_for("onglet Nouvel onglet", 30, || active_tab_loaded("nightfall://app/newtab"), step_navigate);
 }
@@ -122,12 +145,123 @@ fn step_navigate() {
 }
 
 fn step_https() {
+    // The upgrade above was made by NIGHTFALL's HTTPS-First (on by default).
+    let upgrades = super::https_first::UPGRADES.load(std::sync::atomic::Ordering::Relaxed);
+    state::log(&format!("selftest: HTTPS-First : {upgrades} passage(s) en HTTPS"));
+    if upgrades == 0 {
+        return fail("HTTPS-First : http://example.com n'a pas été passé en https par NIGHTFALL");
+    }
     step("navigation HTTPS");
     if !expect_ok("navigation HTTPS", &call("navigate", json!({ "input": "https://example.com/" }))) {
         return;
     }
-    wait_for("chargement de https://example.com", 60, || active_tab_loaded("https://example.com"), step_shield);
+    wait_for("chargement de https://example.com", 60, || active_tab_loaded("https://example.com"), step_prefs);
 }
+
+/// Settings round trip, search engine, and the settings applied through
+/// Chromium (preferences read back, default zoom, DNS over HTTPS).
+fn step_prefs() {
+    step("paramètres : aller-retour et préférences Chromium");
+    let gpc = super::client::GPC_SENT.load(std::sync::atomic::Ordering::Relaxed);
+    state::log(&format!("selftest: Global Privacy Control : en-tête ajouté à {gpc} requête(s)"));
+    if gpc == 0 {
+        return fail("Global Privacy Control : en-tête Sec-GPC jamais ajouté");
+    }
+    let mut s = core().settings.clone();
+    s.font_size = 20;
+    s.default_zoom = 125;
+    s.search_engine = "qwant".into();
+    s.accept_languages = "fr-FR,fr,en".into();
+    s.secure_dns = "quad9".into();
+    s.startup_mode = "pages".into();
+    s.startup_pages = vec!["https://example.com/".into()];
+    let r = call("settings.set", json!({ "settings": s }));
+    if !expect_ok("settings.set", &r) {
+        return;
+    }
+    for o in r["chromium"].as_array().cloned().unwrap_or_default() {
+        state::log(&format!("selftest: préférence {} : {}", o["name"].as_str().unwrap_or("?"), if o["ok"].as_bool() == Some(true) { "acceptée".to_string() } else { format!("REFUSÉE ({})", o["error"].as_str().unwrap_or("")) }));
+    }
+    let back = call("settings.get", json!({}));
+    let bs = &back["settings"];
+    if bs["font_size"] != 20 || bs["default_zoom"] != 125 || bs["search_engine"] != "qwant" || bs["startup_pages"][0] != "https://example.com/" || bs["restore_session"] != false {
+        return fail(&format!("aller-retour des paramètres : {bs}"));
+    }
+    let url = api::resolve_input("chat noir", &core().settings);
+    if !url.starts_with("https://www.qwant.com/?q=chat+noir") {
+        return fail(&format!("moteur de recherche : {url}"));
+    }
+    state::log("selftest: aller-retour des paramètres et moteur de recherche ok");
+    let int = |n: &str| super::prefs::read_back(n, false).map(|v| v.int());
+    let text = |n: &str, g: bool| super::prefs::read_back(n, g).map(|v| cef::CefString::from(&v.string()).to_string());
+    state::log(&format!(
+        "selftest: relu dans Chromium : police={:?} cookies={:?} webrtc={:?} langues={:?} doh={:?} {:?}",
+        int("webkit.webprefs.default_font_size"),
+        int("profile.cookie_controls_mode"),
+        text("webrtc.ip_handling_policy", false),
+        text("intl.accept_languages", false),
+        text("dns_over_https.mode", true),
+        text("dns_over_https.templates", true)
+    ));
+    on_ui_delayed(500, || {
+        // DNS over HTTPS (Quad9, strict mode): a host never resolved before.
+        step("DNS sécurisé (Quad9) et zoom par défaut : chargement de https://www.example.org");
+        let _ = call("tab.new", json!({ "url": "https://www.example.org/" }));
+        wait_or(40, || active_tab_loaded("https://www.example.org"), |loaded| {
+            state::log(&format!("selftest: DNS sécurisé : https://www.example.org {}", if loaded { "chargé" } else { "NON chargé" }));
+            // Default zoom 125 % applied to the new page.
+            let want = super::prefs::zoom_level(125);
+            let zoom = windows::active_browser(1).and_then(|b| b.host()).map(|h| h.zoom_level());
+            state::log(&format!("selftest: zoom par défaut attendu {want:.4}, lu {zoom:?}"));
+            if loaded && zoom.map(|z| (z - want).abs() > 1e-3).unwrap_or(true) {
+                return fail("zoom par défaut non appliqué");
+            }
+            let r = call("settings.set", json!({ "settings": state::Settings { auto_lock_minutes: 0, ..Default::default() } }));
+            if !expect_ok("paramètres par défaut", &r) {
+                return;
+            }
+            step_insecure();
+        });
+    });
+}
+
+/// A public-looking name that does not exist: its https:// version always
+/// fails, so the warning page must appear (no third-party site involved).
+const NO_HTTPS: &str = "http://nightfall-https-first-selftest.example.net/";
+
+fn no_https_site_opened_over_http() -> bool {
+    let st = windows::tabs_state(1);
+    st["tabs"].as_array().map(|tabs| {
+        tabs.iter().any(|t| t["active"].as_bool() == Some(true) && t["loading"].as_bool() == Some(false) && t["url"].as_str().unwrap_or("").starts_with(NO_HTTPS))
+    }).unwrap_or(false)
+}
+
+/// HTTPS-First on a site without HTTPS: warning page, then "Continuer"
+/// loads the http:// address itself (not upgraded again).
+fn step_insecure() {
+    step("HTTPS-First : site sans HTTPS (avertissement puis Continuer)");
+    let _ = call("tab.new", json!({ "url": NO_HTTPS }));
+    wait_for("page d'avertissement HTTPS-First", 40, || active_tab_url_starts("nightfall://app/insecure.html"), || {
+        state::log("selftest: page d'avertissement HTTPS-First affichée");
+        let Some(tab_id) = windows::active_tab_id(1) else { return fail("onglet actif introuvable") };
+        let upgrades = super::https_first::UPGRADES.load(std::sync::atomic::Ordering::Relaxed);
+        let caller = Caller { kind: BrowserKind::Tab { window_id: 1, tab_id, private: false } };
+        let r = api::handle(&caller, "https.proceed", &json!({ "url": NO_HTTPS }));
+        if !expect_ok("Continuer vers le site", &r) {
+            return;
+        }
+        UPGRADES_BEFORE.store(upgrades, std::sync::atomic::Ordering::Relaxed);
+        wait_for("ouverture de l'adresse http:// après « Continuer »", 40, no_https_site_opened_over_http, || {
+            if super::https_first::UPGRADES.load(std::sync::atomic::Ordering::Relaxed) != UPGRADES_BEFORE.load(std::sync::atomic::Ordering::Relaxed) {
+                return fail("HTTPS-First : l'adresse a de nouveau été passée en https après « Continuer »");
+            }
+            state::log("selftest: HTTPS-First : adresse http:// ouverte telle quelle après « Continuer »");
+            step_shield();
+        });
+    });
+}
+
+static UPGRADES_BEFORE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn step_shield() {
     // History recorded for the real site.
@@ -195,6 +329,27 @@ fn step_unlock() {
         return;
     }
     state::log(&format!("selftest: protection du code = {}", status["status"]["lock"]["backend"]));
+    // "Effacer les données de navigation", last hour, every type.
+    step("effacement des données de navigation (dernière heure)");
+    let cleared = call("browsing.clear", json!({ "range": "hour", "history": true, "downloads": true, "cookies": true, "cache": true }));
+    if !expect_ok("effacement des données", &cleared) {
+        return;
+    }
+    let left = core().storage().and_then(|s| s.history(&nf_storage::HistoryQuery::default()).ok()).map(|h| h.len()).unwrap_or(99);
+    state::log(&format!("selftest: effacement : {cleared} ; historique restant : {left}"));
+    if cleared["history"].as_u64().unwrap_or(0) == 0 || left != 0 {
+        return fail("effacement de l'historique de la dernière heure");
+    }
+    // Cookies, site data and cache are cleared asynchronously.
+    on_ui_delayed(4000, step_final);
+}
+
+fn step_final() {
+    let sites = super::browsing_data::SITES_CLEARED.load(std::sync::atomic::Ordering::Relaxed);
+    state::log(&format!("selftest: données de {sites} site(s) effacées"));
+    if sites == 0 {
+        return fail("effacement des données des sites (DevTools Storage.clearDataForOrigin)");
+    }
     // End on a real web page so CI can check on screen that web content is
     // actually displayed (example.com: light page with dark text).
     // Shield on a real page: scriptlet, CSS hiding rule, procedural rule.
@@ -217,14 +372,15 @@ fn step_unlock() {
                           scriptlet: window.nfShieldTest === 42, \
                           css: getComputedStyle(pub).display === 'none', \
                           procedural: getComputedStyle(p).display === 'none', \
-                          generic: getComputedStyle(g).display === 'none' })); }, 1500); })();";
+                          generic: getComputedStyle(g).display === 'none', \
+                          gpc: navigator.globalPrivacyControl === true })); }, 1500); })();";
                     f.execute_java_script(Some(&cef::CefString::from(js)), Some(&cef::CefString::from("nightfall://selftest")), 0);
                 }
             }
             wait_for("résultat du contrôle Shield", 20, || CONSOLE.lock().map(|c| c.is_some()).unwrap_or(false), || {
                 let res = CONSOLE.lock().ok().and_then(|c| c.clone()).unwrap_or_default();
                 state::log(&format!("selftest: {res}"));
-                if ["scriptlet", "css", "procedural", "generic"].iter().any(|k| !res.contains(&format!("\"{k}\":true"))) {
+                if ["scriptlet", "css", "procedural", "generic", "gpc"].iter().any(|k| !res.contains(&format!("\"{k}\":true"))) {
                     return fail(&format!("Shield sur example.com : {res}"));
                 }
                 step_find();

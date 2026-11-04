@@ -157,6 +157,9 @@ button.icon.on { color: var(--arc); }
 #banner.danger { background: rgba(255, 93, 108, .12); color: #ffc9ce; border-color: rgba(255, 93, 108, .45); }
 #banner button { height: 26px; padding: 0 10px; }
 #banner button:first-of-type { margin-left: auto; }
+#banner .perm-remember { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+#banner .perm-remember input { width: 15px; height: 15px; margin: 0; padding: 0; accent-color: var(--hex); }
+body.no-home #b-home { display: none; }
 
 /* ---------- Popup view (mode=popup): the whole view is the dropdown ---------- */
 html.popup, html.popup body { background: transparent; }

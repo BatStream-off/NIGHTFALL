@@ -138,5 +138,9 @@ async function load() {
     sw('Activer l\'Auto-Purge', 'Désactivée par défaut.', ap.enabled, async (v) => { ap.enabled = v; check(await api('autopurge.set', { rules: ap }), 'Règles enregistrées'); }),
     ...apCats,
   ));
+  // Deep link from the settings: security.html#emergency.
+  const cards = root.querySelectorAll('.card');
+  cards[cards.length - 1].id = 'emergency';
+  if (location.hash === '#emergency') cards[cards.length - 1].scrollIntoView();
 }
 load();

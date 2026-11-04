@@ -204,8 +204,11 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             if !allowed.contains(&page.as_str()) {
                 return err("page inconnue");
             }
+            // Optional section of the page (settings.html#confidentialite).
+            let hash: String = s(body, "hash").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
+            let url = if hash.is_empty() { format!("nightfall://app/{page}.html") } else { format!("nightfall://app/{page}.html#{hash}") };
             on_ui(move || {
-                windows::add_tab(w, &format!("nightfall://app/{page}.html"), true);
+                windows::add_tab(w, &url, true);
             });
             ok()
         }
@@ -247,8 +250,29 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         "permission.answer" => {
             let id: u64 = s(body, "id").parse().unwrap_or(0);
             let allow = body.get("allow").and_then(Value::as_bool).unwrap_or(false);
-            on_ui(move || super::permissions::answer(id, allow));
+            let remember = body.get("remember").and_then(Value::as_bool).unwrap_or(false);
+            on_ui(move || super::permissions::answer(id, allow, remember));
             ok()
+        }
+        "permissions.forget" => {
+            // One decision ({origin, kind}) or all of them ({all: true}).
+            let all = body.get("all").and_then(Value::as_bool).unwrap_or(false);
+            let (origin, kind) = (s(body, "origin").to_string(), s(body, "kind").to_string());
+            let removed: Vec<state::SitePermission> = {
+                let mut c = core();
+                let (gone, kept): (Vec<_>, Vec<_>) =
+                    std::mem::take(&mut c.settings.site_permissions).into_iter().partition(|p| all || (p.origin == origin && p.kind == kind));
+                c.settings.site_permissions = kept;
+                c.save_settings();
+                gone
+            };
+            let n = removed.len();
+            on_ui(move || {
+                for p in removed {
+                    super::permissions::reset_chromium(&p.origin, &p.kind);
+                }
+            });
+            json!({ "ok": true, "removed": n })
         }
         "devtools" => {
             on_ui(move || windows::show_devtools(w));
@@ -256,11 +280,51 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         }
 
         // ---- settings
-        "settings.get" => {
-            let c = core();
-            json!({ "ok": true, "settings": c.settings, "prefs": c.prefs, "engines": ["duckduckgo", "google", "brave", "startpage", "qwant", "ecosia", "bing"] })
-        }
+        "settings.get" => settings_get(),
         "settings.set" => settings_set(body),
+        "settings.reset" => settings_reset(),
+        "browsing.clear" => super::browsing_data::clear(body),
+        "downloads.chooseFolder" => {
+            // Native folder picker, run from the settings tab; the page is
+            // told when the dialog closes (nfFolderChosen).
+            let BrowserKind::Tab { window_id, tab_id, .. } = caller.kind else { return err("interdit") };
+            let current = super::downloads::download_dir(core().settings.download_dir.as_deref());
+            on_ui(move || {
+                let Some(b) = windows::tab_browser(window_id, tab_id) else { return };
+                super::downloads::choose_folder(&b, &current, move |chosen| {
+                    if let Some(dir) = &chosen {
+                        let mut c = core();
+                        c.settings.download_dir = Some(dir.clone());
+                        c.save_settings();
+                    }
+                    windows::exec_in_tab(window_id, tab_id, &format!("window.nfFolderChosen && window.nfFolderChosen({})", chosen.is_some()));
+                });
+            });
+            ok()
+        }
+        "downloads.resetFolder" => {
+            let mut c = core();
+            c.settings.download_dir = None;
+            c.save_settings();
+            ok()
+        }
+        "system.proxySettings" => open_proxy_settings(),
+        "https.proceed" => {
+            // "Continuer vers le site" on the HTTPS-First warning page.
+            let BrowserKind::Tab { window_id, tab_id, .. } = caller.kind else { return err("interdit") };
+            let url = s(body, "url").to_string();
+            if !url.starts_with("http://") || url::Url::parse(&url).is_err() {
+                return err("adresse invalide");
+            }
+            super::https_first::allow(&url);
+            on_ui(move || {
+                if let Some(f) = windows::tab_browser(window_id, tab_id).and_then(|b| b.main_frame()) {
+                    use cef::ImplFrame;
+                    f.load_url(Some(&cef::CefString::from(url.as_str())));
+                }
+            });
+            ok()
+        }
 
         // ---- bookmarks
         "bookmarks.list" => {
@@ -545,6 +609,7 @@ fn state_json(w: u32) -> Value {
         "lockStatus": status,
         "splash": c.prefs.splash_enabled,
         "verticalTabs": c.settings.vertical_tabs,
+        "showHome": c.settings.show_home_button,
         "windowId": w,
         "private": private,
         "version": nf_core::VERSION,
@@ -708,13 +773,16 @@ fn after_unlock_ui() {
     super::idle::touch();
     let session = {
         let c = core();
-        if c.settings.restore_session {
-            c.storage().and_then(|s| s.load_session().ok()).unwrap_or_default()
-        } else {
-            Vec::new()
+        match c.settings.startup() {
+            state::Startup::Restore => c.storage().and_then(|s| s.load_session().ok()).unwrap_or_default(),
+            state::Startup::Pages => c.settings.startup_tabs(),
+            state::Startup::NewTab => Vec::new(),
         }
     };
     on_ui(move || {
+        // The user's settings are now known (encrypted database).
+        super::prefs::apply_all();
+        super::permissions::reset_temporary();
         session::restore_cookies();
         // Let the cookie store apply the restored cookies before pages load.
         on_ui_delayed(250, move || windows::after_unlock(session));
@@ -749,6 +817,8 @@ pub fn lock_now() {
     if !core().is_unlocked() {
         return;
     }
+    // Permission answers given without "Mémoriser" end here.
+    super::permissions::reset_temporary();
     session::save_session_snapshot();
     core().save_settings();
     windows::on_locked();
@@ -877,14 +947,61 @@ fn emergency_purge(body: &Value) -> Value {
     }
 }
 
+fn settings_get() -> Value {
+    let c = core();
+    let engines: Vec<Value> = state::SEARCH_ENGINES.iter().map(|(id, name, url)| json!({ "id": id, "name": name, "url": url })).collect();
+    let kinds: Vec<Value> = super::permissions::KINDS.iter().map(|(id, label, _, _)| json!({ "id": id, "label": label })).collect();
+    let platform = if cfg!(target_os = "windows") { "windows" } else if cfg!(target_os = "macos") { "macos" } else { "linux" };
+    json!({
+        "ok": true,
+        "settings": c.settings,
+        "prefs": c.prefs,
+        "engines": engines,
+        "permissionKinds": kinds,
+        "platform": platform,
+        "version": nf_core::VERSION,
+        "defaultDownloadDir": nf_downloads::default_download_dir().display().to_string(),
+        "downloadDir": super::downloads::download_dir(c.settings.download_dir.as_deref()).display().to_string(),
+        "spellcheckAvailable": super::prefs::SPELLCHECK_AVAILABLE,
+        "hardwareAccelerationAtStart": super::prefs::HW_ACCEL_AT_START.load(std::sync::atomic::Ordering::Relaxed),
+        "chromium": super::prefs::last_report(),
+    })
+}
+
+/// After a settings change: fast flags now, Chromium preferences on the UI
+/// thread (the report of what Chromium accepted is returned when ready).
+fn apply_settings_change(old: &state::Settings) -> Value {
+    let new = core().settings.clone();
+    super::prefs::update_flags(&new);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let layout = old.vertical_tabs != new.vertical_tabs || old.show_home_button != new.show_home_button;
+    on_ui(move || {
+        let report = super::prefs::apply_all();
+        let _ = tx.send(report);
+        if layout {
+            windows::apply_mode_all(false);
+            windows::push_event_all(&json!({ "type": "layout" }));
+        }
+    });
+    let report = rx.recv_timeout(std::time::Duration::from_secs(3)).unwrap_or_default();
+    json!({ "ok": true, "chromium": report })
+}
+
 fn settings_set(body: &Value) -> Value {
     let mut c = core();
-    let old_vertical = c.settings.vertical_tabs;
+    let old = c.settings.clone();
     if let Some(v) = body.get("settings") {
         match serde_json::from_value::<state::Settings>(v.clone()) {
             Ok(mut s) => {
-                // Auto-purge is changed only through autopurge.set (min 2 signals).
-                s.auto_purge = c.settings.auto_purge.clone();
+                // Auto-purge is changed only through autopurge.set (min 2
+                // signals); site decisions and the download folder through
+                // their own commands (a page with an older copy must not
+                // undo them).
+                s.auto_purge = old.auto_purge.clone();
+                s.site_permissions = old.site_permissions.clone();
+                s.permission_resets = old.permission_resets.clone();
+                s.download_dir = old.download_dir.clone();
+                s.sanitize();
                 c.settings = s;
             }
             Err(e) => return err(e),
@@ -897,15 +1014,38 @@ fn settings_set(body: &Value) -> Value {
         }
     }
     c.save_settings();
-    let vertical = c.settings.vertical_tabs;
     drop(c);
-    if vertical != old_vertical {
-        on_ui(|| {
-            windows::apply_mode_all(false);
-            windows::push_event_all(&json!({ "type": "layout" }));
-        });
-    }
-    ok()
+    apply_settings_change(&old)
+}
+
+/// Defaults everywhere; bookmarks, history, passwords, shortcuts, Shield,
+/// VideoGuard and the emergency rules are kept.
+fn settings_reset() -> Value {
+    let mut c = core();
+    let old = c.settings.clone();
+    c.settings = old.reset_keeping_data();
+    c.prefs = state::UiPrefs::default();
+    c.save_prefs();
+    c.save_settings();
+    drop(c);
+    let forget: Vec<state::SitePermission> = old.site_permissions.iter().chain(old.permission_resets.iter()).cloned().collect();
+    on_ui(move || {
+        for p in forget {
+            super::permissions::reset_chromium(&p.origin, &p.kind);
+        }
+    });
+    apply_settings_change(&old)
+}
+
+/// Open the operating system's proxy settings (Chromium uses them).
+fn open_proxy_settings() -> Value {
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("explorer.exe").arg("ms-settings:network-proxy").spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("/usr/bin/open").arg("x-apple.systempreferences:com.apple.Network-Settings.extension").spawn();
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let r: std::io::Result<std::process::Child> = Err(std::io::Error::other("non disponible"));
+    r.map(|_| ok()).unwrap_or_else(|e| err(format!("impossible d'ouvrir les réglages du système : {e}")))
 }
 
 fn shield_set(body: &Value) -> Value {
