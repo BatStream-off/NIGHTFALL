@@ -186,6 +186,10 @@ Tant qu'une session n'a pas démarré avec ces fichiers en place :
   et sa consigne commence par : « Ton rôle est défini dans
   `.claude/agents/nf-<rôle>.md` : lis ce fichier en premier ; son contenu (sous
   l'en-tête) est ta consigne permanente » ;
+- l'option d'isolation automatique de l'outil Agent est refusée dans cette session :
+  le Directeur crée la copie isolée avec `python3 tools/agents/mission.py worktree <ID>`
+  (dossier `../wt-<ID>` sur la branche de la fiche) et la consigne de l'agent lui
+  impose de ne travailler que dans ce dossier ;
 - les crochets git (testés, actifs) protègent `develop` et `main` ;
 - le Directeur vérifie après chaque mission, en plus du diff : les branches distantes
   créées ou modifiées, les PR et leurs commentaires, et pour l'Auditeur qu'il n'a rien

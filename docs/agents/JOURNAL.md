@@ -9,7 +9,13 @@ raison, preuves.
   crochet PreToolUse de Claude Code inactif (`echo NF_DIRECTOR` exécuté), même après
   copie dans `~/.claude`, dans le dossier projet de la session et rechargement du dépôt.
   Le crochet git pre-push, lui, a refusé `git push --dry-run origin HEAD:develop`.
+- **Constat** : `isolation: worktree` de l'outil Agent refusé (« Permission to use Agent
+  with isolation:* has been denied »). Ajout de `mission.py worktree`.
 - **Décision** : mode de repli de la charte §10 pour la fin de cette session.
+
+## 2026-11-04 — M-0001 lancée
+- Analyste, modèle Sonnet (raison dans la fiche), copie `../wt-M-0001` depuis
+  `origin/orga/multi-agents`.
 
 ## 2026-11-04 — Mise en place de l'organisation multi-agents
 - **Décision** : création de l'organisation permanente (charte `ORGANISATION.md`,

@@ -8,6 +8,8 @@
                                                           vérifie que la branche ne touche
                                                           que les fichiers autorisés
   mission.py show <ID>                                    chemin de la fiche
+  mission.py worktree <ID> [--from origin/develop]        crée la copie isolée de l'agent
+                                                          (../wt-<ID>, branche de la fiche)
 
 Statuts : PRÉPARÉE, EN COURS, LIVRÉE, EN AUDIT, ACCEPTÉE, REFUSÉE, INTÉGRÉE, ABANDONNÉE.
 """
@@ -135,6 +137,25 @@ def cmd_scope(args):
     print("périmètre respecté")
 
 
+def cmd_worktree(args):
+    if not args:
+        die("usage : mission.py worktree <ID> [--from origin/develop]")
+    d = find(args[0])
+    t = open(os.path.join(MISSIONS, d, "mission.md"), encoding="utf-8").read()
+    branch = field(t, "Branche")
+    if not branch.startswith("agent/"):
+        die("la fiche doit nommer une branche agent/...")
+    start = args[args.index("--from") + 1] if "--from" in args else "origin/develop"
+    path = os.path.join(os.path.dirname(ROOT), f"wt-{d[:6]}")
+    if os.path.exists(path):
+        die(f"{path} existe déjà")
+    subprocess.run(["git", "-C", ROOT, "fetch", "-q", "origin"], check=True)
+    r = subprocess.run(["git", "-C", ROOT, "worktree", "add", "-q", "-b", branch, path, start], capture_output=True, text=True)
+    if r.returncode != 0:
+        die(r.stderr.strip())
+    print(path)
+
+
 def self_test():
     cases = [
         ("app/ui/settings.js", "app/ui/**", True),
@@ -159,7 +180,7 @@ def main():
     if sys.argv[1] == "--self-test":
         sys.exit(self_test())
     cmds = {"new": cmd_new, "list": cmd_list, "status": cmd_status, "scope": cmd_scope,
-            "show": lambda a: print(os.path.join("docs/agents/missions", find(a[0]), "mission.md"))}
+            "worktree": cmd_worktree, "show": lambda a: print(os.path.join("docs/agents/missions", find(a[0]), "mission.md"))}
     if sys.argv[1] not in cmds:
         die(f"commande inconnue : {sys.argv[1]}")
     cmds[sys.argv[1]](sys.argv[2:])
