@@ -199,6 +199,53 @@ jobs:
             dist/*-setup.exe
           if-no-files-found: error
 
+  # Shield audit (mission M-0003): measurements only, nothing is built into
+  # the browser. Runs on the audit branch or on demand, never on other PRs.
+  shield-audit-inputs:
+    name: Audit Shield — listes et exploration
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'agent/M-0003')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Listes de filtres et jeu de requêtes
+        run: python3 ci/shield_inputs.py "$RUNNER_TEMP/shield"
+      - name: Exploration de pages réelles (Chromium sans affichage, sans blocage)
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y > /dev/null && npm install --silent playwright@1 && npx playwright install --with-deps chromium > /dev/null
+          cp "$GITHUB_WORKSPACE/ci/shield_crawl.js" . && timeout 1500 node shield_crawl.js "$GITHUB_WORKSPACE/bench/pages.txt" "$RUNNER_TEMP/shield"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shield-audit-inputs
+          path: ${{ runner.temp }}/shield
+          retention-days: 7
+
+  shield-audit:
+    name: Audit Shield — mesures (${{ matrix.os }})
+    needs: shield-audit-inputs
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ilammy/setup-nasm@v1
+        if: runner.os == 'Windows'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: shield-audit
+      - uses: actions/download-artifact@v4
+        with:
+          name: shield-audit-inputs
+          path: shield-inputs
+      - name: Mesures (release)
+        shell: bash
+        run: |
+          cargo tree -p nf-shield --depth 1 | grep -E "adblock|psl" || true
+          cargo run --release -p nf-shield --example shield_audit -- shield-inputs
+
   # Published from the main branch, once per version number, and only once
   # every check above has passed (tests, start-up test, end-to-end self
   # test, security checks). The version tag is created by the release.
