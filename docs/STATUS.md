@@ -12,7 +12,9 @@ Légende :
 | Élément | État | Détail |
 | --- | --- | --- |
 | Compilation Windows (x64) et macOS (Apple Silicon) | ✅ | Workflow `CI`, job *Application* |
-| Démarrage de l'application + chargement de l'interface | ✅ Windows, ✅ macOS | Test de démarrage : processus vivant après 25 s, profil créé, interface chargée (`interface prête`) |
+| Démarrage de l'application + chargement de l'interface | ✅ Windows, ✅ macOS | Test de démarrage : processus vivant après 25 s, profil créé, interface chargée, **et capture d'écran contrôlée** : l'écran de création du code doit être réellement visible |
+| Affichage des pages web | ✅ Windows, ✅ macOS | Fin de l'auto-test : capture d'écran contrôlée, `https://example.com` doit être réellement affichée dans l'onglet |
+| Rendu des écrans de l'interface | ✅ | Test CI (Chromium sans affichage) : écran de verrouillage, barre d'outils, nouvel onglet, paramètres |
 | Style des vues CEF | Alloy | CEF n'accepte qu'**une seule** vue en style Chrome par fenêtre (erreur observée en CI : `Cannot add multiple Chrome style BrowserViews`). NIGHTFALL a besoin de plusieurs vues (interface + une par onglet), donc toutes sont en style Alloy. |
 | Installateur Windows (Inno Setup), version portable .zip, image .dmg macOS | voir dernière CI | Artefacts téléchargeables. Non signés (budget 0 €). |
 

@@ -115,17 +115,30 @@ wrap_display_handler! {
 
         fn on_console_message(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             _level: LogSeverity,
             message: Option<&CefString>,
             source: Option<&CefString>,
             line: i32,
         ) -> i32 {
+            if let ClientKind::Tab { .. } = *self.kind {
+                let msg = message.map(|m| m.to_string()).unwrap_or_default();
+                if let Some(payload) = msg.strip_prefix(shield_token().as_str()) {
+                    if let Some(b) = browser {
+                        shield_generic_report(b, payload);
+                    }
+                    return 1; // handled, not shown in the page's console
+                }
+            }
             // Only NIGHTFALL's own pages are logged (never web page content).
             let source = source.map(|s| s.to_string()).unwrap_or_default();
             if source.starts_with("nightfall://") {
                 let msg = message.map(|m| m.to_string()).unwrap_or_default();
                 state::log(&format!("console {source}:{line} {msg}"));
+                #[cfg(feature = "selftest")]
+                if source.starts_with("nightfall://selftest") {
+                    super::selftest::console_result(&msg);
+                }
             }
             0
         }
@@ -307,6 +320,26 @@ wrap_load_handler! {
             }
         }
 
+        fn on_load_start(&self, _browser: Option<&mut Browser>, frame: Option<&mut Frame>, _transition_type: TransitionType) {
+            let Some(frame) = frame else { return };
+            if let ClientKind::Tab { .. } = *self.kind {
+                let url = cef_to_string(&frame.url());
+                if !(url.starts_with("http://") || url.starts_with("https://")) {
+                    return;
+                }
+                // Shield: scriptlets, hiding rules and procedural filters,
+                // injected as early as possible (before the page's scripts).
+                if let Some(js) = state::shield().page_script(&url, &shield_token()) {
+                    frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
+                }
+                // VideoGuard on YouTube (main frame and embedded players).
+                let vg = core().videoguard.clone();
+                if let Some(js) = nf_videoguard::page_script(&url, &vg) {
+                    frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
+                }
+            }
+        }
+
         fn on_load_end(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>, http_status_code: i32) {
             let (Some(_browser), Some(frame)) = (browser, frame) else { return };
             if frame.is_main() == 0 {
@@ -314,30 +347,46 @@ wrap_load_handler! {
             }
             if let ClientKind::Ui { .. } = *self.kind {
                 state::log(&format!("interface chargée : {} (HTTP {http_status_code})", cef_to_string(&frame.url())));
-                // Start-up diagnostic, written to the NIGHTFALL log through
-                // on_console_message (only nightfall:// sources are logged).
-                const DIAG: &str = "console.log('diag origin=' + location.origin + ' scripts=' + document.scripts.length + ' api=' + (typeof api) + ' styles=' + document.styleSheets.length);\
-                    setTimeout(function(){ var l=document.getElementById('lock'); console.log('diag5s taille=' + innerWidth + 'x' + innerHeight + ' visible=' + document.visibilityState + ' lock=' + (l ? !l.hidden : 'absent') + ' mode=' + location.search); }, 5000);";
-                frame.execute_java_script(Some(&CefString::from(DIAG)), Some(&CefString::from("nightfall://app/diag")), 0);
-            }
-            if let ClientKind::Tab { .. } = *self.kind {
-                let url = cef_to_string(&frame.url());
-                if !(url.starts_with("http://") || url.starts_with("https://")) {
-                    return;
-                }
-                // Cosmetic filtering: hide ad containers.
-                if let Some(c) = state::shield().cosmetic(&url) {
-                    if !c.css.is_empty() {
-                        let css = serde_json::to_string(&c.css).unwrap_or_default();
-                        let js = format!(
-                            "(function(){{var s=document.getElementById('nf-shield-css');if(!s){{s=document.createElement('style');s.id='nf-shield-css';(document.head||document.documentElement).appendChild(s);}}s.textContent={css};}})();"
-                        );
-                        frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
-                    }
-                }
             }
         }
     }
+}
+
+/// Prefix of the page's reports of classes and ids (generic hiding rules).
+/// Random per session; a page that imitates it can only ask for CSS hiding
+/// rules computed from the filter lists, which is harmless.
+pub fn shield_token() -> String {
+    static TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TOKEN
+        .get_or_init(|| {
+            let r = nf_crypto::random_bytes(8).unwrap_or_else(|_| vec![7; 8]);
+            format!("\u{1}nfcos{}:", nf_crypto::hex(&r))
+        })
+        .clone()
+}
+
+/// A report of classes/ids seen in a page: answer with the matching generic
+/// hiding rules.
+fn shield_generic_report(browser: &Browser, payload: &str) {
+    #[derive(serde::Deserialize)]
+    struct Report {
+        #[serde(default)]
+        c: Vec<String>,
+        #[serde(default)]
+        i: Vec<String>,
+    }
+    let Ok(r) = serde_json::from_str::<Report>(payload) else { return };
+    if r.c.len() + r.i.len() > 5000 {
+        return;
+    }
+    let Some(frame) = browser.main_frame() else { return };
+    let url = cef_to_string(&frame.url());
+    let css = state::shield().generic_css(&url, &r.c, &r.i);
+    if css.is_empty() {
+        return;
+    }
+    let js = format!("window.__nfShieldAddCss && window.__nfShieldAddCss({});", serde_json::to_string(&css).unwrap_or_default());
+    frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
 }
 
 // ------------------------------------------------------------------ request

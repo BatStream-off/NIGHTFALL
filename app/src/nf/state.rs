@@ -68,7 +68,7 @@ impl Default for Settings {
             restore_session: true,
             devtools_enabled: false,
             phishing_warnings: true,
-            wallpaper: "nebula".into(),
+            wallpaper: "city".into(),
             shortcuts: vec![
                 Shortcut { title: "YouTube".into(), url: "https://www.youtube.com/".into() },
                 Shortcut { title: "Wikipédia".into(), url: "https://fr.wikipedia.org/".into() },

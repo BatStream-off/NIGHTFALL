@@ -7,36 +7,49 @@
   <link rel="stylesheet" href="nf.css">
   <style>
     html, body { height: 100%; }
-    body { display: grid; place-items: center; overflow: hidden; }
-    body[data-wall="nebula"] { background: radial-gradient(900px 500px at 70% 10%, rgba(47,109,255,.22), transparent 60%), radial-gradient(700px 500px at 10% 90%, rgba(120,80,255,.14), transparent 60%), var(--obsidian); }
-    body[data-wall="city"] { background: linear-gradient(180deg, #0a0c10 0%, #0d1320 55%, #142036 100%); }
-    body[data-wall="graphite"] { background: linear-gradient(160deg, #15181f, #0a0c10); }
-    body[data-wall="midnight"] { background: radial-gradient(1200px 700px at 50% 120%, rgba(47,109,255,.28), transparent 60%), #05070a; }
-    .wrap { width: min(760px, 92vw); display: grid; gap: 22px; justify-items: center; margin-top: -6vh; }
-    .clock { font-size: 64px; font-weight: 200; letter-spacing: .04em; text-shadow: 0 0 30px rgba(47,109,255,.35); }
-    .date { color: var(--muted); margin-top: -18px; text-transform: capitalize; }
-    .search { width: 100%; display: flex; gap: 8px; }
-    .search input { height: 48px; font-size: 16px; border-radius: 14px; padding: 0 18px; background: rgba(15,18,24,.85); }
-    .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; width: 100%; }
-    .tile { display: grid; justify-items: center; gap: 6px; padding: 14px 8px; border-radius: 14px; background: rgba(23,27,35,.75); border: 1px solid var(--line); text-decoration: none; color: var(--text); position: relative; }
-    .tile:hover { border-color: var(--blue); box-shadow: var(--glow); }
-    .tile .ic { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--graphite-3); font-weight: 700; }
-    .tile .nm { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tile .rm { position: absolute; top: 4px; right: 6px; border: 0; background: transparent; color: var(--muted); padding: 0; display: none; }
-    .tile:hover .rm { display: block; }
-    .links { display: flex; gap: 10px; }
-    .section-title { justify-self: start; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    body { display: grid; place-items: center; overflow: hidden; background: linear-gradient(180deg, #070b16 0%, var(--night) 75%); }
+    body::after { content: ""; position: fixed; inset: auto 0 0 0; height: 24vh; min-height: 120px; background: url(skyline.svg) bottom / cover no-repeat; pointer-events: none; opacity: .9; }
+    body[data-wall="nebula"] { background: radial-gradient(900px 520px at 72% 4%, rgba(58, 119, 232, .20), transparent 62%), radial-gradient(700px 480px at 8% 96%, rgba(92, 214, 230, .08), transparent 60%), var(--night); }
+    body[data-wall="midnight"] { background: radial-gradient(1100px 620px at 50% 118%, rgba(58, 119, 232, .30), transparent 62%), #04060b; }
+    body[data-wall="graphite"] { background: linear-gradient(160deg, #121722, #06080e); }
+    body[data-wall="graphite"]::after, body[data-wall="nebula"]::after { display: none; }
+    .wrap { position: relative; z-index: 1; width: min(720px, 90vw); display: grid; gap: 14px; justify-items: center; margin-top: -4vh; }
+    .clock { font: 500 76px/1 var(--display); letter-spacing: .02em; color: #eef3ff; font-variant-numeric: tabular-nums; }
+    .date { color: var(--mist); font-size: 15px; margin-bottom: 22px; }
+    .date::first-letter { text-transform: uppercase; }
+    .search { position: relative; width: 100%; }
+    .search svg { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; fill: none; stroke: var(--mist); stroke-width: 1.8; stroke-linecap: round; }
+    .search input { height: 54px; font-size: 16px; border-radius: 12px; padding: 0 20px 0 50px; background: rgba(12, 17, 29, .9); border-color: var(--steel-2); }
+    .search input:focus-visible { border-color: transparent; }
+    .group { width: 100%; margin-top: 26px; }
+    .group h2 { font: 500 13px var(--ui); color: var(--mist); margin: 0 0 10px; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; width: 100%; }
+    .tile { position: relative; display: grid; justify-items: center; gap: 9px; padding: 16px 8px 13px; border-radius: 10px; color: var(--moon); text-decoration: none; transition: background .12s; }
+    .tile:hover { background: rgba(17, 24, 40, .85); text-decoration: none; }
+    .tile .ic {
+      width: 44px; height: 44px; display: grid; place-items: center; font: 600 18px var(--display); color: #eaf4ff;
+      background: linear-gradient(150deg, #1b3a78, #16465a);
+      clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+    }
+    .tile .nm { font-size: 12.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c6d0e3; }
+    .tile .rm { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--mist); display: none; }
+    .tile:hover .rm { display: inline-flex; }
+    .tile .rm:hover { background: var(--steel-2); color: #fff; }
+    .links { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 30px; }
+    .links button { background: transparent; border-color: transparent; color: var(--mist); }
+    .links button:hover { background: rgba(17, 24, 40, .85); color: var(--moon); }
   </style>
 </head>
-<body data-wall="nebula">
+<body data-wall="city">
   <div class="wrap">
     <div class="clock" id="clock"></div>
     <div class="date" id="date"></div>
-    <form class="search" id="search"><input id="q" placeholder="Rechercher sur le Web ou saisir une adresse" autocomplete="off" autofocus></form>
-    <div class="section-title">Raccourcis</div>
-    <div class="tiles" id="shortcuts"></div>
-    <div class="section-title" id="top-title">Sites fréquents</div>
-    <div class="tiles" id="top"></div>
+    <form class="search" id="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+      <input id="q" placeholder="Rechercher sur le Web ou saisir une adresse" aria-label="Rechercher ou saisir une adresse" autocomplete="off" autofocus>
+    </form>
+    <section class="group" id="shortcuts-group"><h2>Raccourcis</h2><div class="tiles" id="shortcuts"></div></section>
+    <section class="group" id="top-group"><h2>Sites que vous visitez souvent</h2><div class="tiles" id="top"></div></section>
     <div class="links">
       <button id="add">Ajouter un raccourci</button>
       <button id="wall">Changer de fond</button>

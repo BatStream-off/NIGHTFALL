@@ -14,6 +14,11 @@ class H(http.server.SimpleHTTPRequestHandler):
             r = {"ok": True, "recoveryKey": "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345-6789"}
         elif cmd == 'recovery.confirm':
             STATE['awaitingRecovery'] = False; STATE['unlocked'] = True; r = {"ok": True}
+        elif cmd == 'newtab.data':
+            r = {"ok": True, "wallpaper": "city", "shortcuts": [
+                {"title": "YouTube", "url": "https://www.youtube.com/"}, {"title": "Wikipédia", "url": "https://fr.wikipedia.org/"},
+                {"title": "GitHub", "url": "https://github.com/"}, {"title": "Le Monde", "url": "https://www.lemonde.fr/"}],
+                "topSites": [{"title": "RTBF", "url": "https://www.rtbf.be/"}, {"title": "Reddit", "url": "https://www.reddit.com/"}]}
         elif cmd == 'state':
             r = STATE
         else:

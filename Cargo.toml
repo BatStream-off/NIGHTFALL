@@ -4,7 +4,7 @@ members = ["crates/*", "app", "xtask"]
 default-members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MPL-2.0"
 authors = ["NIGHTFALL contributors"]
@@ -41,7 +41,7 @@ sha2 = "0.10"
 zeroize = { version = "1", features = ["derive"] }
 getrandom = "0.2"
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
-adblock = { version = "0.13", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+adblock = { version = "0.13", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling", "css-validation"] }
 psl = "2"
 idna = "1"
 url = "2"
