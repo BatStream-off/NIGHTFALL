@@ -149,9 +149,25 @@ impl Core {
         if let Some(sh) = SHIELD.get() {
             if let Some(s) = self.storage() {
                 let _ = s.set_setting("shield", &sh.config());
+                let _ = s.set_setting("shield_total", &blocked_total());
             }
         }
     }
+}
+
+/// Items blocked by Shield since the profile was created: the saved total
+/// from previous sessions plus this session's counter.
+static BLOCKED_BASE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn blocked_total() -> u64 {
+    let session = SHIELD.get().map(|s| s.stats().total_blocked).unwrap_or(0);
+    BLOCKED_BASE.load(std::sync::atomic::Ordering::Relaxed) + session
+}
+
+/// Called when the encrypted database opens with the saved total.
+pub fn set_blocked_saved_total(saved: u64) {
+    let session = SHIELD.get().map(|s| s.stats().total_blocked).unwrap_or(0);
+    BLOCKED_BASE.store(saved.saturating_sub(session), std::sync::atomic::Ordering::Relaxed);
 }
 
 static CORE: OnceLock<Mutex<Core>> = OnceLock::new();

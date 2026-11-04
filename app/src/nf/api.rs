@@ -41,7 +41,7 @@ fn now() -> i64 {
 }
 
 /// Commands allowed before unlock.
-const PRE_UNLOCK: &[&str] = &["state", "setup", "unlock", "unlock.recovery", "recovery.confirm", "ui.activity", "ui.expand"];
+const PRE_UNLOCK: &[&str] = &["state", "setup", "unlock", "unlock.recovery", "recovery.confirm", "ui.activity", "ui.expand", "popup.close"];
 
 pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
     let unlocked = core().is_unlocked();
@@ -142,6 +142,25 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             ok()
         }
         "page.info" => page_info(w),
+        "popup.open" => {
+            let panel = s(body, "panel").to_string();
+            let num = |v: &Value, k: &str| v.get(k).and_then(Value::as_f64).unwrap_or(0.0).round() as i32;
+            let a = body.get("anchor").cloned().unwrap_or(Value::Null);
+            let anchor = cef::Rect { x: num(&a, "x"), y: num(&a, "y"), width: num(&a, "width"), height: num(&a, "height") };
+            let (width, height) = (num(body, "width"), num(body, "height"));
+            on_ui(move || windows::popup_open(w, &panel, anchor, width, height));
+            ok()
+        }
+        "popup.resize" => {
+            let num = |k: &str| body.get(k).and_then(Value::as_f64).unwrap_or(0.0).round() as i32;
+            let (width, height) = (num("width"), num("height"));
+            on_ui(move || windows::popup_resize(w, width, height));
+            ok()
+        }
+        "popup.close" => {
+            on_ui(move || windows::popup_close(w));
+            ok()
+        }
         "permission.answer" => {
             let id: u64 = s(body, "id").parse().unwrap_or(0);
             let allow = body.get("allow").and_then(Value::as_bool).unwrap_or(false);
@@ -222,7 +241,10 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         "newtab.data" => {
             let c = core();
             let top = c.storage().and_then(|s| s.top_sites(8).ok()).unwrap_or_default();
-            json!({ "ok": true, "shortcuts": c.settings.shortcuts, "wallpaper": c.settings.wallpaper, "topSites": top, "engine": c.settings.search_engine })
+            // Estimates, as other blockers do: ~40 KB and ~50 ms per blocked item.
+            let blocked = state::blocked_total();
+            let stats = json!({ "blocked": blocked, "bytesSaved": blocked * 40 * 1024, "secondsSaved": blocked / 20, "estimated": true });
+            json!({ "ok": true, "shortcuts": c.settings.shortcuts, "wallpaper": c.settings.wallpaper, "topSites": top, "engine": c.settings.search_engine, "stats": stats })
         }
 
         // ---- downloads (UI thread data)
@@ -588,6 +610,9 @@ fn open_stores(c: &mut Core, mk: nf_crypto::SecretKey) -> Result<(), String> {
         }
         if let Ok(Some(sh)) = st.setting::<nf_shield::ShieldConfig>("shield") {
             state::shield().set_config(sh.with_new_default_lists());
+        }
+        if let Ok(Some(total)) = st.setting::<u64>("shield_total") {
+            state::set_blocked_saved_total(total);
         }
     }
     c.unlocked = Some(Unlocked { master: mk, storage, vault, cookies_key: Some(cookies_key) });

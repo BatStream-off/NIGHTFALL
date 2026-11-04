@@ -66,6 +66,17 @@ pub struct WinCtx {
     pub pending_popups: Vec<u32>,
     /// URLs to open once the window exists and NIGHTFALL is unlocked.
     pub initial_urls: Vec<String>,
+    /// Dropdown popup (menu, Shield, passwords) shown over the page.
+    pub popup: Option<Popup>,
+}
+
+pub struct Popup {
+    pub panel: String,
+    pub view: BrowserView,
+    pub overlay: OverlayController,
+    /// Right edge and top of the popup, in window coordinates.
+    pub right: i32,
+    pub top: i32,
 }
 
 thread_local! {
@@ -290,12 +301,16 @@ fn ui_view(window_id: u32, mode: &str, private: bool, height: Arc<AtomicI32>, wi
         "nightfall://app/shell.html?mode={mode}&w={window_id}&private={}",
         if private { 1 } else { 0 }
     );
-    let mut client = make_client(ClientKind::Ui { window_id, side: mode == "side" });
+    ui_view_url(window_id, mode == "side", &url, height, width)
+}
+
+fn ui_view_url(window_id: u32, side: bool, url: &str, height: Arc<AtomicI32>, width: Arc<AtomicI32>) -> BrowserView {
+    let mut client = make_client(ClientKind::Ui { window_id, side });
     let mut delegate = UiViewDelegate::new(height, width);
     let settings = BrowserSettings { background_color: 0xFF0A0C10, ..Default::default() };
     browser_view_create(
         Some(&mut client),
-        Some(&CefString::from(url.as_str())),
+        Some(&CefString::from(url)),
         Some(&settings),
         None,
         None,
@@ -339,6 +354,7 @@ pub fn create_window(private: bool, urls: Vec<String>) {
             request_context,
             pending_popups: Vec::new(),
             initial_urls: urls,
+            popup: None,
         };
         if windows_mut(|v| v.push(ctx)).is_none() {
             return;
@@ -504,11 +520,13 @@ pub fn after_unlock(session: Vec<nf_storage::SessionTab>) {
 
 /// Lock: hide every window's content (pages keep running but are invisible).
 pub fn on_locked() {
+    popup_close_all();
     apply_mode_all(true);
     push_event_all(&serde_json::json!({ "type": "locked" }));
 }
 
 fn prepare_window_close(id: u32) {
+    popup_close(id);
     let (is_last_window, private) =
         windows_mut(|w| (w.len() == 1, w.iter().find(|c| c.id == id).map(|c| c.private).unwrap_or(false))).unwrap_or((false, false));
     if is_last_window || !private {
@@ -640,6 +658,7 @@ fn adopt_popup(window_id: u32, view: BrowserView) {
 }
 
 pub fn activate_tab(window_id: u32, tab_id: u32) {
+    popup_close(window_id);
     // Restore a discarded tab first.
     let restore = with_window(window_id, |ctx| {
         ctx.tabs.iter().find(|t| t.id == tab_id && t.discarded).map(|t| (t.url.clone(), ctx.private, ctx.request_context.clone()))
@@ -899,17 +918,99 @@ pub fn push_event(window_id: u32, event: &serde_json::Value) {
     let code = format!("window.nfEvent && window.nfEvent({event});");
     if windows_busy() {
         super::ui_thread::on_ui_delayed(0, move || {
-            with_window(window_id, |ctx| {
-                exec_js(&ctx.top, &code);
-                exec_js(&ctx.side, &code);
-            });
+            with_window(window_id, |ctx| send_to_ui_views(ctx, &code));
         });
         return;
     }
+    with_window(window_id, |ctx| send_to_ui_views(ctx, &code));
+}
+
+fn send_to_ui_views(ctx: &WinCtx, code: &str) {
+    exec_js(&ctx.top, code);
+    exec_js(&ctx.side, code);
+    if let Some(p) = &ctx.popup {
+        exec_js(&p.view, code);
+    }
+}
+
+// ------------------------------------------------------------------ popups
+
+const POPUP_MARGIN: i32 = 8;
+
+/// Open (or toggle) a dropdown popup anchored under a button of the top
+/// interface view. `anchor` is the button's rectangle in top-view CSS px.
+pub fn popup_open(window_id: u32, panel: &str, anchor: Rect, width: i32, height: i32) {
+    let same = with_window(window_id, |ctx| ctx.popup.as_ref().map(|p| p.panel == panel).unwrap_or(false)).unwrap_or(false);
+    popup_close(window_id);
+    if same {
+        return;
+    }
+    let Some((window, private, origin, area)) = with_window(window_id, |ctx| {
+        let col = View::from(&ctx.column).bounds();
+        let top = View::from(&ctx.top).bounds();
+        let area = Size { width: col.x + col.width, height: col.y + col.height };
+        ctx.window.clone().map(|w| (w, ctx.private, (col.x + top.x, col.y + top.y), area))
+    })
+    .flatten() else {
+        return;
+    };
+    let panel_id: String = panel.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(24).collect();
+    let url = format!(
+        "nightfall://app/shell.html?mode=popup&w={window_id}&private={}&panel={panel_id}",
+        if private { 1 } else { 0 }
+    );
+    let (w, h) = (width.clamp(160, 520), height.clamp(60, 640));
+    let view = ui_view_url(window_id, false, &url, Arc::new(AtomicI32::new(h)), Arc::new(AtomicI32::new(w)));
+    let mut v = View::from(&view);
+    let Some(overlay) = window.add_overlay_view(Some(&mut v), DockingMode::CUSTOM, 1) else {
+        state::log("menu déroulant : superposition refusée par CEF");
+        return;
+    };
+    let right = origin.0 + anchor.x + anchor.width;
+    let top = origin.1 + anchor.y + anchor.height + 6;
+    place_popup(area, &overlay, right, top, w, h);
+    overlay.set_visible(1);
+    view.request_focus();
     with_window(window_id, |ctx| {
-        exec_js(&ctx.top, &code);
-        exec_js(&ctx.side, &code);
+        ctx.popup = Some(Popup { panel: panel_id, view, overlay, right, top });
     });
+}
+
+/// `area`: size of the window's client area (where overlays live).
+fn place_popup(win: Size, overlay: &OverlayController, right: i32, top: i32, w: i32, h: i32) {
+    let max_h = (win.height - top - POPUP_MARGIN).max(80);
+    let h = h.min(max_h);
+    let x = (right - w).clamp(POPUP_MARGIN, (win.width - w - POPUP_MARGIN).max(POPUP_MARGIN));
+    overlay.set_bounds(Some(&Rect { x, y: top, width: w, height: h }));
+}
+
+/// The popup asks for a new size (after rendering its content).
+pub fn popup_resize(window_id: u32, width: i32, height: i32) {
+    with_window(window_id, |ctx| {
+        let col = View::from(&ctx.column).bounds();
+        let area = Size { width: col.x + col.width, height: col.y + col.height };
+        if let Some(p) = &ctx.popup {
+            place_popup(area, &p.overlay, p.right, p.top, width.clamp(160, 520), height.clamp(60, 640));
+        }
+    });
+}
+
+pub fn popup_close(window_id: u32) {
+    let popup = with_window(window_id, |ctx| ctx.popup.take()).flatten();
+    if let Some(p) = popup {
+        let host = p.view.browser().and_then(|b| b.host());
+        p.overlay.destroy();
+        if let Some(h) = host {
+            h.close_browser(1);
+        }
+        push_event(window_id, &serde_json::json!({ "type": "popup_closed" }));
+    }
+}
+
+pub fn popup_close_all() {
+    for id in window_ids() {
+        popup_close(id);
+    }
 }
 
 pub fn push_event_all(event: &serde_json::Value) {
