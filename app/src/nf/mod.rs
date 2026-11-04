@@ -6,6 +6,8 @@ pub mod assets;
 pub mod browsing;
 pub mod browsing_data;
 pub mod client;
+#[cfg(feature = "selftest")]
+pub mod diag;
 pub mod downloads;
 pub mod https_first;
 pub mod idle;
@@ -104,7 +106,11 @@ fn startup_core(paths: ProfilePaths) -> Result<(), String> {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
 
+    #[cfg(feature = "selftest")]
+    let shield_start = std::time::Instant::now();
     let shield = nf_shield::Shield::new(paths.shield_cache(), nf_shield::ShieldConfig::default());
+    #[cfg(feature = "selftest")]
+    state::log(&format!("DIAG demarrage shield_construction_ms={:.1} regles={}", shield_start.elapsed().as_secs_f64() * 1000.0, shield.rules_loaded()));
     let _ = state::SHIELD.set(Arc::new(shield));
 
     let last_error = if lock.is_none() && nf_auth::NightfallLock::is_configured(&paths) {
@@ -127,6 +133,19 @@ fn startup_core(paths: ProfilePaths) -> Result<(), String> {
     Ok(())
 }
 
+/// The CI self test records more detail in Chromium's log; released builds
+/// and the CI measurements (M-0002, release-like) keep warnings and errors.
+fn verbose_cef_log() -> bool {
+    #[cfg(feature = "selftest")]
+    {
+        !diag::requested()
+    }
+    #[cfg(not(feature = "selftest"))]
+    {
+        false
+    }
+}
+
 pub fn run_main(main_args: &MainArgs, cmd_line: &CommandLine, sandbox_info: *mut u8) {
     let switch = CefString::from("type");
     let is_browser_process = cmd_line.has_switch(Some(&switch)) != 1;
@@ -138,6 +157,9 @@ pub fn run_main(main_args: &MainArgs, cmd_line: &CommandLine, sandbox_info: *mut
         let _ = ret;
         return;
     }
+
+    #[cfg(feature = "selftest")]
+    diag::mark_start();
 
     // Refuse to run with switches that enable remote control or disable
     // protections (typical of cookie-stealing malware).
@@ -157,6 +179,8 @@ pub fn run_main(main_args: &MainArgs, cmd_line: &CommandLine, sandbox_info: *mut
         state::log(&e);
         return;
     }
+    #[cfg(feature = "selftest")]
+    diag::startup_mark("coeur_pret");
 
     let chromium = paths.chromium_profile().display().to_string();
     // Chromium's own log (warnings and errors only) goes next to ours, so a
@@ -166,7 +190,7 @@ pub fn run_main(main_args: &MainArgs, cmd_line: &CommandLine, sandbox_info: *mut
         log_file: CefString::from(cef_log.as_str()),
         // The CI self test records more detail; released builds keep
         // warnings and errors only.
-        log_severity: if cfg!(feature = "selftest") { cef::LogSeverity::INFO } else { cef::LogSeverity::WARNING },
+        log_severity: if verbose_cef_log() { cef::LogSeverity::INFO } else { cef::LogSeverity::WARNING },
         no_sandbox: !cfg!(feature = "sandbox") as _,
         root_cache_path: CefString::from(chromium.as_str()),
         cache_path: CefString::from(chromium.as_str()),

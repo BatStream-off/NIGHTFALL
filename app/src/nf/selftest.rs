@@ -98,6 +98,14 @@ pub fn start() {
     if std::env::var_os("NIGHTFALL_SELFTEST").is_none() {
         return;
     }
+    // Mission M-0002: diagnostic and measurements instead of the self test
+    // ("diag"), or start-up measurements only ("diag-demarrage").
+    if super::diag::requested() {
+        if std::env::var("NIGHTFALL_SELFTEST").as_deref() == Ok("diag") {
+            super::diag::start();
+        }
+        return;
+    }
     state::log("selftest: début");
     // Watchdog on its own thread: reports where the test is stuck even if
     // the UI thread is blocked.
@@ -393,6 +401,7 @@ static COPY_CHECK: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None
 
 /// Console messages from the self test's own scripts.
 pub fn console_result(msg: &str) {
+    super::diag::console(msg);
     if msg.starts_with("shield-check") {
         if let Ok(mut c) = CONSOLE.lock() {
             *c = Some(msg.to_string());

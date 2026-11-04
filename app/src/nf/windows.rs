@@ -1297,6 +1297,8 @@ fn exec_js(view: &BrowserView, code: &str) {
 /// Send an event to the window's interface views.
 pub fn push_event(window_id: u32, event: &serde_json::Value) {
     let code = format!("window.nfEvent && window.nfEvent({event});");
+    #[cfg(feature = "selftest")]
+    super::diag::pushed(event, code.len());
     if windows_busy() {
         super::ui_thread::on_ui_delayed(0, move || {
             with_window(window_id, |ctx| send_to_ui_views(ctx, &code));
@@ -1367,6 +1369,8 @@ pub fn popup_open_ex(window_id: u32, panel: &str, anchor: Rect, width: i32, heig
     let top = origin.1 + anchor.y + anchor.height + 6;
     place_popup(area, &overlay, right, opts.align_left, top, w, h);
     overlay.set_visible(1);
+    #[cfg(feature = "selftest")]
+    super::diag::popup_opened(&panel_id);
     if opts.activate {
         view.request_focus();
     }
