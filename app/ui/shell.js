@@ -233,7 +233,8 @@ function renderTabs() {
     icon.textContent = '';
     if (a.url.startsWith('https://')) { icon.append(svgIcon('secure')); icon.className = 'secure'; icon.title = 'Connexion chiffrée (TLS vérifié par Chromium)'; }
     else if (a.url.startsWith('http://')) { icon.append(svgIcon('insecure')); icon.className = 'insecure'; icon.title = 'Connexion non chiffrée'; }
-    else { icon.append(svgIcon('internal')); icon.className = 'internal'; icon.title = 'Page NIGHTFALL'; }
+    else if (a.url.startsWith('nightfall://') || !a.url) { icon.append(svgIcon('internal')); icon.className = 'internal'; icon.title = 'Page NIGHTFALL'; }
+    else { icon.append(svgIcon('globe')); icon.className = ''; icon.title = a.url.startsWith('view-source:') ? 'Code source de la page' : 'Page locale'; }
     const zoom = Number(a.zoom) || 100;
     const zb = $('#b-zoom');
     zb.hidden = zoom === 100 && popupOpen !== 'zoom';
@@ -540,7 +541,9 @@ function tabMenuPanel(p, name) {
 }
 
 function menuPanel(p) {
-  const item = (icon, label, fn, key, cls) => el('button', { class: 'm-item' + (cls ? ' ' + cls : ''), onclick: () => act(fn) },
+  // cls 'keep': the action replaces this menu by another dropdown itself
+  // (closing the menu afterwards would close that one).
+  const item = (icon, label, fn, key, cls) => el('button', { class: 'm-item' + (cls && cls !== 'keep' ? ' ' + cls : ''), onclick: () => (cls === 'keep' ? fn() : act(fn)) },
     svgIcon(icon), el('span', { class: 'm-label', text: label }), key ? el('span', { class: 'm-key', text: key }) : null);
   const sep = () => el('div', { class: 'm-sep', role: 'separator' });
   p.setAttribute('role', 'menu');
@@ -552,7 +555,7 @@ function menuPanel(p) {
     sep(),
     zoomRow(false),
     sep(),
-    item('search', 'Rechercher dans la page…', () => api('find.open'), shortcut('F')),
+    item('search', 'Rechercher dans la page…', () => api('find.open'), shortcut('F'), 'keep'),
     item('print', 'Imprimer…', () => api('page.print'), shortcut('P')),
     item('save', 'Enregistrer la page', () => api('page.save'), shortcut('S')),
     item('fullscreen', 'Plein écran', () => api('window.fullscreen'), FULLSCREEN_KEY),

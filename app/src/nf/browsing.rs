@@ -128,6 +128,11 @@ pub fn apply_site_zoom(browser: &Browser, url: &str) {
 /// Zoom the active tab: "in", "out" or "reset".
 pub fn zoom(window_id: u32, command: &str) {
     let Some(h) = windows::active_browser(window_id).and_then(|b| b.host()) else { return };
+    // Chromium zooms per host: NIGHTFALL's pages share theirs with the
+    // toolbar, which must keep its size.
+    if windows::active_url(window_id).unwrap_or_default().starts_with("nightfall://") {
+        return;
+    }
     match command {
         "in" => h.zoom(ZoomCommand::IN),
         "out" => h.zoom(ZoomCommand::OUT),
@@ -141,6 +146,13 @@ pub fn zoom(window_id: u32, command: &str) {
 fn check_zoom(window_id: u32) {
     let Some(tab_id) = windows::active_tab_id(window_id) else { return };
     let Some(level) = windows::active_browser(window_id).and_then(|b| b.host()).map(|h| h.zoom_level()) else { return };
+    if level.abs() > 0.001 && windows::active_url(window_id).unwrap_or_default().starts_with("nightfall://") {
+        // NIGHTFALL's own pages (and so the toolbar) stay at 100 %.
+        if let Some(h) = windows::active_browser(window_id).and_then(|b| b.host()) {
+            h.set_zoom_level(0.0);
+        }
+        return;
+    }
     let info = windows::with_window(window_id, |ctx| {
         let private = ctx.private;
         let t = ctx.tabs.iter_mut().find(|t| t.id == tab_id)?;
@@ -331,6 +343,7 @@ const CMD_VIEW_SOURCE: i32 = 26508;
 const CMD_INSPECT: i32 = 26509;
 const CMD_COPY_PAGE_URL: i32 = 26510;
 
+// Flags are u32 on macOS and i32 on Windows in the bindings.
 // Chromium's built-in commands (cef_menu_id_t).
 const ID_BACK: i32 = 100;
 const ID_FORWARD: i32 = 101;
@@ -339,10 +352,10 @@ const ID_PRINT: i32 = 131;
 const ID_VIEW_SOURCE: i32 = 132;
 const ID_FIND: i32 = 130;
 
-const TYPE_LINK: i32 = 4;
-const TYPE_MEDIA: i32 = 8;
-const TYPE_SELECTION: i32 = 16;
-const TYPE_EDITABLE: i32 = 32;
+const TYPE_LINK: i64 = 4;
+const TYPE_MEDIA: i64 = 8;
+const TYPE_SELECTION: i64 = 16;
+const TYPE_EDITABLE: i64 = 32;
 
 fn label(s: &str) -> CefString {
     CefString::from(s)
@@ -395,7 +408,7 @@ wrap_context_menu_handler! {
             model: Option<&mut MenuModel>,
         ) {
             let (Some(params), Some(model)) = (params, model) else { return };
-            let flags = { let raw: cef::sys::cef_context_menu_type_flags_t = params.type_flags().into(); raw.0 };
+            let flags = { let raw: cef::sys::cef_context_menu_type_flags_t = params.type_flags().into(); raw.0 as i64 };
             let editable = flags & TYPE_EDITABLE != 0;
             match *self.kind {
                 ClientKind::Ui { .. } => {
