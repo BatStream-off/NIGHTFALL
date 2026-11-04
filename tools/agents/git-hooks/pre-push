@@ -1,0 +1,23 @@
+#!/bin/sh
+# NIGHTFALL : seul le Directeur pousse vers main ou develop ; personne ne les supprime.
+zero=0000000000000000000000000000000000000000
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/develop)
+      if [ "$local_sha" = "$zero" ]; then
+        echo "Refusé : suppression de ${remote_ref#refs/heads/} interdite." >&2
+        exit 1
+      fi
+      if [ "$NF_DIRECTOR" != "1" ]; then
+        echo "Refusé : push vers ${remote_ref#refs/heads/} réservé au Directeur (NF_DIRECTOR=1)." >&2
+        exit 1
+      fi ;;
+    refs/heads/agent/*|refs/heads/orga/*|refs/heads/feat-*|refs/heads/fix-*) ;;
+    refs/tags/*)
+      if [ "$NF_DIRECTOR" != "1" ]; then
+        echo "Refusé : étiquettes réservées au Directeur." >&2
+        exit 1
+      fi ;;
+  esac
+done
+exit 0

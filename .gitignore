@@ -12,3 +12,4 @@
 *.db
 *.vault
 keystore.json
+__pycache__/

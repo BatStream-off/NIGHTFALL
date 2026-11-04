@@ -1,0 +1,11 @@
+#!/bin/sh
+# NIGHTFALL : seul le Directeur commite sur main ou develop (docs/agents/ORGANISATION.md §6).
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
+case "$branch" in
+  main|develop)
+    if [ "$NF_DIRECTOR" != "1" ]; then
+      echo "Refusé : commit sur '$branch' réservé au Directeur. Travaille sur ta branche agent/*." >&2
+      exit 1
+    fi ;;
+esac
+exit 0
