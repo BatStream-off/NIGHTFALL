@@ -35,6 +35,7 @@ cef = { workspace = true }
 nf-core.workspace = true
 nf-crypto.workspace = true
 nf-hwkey.workspace = true
+nf-update.workspace = true
 nf-auth.workspace = true
 nf-storage.workspace = true
 nf-security.workspace = true

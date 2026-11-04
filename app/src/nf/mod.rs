@@ -18,6 +18,7 @@ pub mod session;
 pub mod state;
 pub mod timers;
 pub mod ui_thread;
+pub mod updater;
 pub mod windows;
 
 use cef::*;

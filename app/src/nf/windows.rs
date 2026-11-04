@@ -558,6 +558,7 @@ fn on_window_destroyed(id: u32) {
     })
     .unwrap_or(1);
     if remaining == 0 {
+        super::updater::on_quit();
         // Give the Session Vault time to seal the cookies, then quit.
         super::ui_thread::on_ui_delayed(1200, || {
             quit_message_loop();

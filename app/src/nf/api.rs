@@ -142,6 +142,13 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             ok()
         }
         "page.info" => page_info(w),
+        "update.status" => super::updater::status(),
+        "update.set" => super::updater::set(body),
+        "update.check" => {
+            super::updater::check(false);
+            super::updater::status()
+        }
+        "update.install" => super::updater::install_now(),
         "popup.open" => {
             let panel = s(body, "panel").to_string();
             let num = |v: &Value, k: &str| v.get(k).and_then(Value::as_f64).unwrap_or(0.0).round() as i32;
@@ -620,6 +627,7 @@ fn open_stores(c: &mut Core, mk: nf_crypto::SecretKey) -> Result<(), String> {
 }
 
 fn after_unlock_ui() {
+    super::updater::load_prefs();
     security::invalidate_detector();
     super::idle::touch();
     let session = {
