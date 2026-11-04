@@ -773,6 +773,13 @@ fn main() {
         default_total.scriptlet_used.len(),
         default_total.scriptlet_used.keys().filter(|k| sc.names.contains(*k)).count(),
     );
+    println!("| Liste | Scriptlets pris en charge / total |\n|---|---|");
+    for e in lists.entries.iter().filter(|e| e.enabled_by_default) {
+        if let Some(st) = per_list.get(&e.id) {
+            println!("| {} | {} / {} |", e.id, st.scriptlets_supported, st.scriptlets_total);
+        }
+    }
+    println!();
     println!("| Scriptlet absent | Règles |\n|---|---|");
     for (k, v) in top(&default_total.scriptlet_unsupported, 40) {
         println!("| `{k}` | {v} |");
@@ -790,20 +797,23 @@ fn main() {
         println!("| `{k}` | {v} |");
     }
     println!("\n### 1.7 Listes candidates : rejets et cas sans effet\n");
-    println!("| Liste | Règles | Rejetées | Principaux motifs de rejet | Sans effet dans NIGHTFALL | Scriptlets (pris en charge / total) |\n|---|---|---|---|---|---|");
+    println!("| Liste | Règles | Rejetées | Principaux motifs de rejet | Sans effet dans NIGHTFALL | Scriptlets (pris en charge / total) | Refusés (liste non de confiance) | Scriptlets absents les plus utilisés |\n|---|---|---|---|---|---|---|---|");
     for e in lists.entries.iter().filter(|e| e.group == "candidate" || !e.enabled_by_default) {
         let Some(st) = per_list.get(&e.id) else { continue };
         let errs: Vec<String> = top(&st.errors, 3).into_iter().map(|(k, v)| format!("{k} ({v})")).collect();
         let ineff: Vec<String> = top(&st.ineffective, 3).into_iter().map(|(k, v)| format!("{k} ({v})")).collect();
+        let missing: Vec<String> = top(&st.scriptlet_unsupported, 4).into_iter().map(|(k, v)| format!("{k} ({v})")).collect();
         println!(
-            "| {} | {} | {} | {} | {} | {} / {} |",
+            "| {} | {} | {} | {} | {} | {} / {} | {} | {} |",
             e.id,
             st.rules,
             st.errors.values().sum::<usize>(),
             errs.join(" ; "),
             ineff.join(" ; "),
             st.scriptlets_supported,
-            st.scriptlets_total
+            st.scriptlets_total,
+            st.scriptlets_untrusted_denied,
+            missing.join(" ; ")
         );
     }
 
