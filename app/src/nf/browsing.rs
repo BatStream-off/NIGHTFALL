@@ -138,7 +138,10 @@ pub fn zoom(window_id: u32, command: &str) {
         "out" => h.zoom(ZoomCommand::OUT),
         _ => h.set_zoom_level(0.0),
     }
-    on_ui_delayed(30, move || check_zoom(window_id));
+    // The new level may be applied a little later (macOS): look again.
+    for delay in [30, 250, 800] {
+        on_ui_delayed(delay, move || check_zoom(window_id));
+    }
 }
 
 /// Notice zoom changes (also Chromium's own Ctrl+wheel zoom): update the

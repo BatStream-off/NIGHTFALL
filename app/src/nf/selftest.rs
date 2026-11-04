@@ -263,6 +263,10 @@ fn active_zoom() -> f64 {
     windows::active_browser(1).and_then(|b| b.host()).map(|h| h.zoom_level()).unwrap_or(-99.0)
 }
 
+fn saved_zoom_for_example() -> bool {
+    core().storage().and_then(|s| s.setting::<std::collections::HashMap<String, f64>>("site_zoom").ok().flatten()).map(|m| m.contains_key("example.com")).unwrap_or(false)
+}
+
 fn find_done() -> bool {
     matches!(*super::browsing::LAST_FIND.lock().unwrap(), Some((n, _, true)) if n > 0)
 }
@@ -299,19 +303,11 @@ fn step_zoom() {
         if pct != 110 {
             return fail(&format!("zoom avant : {pct} % au lieu de 110 %"));
         }
-        on_ui_delayed(400, || {
-            let saved = core().storage().and_then(|s| s.setting::<std::collections::HashMap<String, f64>>("site_zoom").ok().flatten()).unwrap_or_default();
-            if !saved.contains_key("example.com") {
-                return fail(&format!("zoom non mémorisé pour le site : {saved:?}"));
-            }
+        wait_for("zoom mémorisé pour le site", 10, || saved_zoom_for_example(), || {
             state::log("selftest: zoom mémorisé pour example.com");
             super::browsing::zoom(1, "reset");
             wait_for("zoom réinitialisé", 10, || active_zoom().abs() < 0.01, || {
-                on_ui_delayed(400, || {
-                    let saved = core().storage().and_then(|s| s.setting::<std::collections::HashMap<String, f64>>("site_zoom").ok().flatten()).unwrap_or_default();
-                    if saved.contains_key("example.com") {
-                        return fail("zoom par défaut toujours mémorisé");
-                    }
+                wait_for("zoom par défaut oublié", 10, || !saved_zoom_for_example(), || {
                     state::log("selftest: zoom ok");
                     step_tabs();
                 });
