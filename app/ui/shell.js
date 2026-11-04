@@ -151,7 +151,16 @@ $('#f-recovery-use').addEventListener('submit', async (e) => {
 });
 
 // ------------------------------------------------------------------ chrome
+// Tooltips with the platform's shortcuts (Ctrl on Windows, ⌘ on macOS).
+function shortcutTitles() {
+  $('#b-back').title = 'Précédent (' + (MAC ? '⌘[' : 'Alt+←') + ')';
+  $('#b-fwd').title = 'Suivant (' + (MAC ? '⌘]' : 'Alt+→') + ')';
+  $('#new-tab').title = 'Nouvel onglet (' + shortcut('T') + ')';
+  $('#b-lock').title = 'Verrouiller NIGHTFALL (' + shortcut('L', true) + ')';
+}
+
 function showChrome() {
+  shortcutTitles();
   show('lock', false);
   show('chrome', true);
   show('private-badge', PRIVATE);
@@ -163,6 +172,7 @@ function showChrome() {
 function tabIcon(t) {
   if (t.crashed) return el('span', { class: 't-icon', text: '!' });
   if (t.favicon && !t.loading) return el('img', { class: 't-fav', src: t.favicon, alt: '' });
+  if ((t.url || '').startsWith('nightfall://') && !t.loading) return el('img', { class: 't-fav', src: 'emblem.png', alt: '' });
   return el('span', { class: 't-icon', text: (t.title || '?').trim().charAt(0).toUpperCase() });
 }
 
@@ -333,7 +343,7 @@ async function refreshPageInfo() {
   const info = await api('page.info');
   if (!info.ok) return;
   $('#b-star').classList.toggle('on', !!info.bookmarked);
-  $('#b-star').title = info.bookmarked ? 'Retirer des favoris (Ctrl+D)' : 'Ajouter aux favoris (Ctrl+D)';
+  $('#b-star').title = (info.bookmarked ? 'Retirer des favoris (' : 'Ajouter aux favoris (') + shortcut('D') + ')';
   $('#b-shield').classList.toggle('on', !!info.shieldActive);
   $('#b-shield use').setAttribute('href', info.shieldActive || info.internal ? '#i-shield' : '#i-shield-off');
   $('#b-shield').title = info.internal ? 'NIGHTFALL Shield' : (info.shieldActive ? 'NIGHTFALL Shield : activé pour ce site' : 'NIGHTFALL Shield : désactivé pour ce site');

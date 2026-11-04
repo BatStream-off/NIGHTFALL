@@ -442,6 +442,8 @@ fn step_copy() {
 
 fn step_final_menu() {
     step("menu déroulant final");
+    // Back to the top of the page (the search scrolled to its match).
+    windows::exec_in_tab(1, MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst), "window.scrollTo(0, 0);");
     // Dropdown menu over the page (visible on the CI screenshot).
     windows::popup_open(1, "menu", cef::Rect { x: 1200, y: 44, width: 34, height: 34 }, 300, 420);
     // Checked at once: the menu closes itself when focus moves
