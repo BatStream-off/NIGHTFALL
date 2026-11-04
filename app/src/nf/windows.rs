@@ -1003,7 +1003,7 @@ pub fn popup_close(window_id: u32) {
         if let Some(h) = host {
             h.close_browser(1);
         }
-        push_event(window_id, &serde_json::json!({ "type": "popup_closed" }));
+        push_event(window_id, &serde_json::json!({ "type": "popup_closed", "panel": p.panel }));
     }
 }
 
