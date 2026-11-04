@@ -4,6 +4,15 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-04 — M-0001 ACCEPTÉE (tentative 2)
+- Analyste Opus ; audit 2 (Opus, agent neuf) : ACCEPTÉ, 9 MINEUR (P1–P9), à corriger
+  dans une mission ultérieure de mise à jour du registre.
+- **Processus** : #22 (`orga/refonte` → `main`) et #24 (`agent/M-0001-registre-v2` →
+  `main`) fusionnées depuis l'interface web avant audit (titre tronqué par GitHub,
+  10 s entre ouverture et fusion). Documents seulement. Le propriétaire a été prié de
+  ne plus fusionner et s'est vu proposer une protection de `main` (non activée sans
+  son accord). `develop` non resynchronisé : c'est une fusion (règle 9).
+
 ## 2026-11-04 — Refonte : phase d'audit lancée
 - **Demande** du propriétaire : `missions/DEMANDE-2026-11-04-refonte.md`. Nouvelles
   règles reportées dans la charte (§1, règles 9 à 12), dont : **aucune fusion sans son
