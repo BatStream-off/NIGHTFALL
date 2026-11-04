@@ -1,3 +1,30 @@
+**0.1.4**
+- **Mises à jour automatiques :**
+  - NIGHTFALL recherche les nouvelles versions au démarrage puis toutes les 6 h ;
+  - il les télécharge en arrière-plan et les installe à la fermeture, ou tout de suite avec « Redémarrer pour mettre à jour » dans le menu ;
+  - chaque mise à jour est signée et vérifiée (signature, empreinte, version plus récente uniquement) ;
+  - réglages dans Paramètres › Mises à jour.
+- **Nouvelle page Paramètres façon Brave/Chrome :** menu latéral et recherche. Sections :
+  - démarrage, apparence, moteur de recherche (DuckDuckGo, Brave Search, Qwant, Startpage, Ecosia, Google, Bing ou personnalisé) ;
+  - confidentialité : cookies tiers, Global Privacy Control, HTTPS d'abord, protection WebRTC, DNS sécurisé, effacement des données par période ;
+  - autorisations des sites mémorisées, téléchargements (dossier, toujours demander), langues, système (accélération matérielle) ;
+  - NIGHTFALL LOCK, mises à jour, réinitialisation.
+- **Fonctions du navigateur :**
+  - plein écran vidéo (YouTube) et F11 ;
+  - recherche dans la page ;
+  - zoom mémorisé par site ;
+  - menu clic droit sur les onglets et sur les pages ;
+  - suggestions locales dans la barre d'adresse ;
+  - rouvrir l'onglet fermé, couper le son d'un onglet ;
+  - impression, enregistrement de la page, code source ;
+  - icônes des sites dans les onglets ;
+  - clic molette ou Ctrl/⌘ + clic pour ouvrir en arrière-plan ;
+  - raccourcis clavier Windows et macOS complets.
+- **Corrections :**
+  - une page qui se fermait elle-même (connexion « avec Google ») fermait toute la fenêtre ;
+  - les sites sans HTTPS ne pouvaient pas s'ouvrir ;
+  - nouveaux messages « page plantée » et « page qui ne répond pas ».
+
 **0.1.3**
 - **Menus en vraies fenêtres déroulantes :** les menus (principal, Shield, mots de passe) s'ouvrent par-dessus la page au lieu de la pousser vers le bas. Ils se ferment avec Échap ou un clic ailleurs.
 - **Barre du navigateur inspirée de Brave :**
