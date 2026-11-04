@@ -1,3 +1,16 @@
+**0.1.3**
+- **Menus en vraies fenêtres déroulantes :** les menus (principal, Shield, mots de passe) s'ouvrent par-dessus la page au lieu de la pousser vers le bas. Ils se ferment avec Échap ou un clic ailleurs.
+- **Barre du navigateur inspirée de Brave :**
+  - le bouton « + » est collé aux onglets ;
+  - le bouton Shield est placé dans la barre d'adresse ;
+  - le menu principal est en liste, avec les raccourcis clavier ;
+  - nouvelles icônes dessinées pour NIGHTFALL.
+- **Nouvel onglet inspiré de Brave :**
+  - quatre fonds d'écran originaux ;
+  - raccourcis en tuiles ;
+  - carte « Statistiques » (éléments bloqués, bande passante et temps gagnés : estimations) ;
+  - panneau de personnalisation.
+
 **0.1.2**
 - **Fenêtre :** elle peut être agrandie, réduite, redimensionnée et fermée, avec les boutons standard de Windows et de macOS. Sa taille s'adapte à l'écran.
 - **NIGHTFALL Shield, bien plus efficace :**
