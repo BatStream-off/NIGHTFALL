@@ -276,3 +276,8 @@ html.popup, html.popup body { background: transparent; }
 .m-item:disabled { opacity: .4; background: transparent; }
 .vtab .t-icon { width: 16px; height: 16px; border-radius: 4px; background: var(--steel-2); flex: none; display: grid; place-items: center; font: 600 10px/1 var(--display); color: var(--moon); }
 .vtab.loading .t-icon { border: 2px solid var(--arc); border-right-color: transparent; background: none; border-radius: 50%; animation: spin .8s linear infinite; font-size: 0; }
+
+/* Update ready: dot on the menu button, highlighted menu entry */
+#b-menu { position: relative; }
+#b-menu.has-update::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--arc); box-shadow: 0 0 0 2px var(--slate); }
+.m-item.accent { color: var(--arc); font-weight: 600; }
