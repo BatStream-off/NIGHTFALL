@@ -1007,6 +1007,19 @@ pub fn popup_close(window_id: u32) {
     }
 }
 
+/// Diagnostic (CI self test).
+#[cfg(feature = "selftest")]
+pub fn popup_report(window_id: u32) -> String {
+    with_window(window_id, |ctx| match &ctx.popup {
+        Some(p) => {
+            let b = p.overlay.bounds();
+            format!("ouvert ({}) {}x{} en {},{} visible={}", p.panel, b.width, b.height, b.x, b.y, p.overlay.is_visible())
+        }
+        None => "fermé".into(),
+    })
+    .unwrap_or_default()
+}
+
 pub fn popup_close_all() {
     for id in window_ids() {
         popup_close(id);

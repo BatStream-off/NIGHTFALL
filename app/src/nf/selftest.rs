@@ -227,9 +227,18 @@ fn step_unlock() {
                 if ["scriptlet", "css", "procedural", "generic"].iter().any(|k| !res.contains(&format!("\"{k}\":true"))) {
                     return fail(&format!("Shield sur example.com : {res}"));
                 }
-                DONE.store(true, std::sync::atomic::Ordering::SeqCst);
-                state::log("SELFTEST OK");
-                finish();
+                // Dropdown menu over the page (visible on the CI screenshot).
+                windows::popup_open(1, "menu", cef::Rect { x: 1200, y: 44, width: 34, height: 34 }, 300, 420);
+                on_ui_delayed(1200, || {
+                    let ok = windows::popup_report(1);
+                    state::log(&format!("selftest: menu déroulant {ok}"));
+                    if !ok.starts_with("ouvert") {
+                        return fail("menu déroulant non ouvert");
+                    }
+                    DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+                    state::log("SELFTEST OK");
+                    finish();
+                });
             });
         });
     });
