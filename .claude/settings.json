@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|NotebookEdit|MultiEdit|Agent",
+        "hooks": [
+          { "type": "command", "command": "python3 \"$HOME/.claude/nightfall/guard.py\"" }
+        ]
+      }
+    ]
+  }
+}

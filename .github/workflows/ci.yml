@@ -247,6 +247,25 @@ jobs:
             --title "NIGHTFALL ${{ steps.ver.outputs.tag }} (pré-version)" \
             --notes-file docs/RELEASE_NOTES.md
 
+  preservation:
+    name: Préservation des fonctionnalités
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Garde-fous de l'organisation (tests)
+        run: |
+          python3 tools/agents/guard.py --self-test
+          python3 tools/agents/mission.py --self-test
+      - name: Aucune fonctionnalité disparue
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          python3 tools/agents/preserve.py "origin/${{ github.base_ref }}" HEAD --allow-env PR_BODY
+
   security-checks:
     name: Contrôles de sécurité
     runs-on: ubuntu-latest
