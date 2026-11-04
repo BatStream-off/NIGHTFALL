@@ -197,6 +197,8 @@ struct Req {
 
 /// One request as NIGHTFALL sees it: adblock type string, source, page.
 struct R {
+    /// Line number in the input file (joins uBO's reference verdicts).
+    line: usize,
     url: String,
     source: String,
     page: String,
@@ -222,11 +224,12 @@ fn map_type(cpt: &str) -> &'static str {
 
 fn load_requests(path: &Path) -> Vec<R> {
     let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
-    text.lines()
-        .filter_map(|l| serde_json::from_str::<Req>(l).ok())
-        .map(|r| {
+    text.split('\n')
+        .enumerate()
+        .filter_map(|(i, l)| serde_json::from_str::<Req>(l).ok().map(|r| (i, r)))
+        .map(|(line, r)| {
             let page = r.page.clone().unwrap_or_else(|| r.frame_url.clone());
-            R { rtype: map_type(&r.cpt), url: r.url, source: r.frame_url, page }
+            R { line, rtype: map_type(&r.cpt), url: r.url, source: r.frame_url, page }
         })
         .collect()
 }
@@ -1031,6 +1034,69 @@ fn main() {
 
     // ---------------------------------------------------------------- 5. attribution / FP proxy
     let debug_engine = build(&lists, &defaults, false, true, scriptlets::resources());
+
+    // ---------------------------------------------------------------- 4.b uBO reference
+    for (label, reqs, file) in [("jeu adblock-rust", &dataset, "ubo-requests.ndjson"), ("exploration réelle", &crawl, "ubo-crawl.ndjson")] {
+        let Ok(t) = std::fs::read_to_string(inputs.join(file)) else {
+            println!("\n## 4.b Accord avec uBlock Origin — {label}\n\nNON MESURÉ : {file} absent.");
+            continue;
+        };
+        #[derive(serde::Deserialize)]
+        struct U {
+            i: usize,
+            v: i32,
+            #[serde(default)]
+            f: String,
+            #[serde(default)]
+            q: u8,
+        }
+        let ubo: std::collections::HashMap<usize, U> = t.lines().filter_map(|l| serde_json::from_str::<U>(l).ok()).map(|u| (u.i, u)).collect();
+        println!("\n## 4.b Accord avec uBlock Origin (moteur réseau statique de uBO, mêmes 8 listes, `!#include` résolus et `!#if` évalués pour Chromium) — {label}\n");
+        println!("| Comparaison | Les deux bloquent | uBO seul | NIGHTFALL seul | Aucun | Accord |\n|---|---|---|---|---|---|");
+        let mut only_ubo: BTreeMap<String, usize> = BTreeMap::new();
+        let mut only_nf: BTreeMap<String, usize> = BTreeMap::new();
+        let mut ubo_q = 0usize;
+        for (k, (name, e)) in engines.iter().take(2).enumerate() {
+            let (mut both, mut u_only, mut n_only, mut none) = (0usize, 0usize, 0usize, 0usize);
+            for r in reqs.iter() {
+                let Some(u) = ubo.get(&r.line) else { continue };
+                let Some(b) = check(e, r) else { continue };
+                let nb = b.should_block();
+                let ub = u.v == 1;
+                match (ub, nb) {
+                    (true, true) => both += 1,
+                    (true, false) => {
+                        u_only += 1;
+                        if k == 0 {
+                            *only_ubo.entry(u.f.clone()).or_default() += 1;
+                        }
+                    }
+                    (false, true) => {
+                        n_only += 1;
+                        if k == 0 {
+                            let f = check(&debug_engine, r).and_then(|d| d.filter.and_then(|f| f.raw_line)).unwrap_or_else(|| "(règles fusionnées)".into());
+                            *only_nf.entry(f).or_default() += 1;
+                        }
+                    }
+                    (false, false) => none += 1,
+                }
+                if k == 0 && u.q == 1 {
+                    ubo_q += 1;
+                }
+            }
+            let n = both + u_only + n_only + none;
+            println!("| NIGHTFALL {name} | {both} | {u_only} | {n_only} | {none} | {:.2} % |", 100.0 * (both + none) as f64 / n.max(1) as f64);
+        }
+        println!("\nRequêtes (navigations comprises) dont uBO nettoierait l'URL par `$removeparam` : {ubo_q}.\n");
+        println!("| Règle uBO (bloquée par uBO seul, V0) | Requêtes |\n|---|---|");
+        for (k, v) in top(&only_ubo, 20) {
+            println!("| `{}` | {v} |", short(&k, 100).replace('`', "'"));
+        }
+        println!("\n| Règle NIGHTFALL (bloquée par NIGHTFALL seul, V0) | Requêtes |\n|---|---|");
+        for (k, v) in top(&only_nf, 20) {
+            println!("| `{}` | {v} |", short(&k, 100).replace('`', "'"));
+        }
+    }
     for (label, reqs) in [("exploration réelle", &crawl), ("jeu adblock-rust", &dataset)] {
         if reqs.is_empty() {
             continue;
