@@ -229,11 +229,10 @@ fn step_prefs() {
 /// fails, so the warning page must appear (no third-party site involved).
 const NO_HTTPS: &str = "http://nightfall-https-first-selftest.example.net/";
 
+/// The http:// address was let through (not upgraded) after "Continuer";
+/// it does not exist, so the tab shows a network error for it.
 fn no_https_site_opened_over_http() -> bool {
-    let st = windows::tabs_state(1);
-    st["tabs"].as_array().map(|tabs| {
-        tabs.iter().any(|t| t["active"].as_bool() == Some(true) && t["loading"].as_bool() == Some(false) && t["url"].as_str().unwrap_or("").starts_with(NO_HTTPS))
-    }).unwrap_or(false)
+    super::https_first::ALLOWED_NAVIGATIONS.load(std::sync::atomic::Ordering::Relaxed) > 0
 }
 
 /// HTTPS-First on a site without HTTPS: warning page, then "Continuer"

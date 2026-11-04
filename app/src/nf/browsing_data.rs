@@ -116,9 +116,8 @@ thread_local! {
     static OBSERVER: std::cell::RefCell<Option<Registration>> = const { std::cell::RefCell::new(None) };
 }
 
-/// Sites whose data was cleared / could not be cleared (self test).
+/// Sites whose data was cleared (self test).
 pub static SITES_CLEARED: AtomicUsize = AtomicUsize::new(0);
-pub static SITES_FAILED: AtomicUsize = AtomicUsize::new(0);
 
 /// A browser of a non-private window (its DevTools session reaches the
 /// main profile's storage).
@@ -197,7 +196,6 @@ pub fn clear(body: &serde_json::Value) -> serde_json::Value {
                 super::ui_thread::on_ui_delayed(3000, move || {
                     let (ok, failed) = (ok.load(Ordering::Relaxed), failed.load(Ordering::Relaxed));
                     SITES_CLEARED.store(ok, Ordering::Relaxed);
-                    SITES_FAILED.store(failed, Ordering::Relaxed);
                     state::log(&format!("données de navigation : données de {ok} site(s) effacées sur {expected} ({failed} échec(s))"));
                     OBSERVER.with(|o| o.borrow_mut().take());
                 });

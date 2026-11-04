@@ -10,8 +10,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-/// Upgrades made since start (self test).
+/// Upgrades made since start, and http:// navigations let through after
+/// "Continuer vers le site" (self test).
 pub static UPGRADES: AtomicU64 = AtomicU64::new(0);
+pub static ALLOWED_NAVIGATIONS: AtomicU64 = AtomicU64::new(0);
 
 /// Sites the user chose to load over HTTP (this session only).
 static ALLOWED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
@@ -79,7 +81,11 @@ pub enum Action {
 }
 
 pub fn on_navigation(browser_id: i32, url: &str, enabled: bool) -> Action {
-    if !enabled || !url.starts_with("http://") || is_allowed(url) {
+    if !enabled || !url.starts_with("http://") {
+        return Action::Continue;
+    }
+    if is_allowed(url) {
+        ALLOWED_NAVIGATIONS.fetch_add(1, Ordering::Relaxed);
         return Action::Continue;
     }
     let Some(https) = upgrade(url) else { return Action::Continue };
