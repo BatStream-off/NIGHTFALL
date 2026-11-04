@@ -7,56 +7,205 @@
   <link rel="stylesheet" href="nf.css">
   <style>
     html, body { height: 100%; }
-    body { display: grid; place-items: center; overflow: hidden; background: linear-gradient(180deg, #070b16 0%, var(--night) 75%); }
-    body::after { content: ""; position: fixed; inset: auto 0 0 0; height: 24vh; min-height: 120px; background: url(skyline.svg) bottom / cover no-repeat; pointer-events: none; opacity: .9; }
-    body[data-wall="nebula"] { background: radial-gradient(900px 520px at 72% 4%, rgba(58, 119, 232, .20), transparent 62%), radial-gradient(700px 480px at 8% 96%, rgba(92, 214, 230, .08), transparent 60%), var(--night); }
-    body[data-wall="midnight"] { background: radial-gradient(1100px 620px at 50% 118%, rgba(58, 119, 232, .30), transparent 62%), #04060b; }
-    body[data-wall="graphite"] { background: linear-gradient(160deg, #121722, #06080e); }
-    body[data-wall="graphite"]::after, body[data-wall="nebula"]::after { display: none; }
-    .wrap { position: relative; z-index: 1; width: min(720px, 90vw); display: grid; gap: 14px; justify-items: center; margin-top: -4vh; }
-    .clock { font: 500 76px/1 var(--display); letter-spacing: .02em; color: #eef3ff; font-variant-numeric: tabular-nums; }
-    .date { color: var(--mist); font-size: 15px; margin-bottom: 22px; }
-    .date::first-letter { text-transform: uppercase; }
-    .search { position: relative; width: 100%; }
-    .search svg { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; fill: none; stroke: var(--mist); stroke-width: 1.8; stroke-linecap: round; }
-    .search input { height: 54px; font-size: 16px; border-radius: 12px; padding: 0 20px 0 50px; background: rgba(12, 17, 29, .9); border-color: var(--steel-2); }
-    .search input:focus-visible { border-color: transparent; }
-    .group { width: 100%; margin-top: 26px; }
-    .group h2 { font: 500 13px var(--ui); color: var(--mist); margin: 0 0 10px; }
-    .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; width: 100%; }
-    .tile { position: relative; display: grid; justify-items: center; gap: 9px; padding: 16px 8px 13px; border-radius: 10px; color: var(--moon); text-decoration: none; transition: background .12s; }
-    .tile:hover { background: rgba(17, 24, 40, .85); text-decoration: none; }
-    .tile .ic {
-      width: 44px; height: 44px; display: grid; place-items: center; font: 600 18px var(--display); color: #eaf4ff;
-      background: linear-gradient(150deg, #1b3a78, #16465a);
-      clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+    body {
+      --glass: rgba(7, 11, 22, .52);
+      --glass-strong: rgba(9, 13, 25, .82);
+      --glass-line: rgba(190, 215, 255, .12);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .45), 0 0 18px rgba(0, 0, 0, .35);
+      overflow: hidden; background: var(--night);
+      display: grid; grid-template-rows: auto 1fr auto; min-height: 100%;
     }
-    .tile .nm { font-size: 12.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c6d0e3; }
-    .tile .rm { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--mist); display: none; }
-    .tile:hover .rm { display: inline-flex; }
-    .tile .rm:hover { background: var(--steel-2); color: #fff; }
-    .links { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 30px; }
-    .links button { background: transparent; border-color: transparent; color: var(--mist); }
-    .links button:hover { background: rgba(17, 24, 40, .85); color: var(--moon); }
+
+    /* ---- Wallpaper (two layers to cross-fade) */
+    .wall { position: fixed; inset: 0; z-index: 0; background: var(--night) center / cover no-repeat; opacity: 0; transition: opacity .6s ease; }
+    .wall.on { opacity: 1; }
+    .scrim { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: linear-gradient(180deg, rgba(3, 5, 10, .55) 0%, rgba(3, 5, 10, 0) 26%, rgba(3, 5, 10, 0) 62%, rgba(3, 5, 10, .55) 100%); }
+
+    /* ---- Top band: clock, shortcuts, settings */
+    header { position: relative; z-index: 2; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 16px; padding: 22px 26px 0; }
+    .clock { justify-self: start; font: 500 26px/1 var(--display); letter-spacing: .02em; color: #f2f6ff; font-variant-numeric: tabular-nums; text-shadow: var(--shadow); padding: 8px 4px; }
+    .gear { justify-self: end; width: 40px; height: 40px; padding: 0; border-radius: 12px; background: var(--glass); border: 1px solid var(--glass-line); color: #e8eefc; backdrop-filter: blur(14px); }
+    .gear:hover, .gear[aria-expanded="true"] { background: var(--glass-strong); border-color: rgba(190, 215, 255, .24); }
+    .gear svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform .4s ease; }
+    .gear[aria-expanded="true"] svg { transform: rotate(60deg); }
+
+    .tiles { display: flex; gap: 6px; justify-content: center; list-style: none; margin: 0; padding: 0; min-height: 1px; }
+    .tile { position: relative; width: 92px; }
+    .tile > a, .tile > button.add {
+      display: grid; justify-items: center; gap: 8px; width: 92px; height: auto; padding: 6px 0 4px; border: 0; border-radius: 14px;
+      background: transparent; color: #eef3ff; text-decoration: none; font: inherit;
+    }
+    .tile > a:hover, .tile > button.add:hover { text-decoration: none; background: transparent; }
+    .tile .sq {
+      width: 72px; height: 72px; border-radius: 18px; display: grid; place-items: center;
+      background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(14px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .28); transition: transform .15s ease, background .15s, border-color .15s;
+    }
+    .tile:hover .sq, .tile:focus-within .sq { background: var(--glass-strong); border-color: rgba(190, 215, 255, .26); transform: translateY(-2px); }
+    .tile .ini { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font: 600 19px/1 var(--display); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 8px rgba(0, 0, 0, .3); }
+    .tile .nm { max-width: 88px; font-size: 12.5px; line-height: 1.25; color: #eef3ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: var(--shadow); }
+    .tile > a:focus-visible, .tile > button.add:focus-visible { box-shadow: none; }
+    .tile > a:focus-visible .sq, .tile > button.add:focus-visible .sq { box-shadow: var(--focus); }
+    .tile .add-ic { width: 26px; height: 26px; fill: none; stroke: #dfe8fb; stroke-width: 1.8; stroke-linecap: round; }
+    .tile .rm {
+      position: absolute; top: 0; right: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%;
+      background: #1a2338; border: 1px solid rgba(190, 215, 255, .22); color: #dfe8fb; opacity: 0; transition: opacity .12s;
+    }
+    .tile .rm svg { width: 10px; height: 10px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+    .tile:hover .rm, .tile:focus-within .rm { opacity: 1; }
+    .tile .rm:hover { background: #2a3654; color: #fff; }
+
+    /* ---- Popovers (add shortcut, customize) */
+    .pop {
+      position: absolute; z-index: 10; background: rgba(10, 14, 26, .94); border: 1px solid rgba(190, 215, 255, .14);
+      border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .6); backdrop-filter: blur(20px);
+      animation: pop-in .16s ease-out;
+    }
+    @keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } }
+    .pop h2 { font: 600 15px var(--ui); margin: 0 0 4px; letter-spacing: 0; }
+    .pop h3 { font: 500 12.5px var(--ui); color: var(--mist); margin: 18px 0 10px; letter-spacing: 0; }
+    .addform { width: 320px; padding: 18px; }
+    .addform label { margin: 12px 0 6px; }
+    .addform .err { color: var(--danger); font-size: 12.5px; margin: 8px 0 0; min-height: 0; }
+    .addform .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .addform button.primary { clip-path: none; border-radius: 8px; }
+
+    .custom { right: 26px; top: 70px; width: 340px; padding: 18px 18px 14px; max-height: calc(100vh - 90px); overflow: auto; }
+    .walls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .walls button { display: grid; gap: 6px; height: auto; padding: 0; border: 0; background: transparent; text-align: left; font: 12.5px var(--ui); color: #c9d3e6; }
+    .walls button:hover { background: transparent; color: #fff; }
+    .walls img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 10px; border: 1px solid rgba(190, 215, 255, .12); }
+    .walls button[aria-pressed="true"] img { border-color: transparent; box-shadow: 0 0 0 2px var(--arc); }
+    .walls button[aria-pressed="true"] { color: #fff; }
+    .walls button:focus-visible { box-shadow: none; }
+    .walls button:focus-visible img { box-shadow: var(--focus); }
+    .walls .tick { position: relative; }
+    .walls button[aria-pressed="true"] .tick::after {
+      content: ""; position: absolute; top: 7px; right: 7px; width: 20px; height: 20px; border-radius: 50%;
+      background: var(--arc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m6 10.5 2.6 2.5L14 7.5' fill='none' stroke='%2306080e' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 20px no-repeat;
+    }
+    .custom .switch { margin: 0; padding: 9px 0; font-size: 13.5px; color: var(--moon); cursor: pointer; }
+    .custom .switch + .switch { border-top-color: rgba(190, 215, 255, .08); }
+    .custom .switch input[type=checkbox] { width: 36px; height: 20px; }
+    .custom .switch input[type=checkbox]::after { width: 14px; height: 14px; }
+    .custom .switch input[type=checkbox]:checked::after { transform: translateX(16px); }
+    .custom .links { display: grid; gap: 2px; margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(190, 215, 255, .08); }
+    .custom .links button { justify-content: flex-start; height: 38px; gap: 12px; padding: 0 10px; margin: 0 -8px; background: transparent; border-color: transparent; font-weight: 400; }
+    .custom .links button:hover { background: rgba(255, 255, 255, .05); }
+    .custom .links svg { width: 18px; height: 18px; fill: none; stroke: var(--mist); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .custom .links .chev { margin-left: auto; width: 14px; height: 14px; }
+
+    /* ---- Center: search */
+    main { position: relative; z-index: 1; display: grid; place-items: center; padding: 0 24px 6vh; }
+    .search { position: relative; width: min(620px, 90vw); }
+    .search svg { position: absolute; z-index: 1; left: 20px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; fill: none; stroke: #c3cee4; stroke-width: 1.8; stroke-linecap: round; pointer-events: none; }
+    .search input {
+      height: 54px; font-size: 16px; padding: 0 22px 0 54px; border-radius: 27px; color: #f4f7ff;
+      background: rgba(7, 11, 22, .6); border: 1px solid rgba(190, 215, 255, .16); backdrop-filter: blur(18px);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, .35); transition: border-color .15s, background .15s;
+    }
+    .search input::placeholder { color: #9aa7c2; }
+    .search input:hover { border-color: rgba(190, 215, 255, .26); background: rgba(9, 13, 25, .7); }
+    .search input:focus-visible { border-color: rgba(92, 214, 230, .7); background: rgba(9, 13, 25, .8); box-shadow: 0 0 0 4px rgba(92, 214, 230, .14), 0 10px 40px rgba(0, 0, 0, .35); }
+
+    /* ---- Bottom-left: stats + credit */
+    footer { position: relative; z-index: 1; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 0 26px 22px; }
+    .bl { display: grid; gap: 12px; justify-items: start; }
+    .stats { padding: 16px 22px 18px; border-radius: 16px; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(16px); box-shadow: 0 10px 40px rgba(0, 0, 0, .3); }
+    .stats h2 { font: 500 13px var(--ui); color: #c9d3e6; margin: 0 0 12px; letter-spacing: 0; display: flex; align-items: center; gap: 8px; }
+    .stats h2 img { width: 16px; height: 16px; }
+    .stats dl { display: flex; gap: 36px; margin: 0; }
+    .stats dl > div { display: grid; gap: 4px; }
+    .stats dd { order: -1; margin: 0; display: flex; align-items: baseline; gap: 6px; font: 600 40px/1 var(--display); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+    .stats dd small { font: 500 15px var(--ui); color: #c9d3e6; }
+    .stats dt { font-size: 12.5px; color: #aeb9cf; line-height: 1.3; white-space: nowrap; }
+    #st-blocked { color: var(--arc); }
+    #st-bytes { color: #8fb1ff; }
+    #st-time { color: #f2f6ff; }
+    .credit { font-size: 12px; color: rgba(225, 233, 248, .72); text-shadow: var(--shadow); padding-left: 2px; }
+
+    @media (max-width: 760px) {
+      .stats dl { gap: 20px; }
+      .stats dd { font-size: 30px; }
+    }
+    @media (max-height: 560px) { .stats { display: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .wall, .gear svg, .tile .sq { transition: none; }
+      .pop { animation: none; }
+      .tile:hover .sq, .tile:focus-within .sq { transform: none; }
+    }
   </style>
 </head>
-<body data-wall="city">
-  <div class="wrap">
-    <div class="clock" id="clock"></div>
-    <div class="date" id="date"></div>
-    <form class="search" id="search">
+<body>
+  <div class="wall" id="wall-a" aria-hidden="true"></div>
+  <div class="wall" id="wall-b" aria-hidden="true"></div>
+  <div class="scrim" aria-hidden="true"></div>
+
+  <header>
+    <div class="clock" id="clock" aria-hidden="true"></div>
+    <nav aria-label="Raccourcis"><ul class="tiles" id="tiles"></ul></nav>
+    <button class="gear" id="gear" title="Personnaliser" aria-label="Personnaliser la page" aria-haspopup="dialog" aria-expanded="false" aria-controls="custom">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"/><path d="M19.4 13.5a7.7 7.7 0 0 0 0-3l2-1.6-2-3.4-2.4.9a7.6 7.6 0 0 0-2.6-1.5L14 2.4h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.4l-2.4-.9-2 3.4 2 1.6a7.7 7.7 0 0 0 0 3l-2 1.6 2 3.4 2.4-.9a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4.9 2-3.4Z"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <form class="search" id="search" role="search">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
-      <input id="q" placeholder="Rechercher sur le Web ou saisir une adresse" aria-label="Rechercher ou saisir une adresse" autocomplete="off" autofocus>
+      <input id="q" placeholder="Rechercher sur le Web ou saisir une adresse" aria-label="Rechercher ou saisir une adresse" autocomplete="off" spellcheck="false" autofocus>
     </form>
-    <section class="group" id="shortcuts-group"><h2>Raccourcis</h2><div class="tiles" id="shortcuts"></div></section>
-    <section class="group" id="top-group"><h2>Sites que vous visitez souvent</h2><div class="tiles" id="top"></div></section>
+  </main>
+
+  <footer>
+    <div class="bl">
+      <section class="stats" id="stats" aria-labelledby="stats-title">
+        <h2 id="stats-title"><img src="emblem.png" alt="">Statistiques</h2>
+        <dl>
+          <div><dt>Traqueurs et publicités bloqués</dt><dd id="st-blocked">0</dd></div>
+          <div><dt>Bande passante économisée</dt><dd id="st-bytes">0<small>Mo</small></dd></div>
+          <div><dt>Temps gagné</dt><dd id="st-time">0<small>seconde</small></dd></div>
+        </dl>
+      </section>
+      <div class="credit" id="credit">Fond : NIGHTFALL</div>
+    </div>
+  </footer>
+
+  <form class="pop addform" id="addform" hidden aria-labelledby="add-title" novalidate>
+    <h2 id="add-title">Ajouter un raccourci</h2>
+    <label for="add-name">Nom</label>
+    <input id="add-name" autocomplete="off" placeholder="Par exemple : Wikipédia">
+    <label for="add-url">Adresse</label>
+    <input id="add-url" autocomplete="off" spellcheck="false" placeholder="https://exemple.fr">
+    <p class="err" id="add-err" hidden></p>
+    <div class="actions">
+      <button type="button" class="ghost" id="add-cancel">Annuler</button>
+      <button type="submit" class="primary">Ajouter</button>
+    </div>
+  </form>
+
+  <div class="pop custom" id="custom" role="dialog" aria-labelledby="custom-title" hidden>
+    <h2 id="custom-title">Personnaliser</h2>
+    <h3>Fond d’écran</h3>
+    <div class="walls" id="walls"></div>
+    <h3>Affichage</h3>
+    <label class="switch"><span>Raccourcis</span><input type="checkbox" id="opt-tiles"></label>
+    <label class="switch"><span>Statistiques</span><input type="checkbox" id="opt-stats"></label>
+    <label class="switch"><span>Horloge</span><input type="checkbox" id="opt-clock"></label>
     <div class="links">
-      <button id="add">Ajouter un raccourci</button>
-      <button id="wall">Changer de fond</button>
-      <button id="security">Security Center</button>
-      <button id="settings">Paramètres</button>
+      <button type="button" id="go-security">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5.5c0 4.3 3 7.8 7 9.5 4-1.7 7-5.2 7-9.5V6Z"/><path d="m9 12 2 2 4-4"/></svg>
+        Security Center
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <button type="button" id="go-settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+        Paramètres
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
     </div>
   </div>
+
   <script src="nf.js"></script>
   <script src="newtab.js"></script>
 </body>
