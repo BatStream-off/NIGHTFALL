@@ -3,9 +3,11 @@
 pub mod api;
 pub mod app;
 pub mod assets;
+pub mod browsing;
 pub mod client;
 pub mod downloads;
 pub mod idle;
+pub mod omnibox;
 #[cfg(target_os = "macos")]
 pub mod mac;
 pub mod permissions;
@@ -18,6 +20,7 @@ pub mod session;
 pub mod state;
 pub mod timers;
 pub mod ui_thread;
+pub mod updater;
 pub mod windows;
 
 use cef::*;

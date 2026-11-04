@@ -33,6 +33,9 @@ UninstallDisplayName=NIGHTFALL Browser
 MinVersion=10.0
 SetupIconFile=..\..\app\resources\win\nightfall.ico
 UninstallDisplayIcon={app}\nightfall.exe
+; Automatic updates run this installer silently: close NIGHTFALL first.
+CloseApplications=force
+RestartApplications=no
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
@@ -49,8 +52,15 @@ Name: "{userdesktop}\NIGHTFALL"; Filename: "{app}\nightfall.exe"; Tasks: desktop
 
 [Run]
 Filename: "{app}\nightfall.exe"; Description: "Lancer NIGHTFALL"; Flags: nowait postinstall skipifsilent
+; Relaunch after an automatic update started with "Redémarrer pour mettre à jour".
+Filename: "{app}\nightfall.exe"; Flags: nowait; Check: ShouldRelaunch
 
 [Code]
+function ShouldRelaunch: Boolean;
+begin
+  Result := Pos('/NFRELAUNCH', UpperCase(GetCmdTail)) > 0;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then

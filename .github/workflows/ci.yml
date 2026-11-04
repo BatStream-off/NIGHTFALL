@@ -162,7 +162,7 @@ jobs:
           "$BIN" > "$RUNNER_TEMP/selftest.out" 2>&1 &
           PID=$!
           LOG="$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
-          for i in $(seq 1 120); do
+          for i in $(seq 1 170); do
             if [ -f "$LOG" ] && grep -qE "SELFTEST (OK|FAIL)" "$LOG"; then break; fi
             sleep 2
           done
@@ -229,6 +229,13 @@ jobs:
       - name: Sommes de contrôle SHA-256
         if: steps.exists.outputs.yes != '1'
         run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Manifeste de mise à jour signé
+        if: steps.exists.outputs.yes != '1'
+        env:
+          NIGHTFALL_UPDATE_KEY: ${{ secrets.NIGHTFALL_UPDATE_KEY }}
+        run: |
+          python3 -m pip install --quiet cryptography
+          python3 ci/update_manifest.py "${{ steps.ver.outputs.tag }}" out
       - name: Pré-version GitHub
         if: steps.exists.outputs.yes != '1'
         env:

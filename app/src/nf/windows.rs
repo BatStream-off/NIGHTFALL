@@ -45,6 +45,52 @@ pub struct Tab {
     pub warning: Option<String>,
     pub discarded: bool,
     pub crashed: bool,
+    /// Site icon as a data: URL (downloaded by the tab's own browser).
+    pub favicon: Option<String>,
+    /// A media element of the page is playing with sound.
+    pub audible: bool,
+    /// Tab that opened this one (links, popups): reactivated when a popup
+    /// closes itself (OAuth login windows).
+    pub opener: Option<u32>,
+    /// Last zoom level seen (Ctrl+wheel changes are noticed by polling).
+    pub zoom_level: f64,
+}
+
+impl Tab {
+    fn new(id: u32, view: Option<BrowserView>, url: &str, title: &str) -> Tab {
+        Tab {
+            id,
+            view,
+            url: url.to_string(),
+            title: title.to_string(),
+            loading: true,
+            can_back: false,
+            can_forward: false,
+            pinned: false,
+            last_active: now(),
+            warning: None,
+            discarded: false,
+            crashed: false,
+            favicon: None,
+            audible: false,
+            opener: None,
+            zoom_level: 0.0,
+        }
+    }
+}
+
+/// A tab closed by the user, for "Rouvrir l'onglet fermé" (normal windows only).
+pub struct ClosedTab {
+    pub url: String,
+    pub index: usize,
+}
+
+/// A popup announced by on_before_popup, adopted by on_popup_browser_view_created.
+pub struct PendingPopup {
+    pub popup_id: i32,
+    pub tab_id: u32,
+    pub opener: Option<u32>,
+    pub background: bool,
 }
 
 pub struct WinCtx {
@@ -63,20 +109,52 @@ pub struct WinCtx {
     pub active: Option<u32>,
     pub request_context: Option<RequestContext>,
     /// Tab ids reserved in on_before_popup, consumed by on_popup_browser_view_created.
-    pub pending_popups: Vec<u32>,
+    pub pending_popups: Vec<PendingPopup>,
     /// URLs to open once the window exists and NIGHTFALL is unlocked.
     pub initial_urls: Vec<String>,
     /// Dropdown popup (menu, Shield, passwords) shown over the page.
     pub popup: Option<Popup>,
+    /// Recently closed tabs (most recent last), never for private windows.
+    pub closed: Vec<ClosedTab>,
+    /// Tab whose page is in HTML5 fullscreen (video...): the interface is hidden.
+    pub fullscreen_tab: Option<u32>,
+    /// The window was already fullscreen (F11) when the page went fullscreen.
+    pub window_was_fullscreen: bool,
 }
 
 pub struct Popup {
     pub panel: String,
     pub view: BrowserView,
     pub overlay: OverlayController,
-    /// Right edge and top of the popup, in window coordinates.
+    /// Horizontal anchor (right edge, or left edge with `align_left`) and
+    /// top of the popup, in window coordinates.
     pub right: i32,
     pub top: i32,
+    pub align_left: bool,
+    pub max_width: i32,
+    /// Browser searched by the find bar (highlights cleared on close).
+    pub target: Option<Browser>,
+}
+
+/// How a dropdown popup behaves.
+#[derive(Clone, Copy)]
+pub struct PopupOpts {
+    /// Takes keyboard focus (false: the omnibox suggestions, which must leave
+    /// the focus in the address field).
+    pub activate: bool,
+    /// Opening the panel already shown closes it.
+    pub toggle: bool,
+    /// Anchored by its left edge (context menus, suggestions).
+    pub align_left: bool,
+    /// The anchor is in the side view's coordinates (vertical tabs).
+    pub from_side: bool,
+    pub max_width: i32,
+}
+
+impl Default for PopupOpts {
+    fn default() -> Self {
+        PopupOpts { activate: true, toggle: true, align_left: false, from_side: false, max_width: 520 }
+    }
 }
 
 thread_local! {
@@ -172,6 +250,19 @@ wrap_window_delegate! {
 
         fn window_runtime_style(&self) -> RuntimeStyle {
             RuntimeStyle::ALLOY
+        }
+
+        fn on_window_fullscreen_transition(&self, window: Option<&mut Window>, is_completed: i32) {
+            // Leaving window fullscreen by other means (macOS green button,
+            // system shortcut) also ends a page's fullscreen.
+            if is_completed == 0 {
+                return;
+            }
+            let still = window.map(|w| w.is_fullscreen() != 0).unwrap_or(false);
+            if !still {
+                let id = self.window_id;
+                super::ui_thread::on_ui_delayed(0, move || exit_content_fullscreen(id));
+            }
         }
     }
 }
@@ -355,6 +446,9 @@ pub fn create_window(private: bool, urls: Vec<String>) {
             pending_popups: Vec::new(),
             initial_urls: urls,
             popup: None,
+            closed: Vec::new(),
+            fullscreen_tab: None,
+            window_was_fullscreen: false,
         };
         if windows_mut(|v| v.push(ctx)).is_none() {
             return;
@@ -430,10 +524,16 @@ pub fn apply_mode(id: u32, locked: bool) {
             l.set_flex_for_view(Some(&mut top), if locked { 1 } else { 0 });
             l.set_flex_for_view(Some(&mut content), if locked { 0 } else { 1 });
         }
+        ctx.top.set_visible(1);
         if locked {
             ctx.content.set_visible(0);
             ctx.side.set_visible(0);
             ctx.side_width.store(0, Ordering::Relaxed);
+        } else if ctx.fullscreen_tab.is_some() {
+            // A page is fullscreen: only its content is shown.
+            ctx.top.set_visible(0);
+            ctx.side.set_visible(0);
+            ctx.content.set_visible(1);
         } else {
             ctx.top_height.store(if vertical { TOP_HEIGHT_VERTICAL } else { TOP_HEIGHT }, Ordering::Relaxed);
             ctx.content.set_visible(1);
@@ -521,6 +621,9 @@ pub fn after_unlock(session: Vec<nf_storage::SessionTab>) {
 /// Lock: hide every window's content (pages keep running but are invisible).
 pub fn on_locked() {
     popup_close_all();
+    for id in window_ids() {
+        exit_content_fullscreen(id);
+    }
     apply_mode_all(true);
     push_event_all(&serde_json::json!({ "type": "locked" }));
 }
@@ -540,6 +643,7 @@ fn prepare_window_close(id: u32) {
     })
     .unwrap_or_default();
     for h in hosts {
+        mark_closing(&h);
         h.close_browser(1);
     }
     if is_last_window {
@@ -558,6 +662,7 @@ fn on_window_destroyed(id: u32) {
     })
     .unwrap_or(1);
     if remaining == 0 {
+        super::updater::on_quit();
         // Give the Session Vault time to seal the cookies, then quit.
         super::ui_thread::on_ui_delayed(1200, || {
             quit_message_loop();
@@ -584,6 +689,11 @@ fn tab_view(window_id: u32, tab_id: u32, private: bool, url: &str, rc: Option<Re
 
 /// Open a tab. Internal pages (nightfall://) are allowed only through here.
 pub fn add_tab(window_id: u32, url: &str, activate: bool) -> Option<u32> {
+    add_tab_at(window_id, url, activate, None)
+}
+
+/// Open a tab at `index` (end of the strip when `None`).
+pub fn add_tab_at(window_id: u32, url: &str, activate: bool, index: Option<usize>) -> Option<u32> {
     let tab_id = next_tab_id();
     if url.starts_with("nightfall://") {
         state::allow_internal_for_tab(tab_id);
@@ -593,20 +703,17 @@ pub fn add_tab(window_id: u32, url: &str, activate: bool) -> Option<u32> {
         let mut v = View::from(&view);
         ctx.content.add_child_view(Some(&mut v));
         view.set_visible(0);
-        ctx.tabs.push(Tab {
-            id: tab_id,
-            view: Some(view),
-            url: url.to_string(),
-            title: if url.starts_with("nightfall://") { "Nouvel onglet".into() } else { url.to_string() },
-            loading: true,
-            can_back: false,
-            can_forward: false,
-            pinned: false,
-            last_active: now(),
-            warning: None,
-            discarded: false,
-            crashed: false,
-        });
+        let title = if url.starts_with("nightfall://") { "Nouvel onglet" } else { url };
+        let tab = Tab::new(tab_id, Some(view), url, title);
+        match index {
+            Some(i) => {
+                // Never in front of pinned tabs.
+                let first_free = ctx.tabs.iter().take_while(|t| t.pinned).count();
+                let i = i.clamp(first_free, ctx.tabs.len());
+                ctx.tabs.insert(i, tab);
+            }
+            None => ctx.tabs.push(tab),
+        }
         Some(())
     })
     .flatten();
@@ -619,52 +726,90 @@ pub fn add_tab(window_id: u32, url: &str, activate: bool) -> Option<u32> {
     Some(tab_id)
 }
 
+/// Index right after `tab_id` and the tabs it opened just after it.
+pub fn index_after(window_id: u32, tab_id: u32) -> Option<usize> {
+    with_window(window_id, |ctx| {
+        let i = ctx.tabs.iter().position(|t| t.id == tab_id)?;
+        let mut j = i + 1;
+        while j < ctx.tabs.len() && ctx.tabs[j].opener == Some(tab_id) {
+            j += 1;
+        }
+        Some(j)
+    })
+    .flatten()
+}
+
+/// Open a link from a tab: new tab to its right (background unless
+/// `activate`), remembering the opener.
+pub fn open_from_tab(window_id: u32, opener: u32, url: &str, activate: bool) -> Option<u32> {
+    if url.starts_with("nightfall://") {
+        // Web pages never open internal pages.
+        state::log("ouverture de nightfall:// refusée depuis une page web");
+        return None;
+    }
+    let index = index_after(window_id, opener);
+    let id = add_tab_at(window_id, url, activate, index)?;
+    with_window(window_id, |ctx| {
+        if let Some(t) = ctx.tabs.iter_mut().find(|t| t.id == id) {
+            t.opener = Some(opener);
+        }
+    });
+    Some(id)
+}
+
 /// Reserve a tab id for a popup (called from on_before_popup).
-pub fn reserve_popup(window_id: u32) -> u32 {
+pub fn reserve_popup(window_id: u32, popup_id: i32, opener: Option<u32>, background: bool) -> u32 {
     let tab_id = next_tab_id();
-    with_window(window_id, |c| c.pending_popups.push(tab_id));
+    with_window(window_id, |c| c.pending_popups.push(PendingPopup { popup_id, tab_id, opener, background }));
     tab_id
 }
 
+/// on_before_popup allowed a popup that Chromium did not create after all.
+pub fn popup_aborted(window_id: u32, popup_id: i32) {
+    with_window(window_id, |c| c.pending_popups.retain(|p| p.popup_id != popup_id));
+}
+
 fn adopt_popup(window_id: u32, view: BrowserView) {
-    let tab_id = with_window(window_id, |c| {
-        if c.pending_popups.is_empty() {
-            None
-        } else {
-            Some(c.pending_popups.remove(0))
-        }
-    })
-    .flatten()
-    .unwrap_or_else(next_tab_id);
+    let pending = with_window(window_id, |c| if c.pending_popups.is_empty() { None } else { Some(c.pending_popups.remove(0)) }).flatten();
+    let (tab_id, opener, background) = match pending {
+        Some(p) => (p.tab_id, p.opener, p.background),
+        None => (next_tab_id(), None, false),
+    };
+    let index = opener.and_then(|o| index_after(window_id, o));
     with_window(window_id, |ctx| {
         let mut v = View::from(&view);
         ctx.content.add_child_view(Some(&mut v));
-        ctx.tabs.push(Tab {
-            id: tab_id,
-            view: Some(view),
-            url: String::new(),
-            title: "Chargement…".into(),
-            loading: true,
-            can_back: false,
-            can_forward: false,
-            pinned: false,
-            last_active: now(),
-            warning: None,
-            discarded: false,
-            crashed: false,
-        });
+        view.set_visible(0);
+        let mut tab = Tab::new(tab_id, Some(view), "", "Chargement…");
+        tab.opener = opener;
+        match index {
+            Some(i) => ctx.tabs.insert(i.min(ctx.tabs.len()), tab),
+            None => ctx.tabs.push(tab),
+        }
     });
-    activate_tab(window_id, tab_id);
+    if background {
+        push_tabs(window_id);
+    } else {
+        activate_tab(window_id, tab_id);
+    }
 }
 
 pub fn activate_tab(window_id: u32, tab_id: u32) {
     popup_close(window_id);
+    // Switching tabs ends another tab's page fullscreen.
+    let fs = with_window(window_id, |c| c.fullscreen_tab).flatten();
+    if fs.is_some() && fs != Some(tab_id) {
+        exit_content_fullscreen(window_id);
+    }
     // Restore a discarded tab first.
     let restore = with_window(window_id, |ctx| {
         ctx.tabs.iter().find(|t| t.id == tab_id && t.discarded).map(|t| (t.url.clone(), ctx.private, ctx.request_context.clone()))
     })
     .flatten();
     if let Some((url, private, rc)) = restore {
+        if url.starts_with("nightfall://") {
+            state::allow_internal_for_tab(tab_id);
+        }
         if let Some(view) = tab_view(window_id, tab_id, private, &url, rc) {
             with_window(window_id, |ctx| {
                 let mut v = View::from(&view);
@@ -713,37 +858,161 @@ pub fn activate_tab_title(window_id: u32) {
     });
 }
 
+// Browsers closed by NIGHTFALL itself; any other closing browser was closed
+// by its page (window.close() in a login popup).
+thread_local! {
+    static CLOSING: RefCell<std::collections::HashSet<i32>> = RefCell::new(std::collections::HashSet::new());
+}
+
+fn mark_closing(host: &BrowserHost) {
+    if let Some(b) = host.browser() {
+        CLOSING.with(|c| c.borrow_mut().insert(b.identifier()));
+    }
+}
+
+pub fn is_closing(browser_id: i32) -> bool {
+    CLOSING.with(|c| c.borrow().contains(&browser_id))
+}
+
+/// True if NIGHTFALL closed this browser (and forgets it).
+pub fn take_closing(browser_id: i32) -> bool {
+    CLOSING.with(|c| c.borrow_mut().remove(&browser_id))
+}
+
 pub fn close_tab(window_id: u32, tab_id: u32) {
+    close_tab_inner(window_id, tab_id, false);
+}
+
+/// A tab's page closed itself (window.close()): drop the tab, back to its opener.
+pub fn on_tab_self_closed(window_id: u32, tab_id: u32, browser_id: i32) {
+    // Only if the tab still shows that browser (not a discarded or
+    // restored tab whose old browser went away).
+    let same = with_window(window_id, |ctx| {
+        let v = ctx.tabs.iter().find(|t| t.id == tab_id)?.view.as_ref()?;
+        Some(v.browser().map(|b| b.identifier() == browser_id).unwrap_or(true))
+    })
+    .flatten()
+    .unwrap_or(false);
+    if same {
+        close_tab_inner(window_id, tab_id, true);
+    }
+}
+
+fn close_tab_inner(window_id: u32, tab_id: u32, self_closed: bool) {
+    if with_window(window_id, |c| c.fullscreen_tab == Some(tab_id)).unwrap_or(false) {
+        exit_content_fullscreen(window_id);
+    }
     let mut closing: Option<BrowserHost> = None;
-    let (was_active, next) = with_window(window_id, |ctx| {
-        let Some(idx) = ctx.tabs.iter().position(|t| t.id == tab_id) else {
-            return (false, None);
-        };
+    let found = with_window(window_id, |ctx| {
+        let idx = ctx.tabs.iter().position(|t| t.id == tab_id)?;
         let tab = ctx.tabs.remove(idx);
         if let Some(view) = &tab.view {
             closing = view.browser().and_then(|b| b.host());
             let mut v = View::from(view);
             ctx.content.remove_child_view(Some(&mut v));
         }
+        let reopenable = tab.url.starts_with("http://") || tab.url.starts_with("https://") || tab.url.starts_with("view-source:");
+        if !ctx.private && !self_closed && reopenable {
+            ctx.closed.push(ClosedTab { url: tab.url.clone(), index: idx });
+            if ctx.closed.len() > 25 {
+                ctx.closed.remove(0);
+            }
+        }
         let was_active = ctx.active == Some(tab_id);
         let next = if ctx.tabs.is_empty() {
             None
+        } else if let Some(o) = tab.opener.filter(|o| ctx.tabs.iter().any(|t| t.id == *o)) {
+            // A popup or a link tab: back to the page that opened it.
+            Some(o)
         } else {
             Some(ctx.tabs[idx.min(ctx.tabs.len() - 1)].id)
         };
-        (was_active, next)
+        Some((was_active, next))
     })
-    .unwrap_or((false, None));
+    .flatten();
+    // Unknown tab (already closed): nothing to do.
+    let Some((was_active, next)) = found else { return };
     if let Some(h) = closing {
+        mark_closing(&h);
         h.close_browser(1);
     }
     match next {
         Some(n) if was_active => activate_tab(window_id, n),
         Some(_) => push_tabs(window_id),
         None => {
-            with_window(window_id, |c| c.active = None);
-            add_tab(window_id, NEW_TAB_URL, true);
+            // Last tab closed: the window closes (as in Chrome).
+            let had_window = with_window(window_id, |c| {
+                c.active = None;
+                c.window.is_some()
+            })
+            .unwrap_or(false);
+            if had_window {
+                close_window(window_id);
+            }
         }
+    }
+}
+
+/// Reopen the most recently closed tab of the window.
+pub fn reopen_closed_tab(window_id: u32) -> Option<u32> {
+    let last = with_window(window_id, |c| c.closed.pop()).flatten()?;
+    add_tab_at(window_id, &last.url, true, Some(last.index))
+}
+
+/// Open the same address in a new tab right after this one.
+pub fn duplicate_tab(window_id: u32, tab_id: u32) -> Option<u32> {
+    let url = tab_url(window_id, tab_id).filter(|u| !u.is_empty())?;
+    let index = with_window(window_id, |c| c.tabs.iter().position(|t| t.id == tab_id)).flatten()?;
+    add_tab_at(window_id, &url, true, Some(index + 1))
+}
+
+/// New tab page right after `tab_id`.
+pub fn new_tab_right(window_id: u32, tab_id: u32) -> Option<u32> {
+    let index = with_window(window_id, |c| c.tabs.iter().position(|t| t.id == tab_id)).flatten()?;
+    add_tab_at(window_id, NEW_TAB_URL, true, Some(index + 1))
+}
+
+/// Close every tab except `tab_id` (pinned tabs are kept, as in Chrome).
+pub fn close_other_tabs(window_id: u32, tab_id: u32) {
+    let ids: Vec<u32> = with_window(window_id, |c| c.tabs.iter().filter(|t| t.id != tab_id && !t.pinned).map(|t| t.id).collect()).unwrap_or_default();
+    activate_tab(window_id, tab_id);
+    for id in ids {
+        close_tab(window_id, id);
+    }
+}
+
+/// Close the tabs on the right of `tab_id`.
+pub fn close_tabs_right(window_id: u32, tab_id: u32) {
+    let ids: Vec<u32> = with_window(window_id, |c| {
+        let Some(i) = c.tabs.iter().position(|t| t.id == tab_id) else { return Vec::new() };
+        c.tabs[i + 1..].iter().filter(|t| !t.pinned).map(|t| t.id).collect()
+    })
+    .unwrap_or_default();
+    if ids.iter().any(|id| active_tab_id(window_id) == Some(*id)) {
+        activate_tab(window_id, tab_id);
+    }
+    for id in ids {
+        close_tab(window_id, id);
+    }
+}
+
+/// Mute or unmute a tab.
+pub fn set_tab_muted(window_id: u32, tab_id: u32, muted: bool) {
+    if let Some(h) = tab_browser(window_id, tab_id).and_then(|b| b.host()) {
+        h.set_audio_muted(if muted { 1 } else { 0 });
+    }
+    push_tabs(window_id);
+}
+
+pub fn tab_muted(window_id: u32, tab_id: u32) -> bool {
+    tab_browser(window_id, tab_id).and_then(|b| b.host()).map(|h| h.is_audio_muted() != 0).unwrap_or(false)
+}
+
+/// Activate the n-th tab (0-based); `usize::MAX` = last tab.
+pub fn activate_index(window_id: u32, n: usize) {
+    let id = with_window(window_id, |c| if n == usize::MAX { c.tabs.last().map(|t| t.id) } else { c.tabs.get(n).map(|t| t.id) }).flatten();
+    if let Some(id) = id {
+        activate_tab(window_id, id);
     }
 }
 
@@ -777,6 +1046,9 @@ pub fn discard_tab(window_id: u32, tab_id: u32) {
         }
         let mut closing = None;
         if let Some(t) = ctx.tabs.iter_mut().find(|t| t.id == tab_id) {
+            if t.audible {
+                return None; // never unload a tab playing sound
+            }
             if let Some(view) = t.view.take() {
                 closing = view.browser().and_then(|b| b.host());
                 let mut v = View::from(&view);
@@ -789,9 +1061,104 @@ pub fn discard_tab(window_id: u32, tab_id: u32) {
     })
     .flatten();
     if let Some(h) = closing {
+        mark_closing(&h);
         h.close_browser(1);
     }
     push_tabs(window_id);
+}
+
+// ------------------------------------------------------------- fullscreen
+
+/// A page entered or left HTML5 fullscreen (DisplayHandler): with Alloy the
+/// application makes the window fullscreen and hides its own interface.
+pub fn set_content_fullscreen(window_id: u32, tab_id: u32, on: bool) {
+    if windows_busy() {
+        super::ui_thread::on_ui_delayed(0, move || set_content_fullscreen(window_id, tab_id, on));
+        return;
+    }
+    if !on {
+        if with_window(window_id, |c| c.fullscreen_tab == Some(tab_id)).unwrap_or(false) {
+            restore_from_fullscreen(window_id);
+        }
+        return;
+    }
+    if active_tab_id(window_id) != Some(tab_id) {
+        // Only the visible tab may take the whole window.
+        if let Some(h) = tab_browser(window_id, tab_id).and_then(|b| b.host()) {
+            h.exit_fullscreen(1);
+        }
+        return;
+    }
+    popup_close(window_id);
+    let window = with_window(window_id, |ctx| {
+        ctx.window_was_fullscreen = ctx.window.as_ref().map(|w| w.is_fullscreen() != 0).unwrap_or(false);
+        ctx.fullscreen_tab = Some(tab_id);
+        ctx.window.clone()
+    })
+    .flatten();
+    let locked = !core().is_unlocked();
+    apply_mode(window_id, locked);
+    if let Some(w) = window {
+        if w.is_fullscreen() == 0 {
+            w.set_fullscreen(1);
+        }
+    }
+    if let Some(v) = with_window(window_id, |c| c.tabs.iter().find(|t| t.id == tab_id).and_then(|t| t.view.clone())).flatten() {
+        v.request_focus();
+    }
+    push_event(window_id, &serde_json::json!({ "type": "fullscreen", "on": true }));
+}
+
+fn restore_from_fullscreen(window_id: u32) {
+    let Some((window, was_fullscreen)) = with_window(window_id, |ctx| {
+        ctx.fullscreen_tab = None;
+        (ctx.window.clone(), ctx.window_was_fullscreen)
+    }) else {
+        return;
+    };
+    let locked = !core().is_unlocked();
+    apply_mode(window_id, locked);
+    if let Some(w) = window {
+        if !was_fullscreen && w.is_fullscreen() != 0 {
+            w.set_fullscreen(0);
+        }
+    }
+    push_event(window_id, &serde_json::json!({ "type": "fullscreen", "on": false }));
+}
+
+/// Leave a page's fullscreen (Escape, tab switch, lock...).
+pub fn exit_content_fullscreen(window_id: u32) {
+    let Some(tab) = with_window(window_id, |c| c.fullscreen_tab).flatten() else { return };
+    if let Some(h) = tab_browser(window_id, tab).and_then(|b| b.host()) {
+        if h.is_fullscreen() != 0 {
+            h.exit_fullscreen(1);
+        }
+    }
+    // The page's notification may never come (crashed page): restore now.
+    if with_window(window_id, |c| c.fullscreen_tab.is_some()).unwrap_or(false) {
+        restore_from_fullscreen(window_id);
+    }
+}
+
+pub fn content_fullscreen(window_id: u32) -> bool {
+    with_window(window_id, |c| c.fullscreen_tab.is_some()).unwrap_or(false)
+}
+
+/// F11 / Ctrl+Cmd+F: whole-window fullscreen (the interface stays visible).
+pub fn toggle_window_fullscreen(window_id: u32) {
+    if content_fullscreen(window_id) {
+        exit_content_fullscreen(window_id);
+        return;
+    }
+    if let Some(w) = with_window(window_id, |c| c.window.clone()).flatten() {
+        w.set_fullscreen(if w.is_fullscreen() != 0 { 0 } else { 1 });
+    }
+}
+
+/// Diagnostic (CI self test).
+#[cfg(feature = "selftest")]
+pub fn fullscreen_report(window_id: u32) -> (bool, bool, bool) {
+    with_window(window_id, |c| (c.fullscreen_tab.is_some(), c.top.is_visible() != 0, c.window.as_ref().map(|w| w.is_fullscreen() != 0).unwrap_or(false))).unwrap_or((false, false, false))
 }
 
 pub fn active_browser(window_id: u32) -> Option<Browser> {
@@ -872,6 +1239,16 @@ pub struct TabState {
     pub can_forward: bool,
     pub warning: Option<String>,
     pub blocked: u64,
+    pub favicon: Option<String>,
+    pub audible: bool,
+    pub muted: bool,
+    /// Zoom in percent (100 = default).
+    pub zoom: i32,
+}
+
+/// Chromium zoom level → percent (each level is a factor 1.2).
+pub fn zoom_percent(level: f64) -> i32 {
+    (100.0 * 1.2f64.powf(level)).round() as i32
 }
 
 pub fn tabs_state(window_id: u32) -> serde_json::Value {
@@ -880,12 +1257,11 @@ pub fn tabs_state(window_id: u32) -> serde_json::Value {
             .tabs
             .iter()
             .map(|t| {
-                let blocked = t
-                    .view
-                    .as_ref()
-                    .and_then(|v| v.browser())
-                    .map(|b| super::client::blocked_count(b.identifier()))
-                    .unwrap_or(0);
+                let browser = t.view.as_ref().and_then(|v| v.browser());
+                let blocked = browser.as_ref().map(|b| super::client::blocked_count(b.identifier())).unwrap_or(0);
+                let host = browser.as_ref().and_then(|b| b.host());
+                let muted = host.as_ref().map(|h| h.is_audio_muted() != 0).unwrap_or(false);
+                let zoom = host.as_ref().map(|h| zoom_percent(h.zoom_level())).unwrap_or(100);
                 TabState {
                     id: t.id,
                     title: t.title.clone(),
@@ -899,6 +1275,10 @@ pub fn tabs_state(window_id: u32) -> serde_json::Value {
                     can_forward: t.can_forward,
                     warning: t.warning.clone(),
                     blocked,
+                    favicon: t.favicon.clone(),
+                    audible: t.audible,
+                    muted,
+                    zoom,
                 }
             })
             .collect();
@@ -940,47 +1320,80 @@ const POPUP_MARGIN: i32 = 8;
 /// Open (or toggle) a dropdown popup anchored under a button of the top
 /// interface view. `anchor` is the button's rectangle in top-view CSS px.
 pub fn popup_open(window_id: u32, panel: &str, anchor: Rect, width: i32, height: i32) {
-    let same = with_window(window_id, |ctx| ctx.popup.as_ref().map(|p| p.panel == panel).unwrap_or(false)).unwrap_or(false);
+    popup_open_ex(window_id, panel, anchor, width, height, PopupOpts::default());
+}
+
+pub fn popup_panel(window_id: u32) -> Option<String> {
+    with_window(window_id, |ctx| ctx.popup.as_ref().map(|p| p.panel.clone())).flatten()
+}
+
+pub fn popup_open_ex(window_id: u32, panel: &str, anchor: Rect, width: i32, height: i32, opts: PopupOpts) {
+    let panel_id: String = panel.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(24).collect();
+    let current = popup_panel(window_id);
+    if current.as_deref() == Some(panel_id.as_str()) && !opts.toggle {
+        popup_resize(window_id, width, height);
+        return;
+    }
     popup_close(window_id);
-    if same {
+    if current.as_deref() == Some(panel_id.as_str()) {
         return;
     }
     let Some((window, private, origin, area)) = with_window(window_id, |ctx| {
         let col = View::from(&ctx.column).bounds();
         let top = View::from(&ctx.top).bounds();
+        let side = View::from(&ctx.side).bounds();
         let area = Size { width: col.x + col.width, height: col.y + col.height };
-        ctx.window.clone().map(|w| (w, ctx.private, (col.x + top.x, col.y + top.y), area))
+        let origin = if opts.from_side { (side.x, side.y) } else { (col.x + top.x, col.y + top.y) };
+        ctx.window.clone().map(|w| (w, ctx.private, origin, area))
     })
     .flatten() else {
         return;
     };
-    let panel_id: String = panel.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(24).collect();
     let url = format!(
         "nightfall://app/shell.html?mode=popup&w={window_id}&private={}&panel={panel_id}",
         if private { 1 } else { 0 }
     );
-    let (w, h) = (width.clamp(160, 520), height.clamp(60, 640));
+    let max_w = opts.max_width.clamp(160, 2400);
+    let (w, h) = (width.clamp(160, max_w), height.clamp(40, 760));
+    let target = if panel_id == "find" { active_browser(window_id) } else { None };
     let view = ui_view_url(window_id, false, &url, Arc::new(AtomicI32::new(h)), Arc::new(AtomicI32::new(w)));
     let mut v = View::from(&view);
-    let Some(overlay) = window.add_overlay_view(Some(&mut v), DockingMode::CUSTOM, 1) else {
+    let Some(overlay) = window.add_overlay_view(Some(&mut v), DockingMode::CUSTOM, if opts.activate { 1 } else { 0 }) else {
         state::log("menu déroulant : superposition refusée par CEF");
         return;
     };
-    let right = origin.0 + anchor.x + anchor.width;
+    let right = if opts.align_left { origin.0 + anchor.x } else { origin.0 + anchor.x + anchor.width };
     let top = origin.1 + anchor.y + anchor.height + 6;
-    place_popup(area, &overlay, right, top, w, h);
+    place_popup(area, &overlay, right, opts.align_left, top, w, h);
     overlay.set_visible(1);
-    view.request_focus();
+    if opts.activate {
+        view.request_focus();
+    }
     with_window(window_id, |ctx| {
-        ctx.popup = Some(Popup { panel: panel_id, view, overlay, right, top });
+        ctx.popup = Some(Popup { panel: panel_id, view, overlay, right, top, align_left: opts.align_left, max_width: max_w, target });
     });
 }
 
+/// Open a panel under the toolbar, at the right edge of the window (find bar).
+pub fn popup_open_under_toolbar(window_id: u32, panel: &str, width: i32, height: i32) {
+    let Some(top) = with_window(window_id, |ctx| View::from(&ctx.top).bounds()) else { return };
+    let anchor = Rect { x: top.width - 12, y: 0, width: 0, height: (top.height - 6).max(0) };
+    popup_open_ex(window_id, panel, anchor, width, height, PopupOpts { toggle: false, ..Default::default() });
+}
+
+/// Give the keyboard focus to the open popup (find bar shortcut again).
+pub fn popup_focus(window_id: u32) {
+    if let Some(v) = with_window(window_id, |ctx| ctx.popup.as_ref().map(|p| p.view.clone())).flatten() {
+        v.request_focus();
+    }
+}
+
 /// `area`: size of the window's client area (where overlays live).
-fn place_popup(win: Size, overlay: &OverlayController, right: i32, top: i32, w: i32, h: i32) {
-    let max_h = (win.height - top - POPUP_MARGIN).max(80);
+fn place_popup(win: Size, overlay: &OverlayController, anchor_x: i32, align_left: bool, top: i32, w: i32, h: i32) {
+    let max_h = (win.height - top - POPUP_MARGIN).max(40);
     let h = h.min(max_h);
-    let x = (right - w).clamp(POPUP_MARGIN, (win.width - w - POPUP_MARGIN).max(POPUP_MARGIN));
+    let x = if align_left { anchor_x } else { anchor_x - w };
+    let x = x.clamp(POPUP_MARGIN, (win.width - w - POPUP_MARGIN).max(POPUP_MARGIN));
     overlay.set_bounds(Some(&Rect { x, y: top, width: w, height: h }));
 }
 
@@ -990,7 +1403,7 @@ pub fn popup_resize(window_id: u32, width: i32, height: i32) {
         let col = View::from(&ctx.column).bounds();
         let area = Size { width: col.x + col.width, height: col.y + col.height };
         if let Some(p) = &ctx.popup {
-            place_popup(area, &p.overlay, p.right, p.top, width.clamp(160, 520), height.clamp(60, 640));
+            place_popup(area, &p.overlay, p.right, p.align_left, p.top, width.clamp(160, p.max_width), height.clamp(40, 760));
         }
     });
 }
@@ -1003,8 +1416,48 @@ pub fn popup_close(window_id: u32) {
         if let Some(h) = host {
             h.close_browser(1);
         }
+        if let Some(h) = p.target.and_then(|b| b.host()) {
+            // Find bar closed: remove the highlights.
+            h.stop_finding(1);
+        }
         push_event(window_id, &serde_json::json!({ "type": "popup_closed", "panel": p.panel }));
     }
+}
+
+/// Give the keyboard focus back to the page (after closing the find bar).
+pub fn focus_active_tab(window_id: u32) {
+    if let Some(v) = with_window(window_id, |ctx| {
+        let id = ctx.active?;
+        ctx.tabs.iter().find(|t| t.id == id)?.view.clone()
+    })
+    .flatten()
+    {
+        v.request_focus();
+    }
+}
+
+/// Ctrl+L: keyboard focus to the address field.
+pub fn focus_address(window_id: u32) {
+    if content_fullscreen(window_id) {
+        exit_content_fullscreen(window_id);
+    }
+    if let Some(top) = with_window(window_id, |c| c.top.clone()) {
+        top.request_focus();
+    }
+    push_event(window_id, &serde_json::json!({ "type": "focus_address" }));
+}
+
+/// Copy text to the system clipboard: the text is selected in the top
+/// interface view and copied by Chromium's own Copy command (no extra
+/// platform code, works on Windows and macOS).
+pub fn copy_text(window_id: u32, text: &str) {
+    let Some(top) = with_window(window_id, |c| c.top.clone()) else { return };
+    let Some(frame) = top.browser().and_then(|b| b.main_frame()) else { return };
+    let arg = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
+    frame.execute_java_script(Some(&CefString::from(format!("window.nfSelectForCopy && window.nfSelectForCopy({arg});").as_str())), Some(&CefString::from("nightfall://app/")), 0);
+    // Same message pipe as the script above: runs after it.
+    frame.copy();
+    frame.execute_java_script(Some(&CefString::from("window.nfCopyDone && window.nfCopyDone();")), Some(&CefString::from("nightfall://app/")), 0);
 }
 
 /// Diagnostic (CI self test).
@@ -1090,7 +1543,7 @@ pub fn tab_activity() -> Vec<(u32, nf_perf::TabActivity)> {
                         last_active: t.last_active,
                         is_active: ctx.active == Some(t.id),
                         pinned: t.pinned,
-                        audible: false,
+                        audible: t.audible,
                         editing_form: false,
                         private: ctx.private,
                         discarded: t.discarded,

@@ -7,7 +7,7 @@
 use super::state::{self, core, BrowserKind, Core, Unlocked};
 use super::ui_thread::{background, on_ui, on_ui_delayed};
 use super::{downloads, security, session, windows};
-use cef::ImplBrowser;
+use cef::{ImplBrowser, ImplBrowserHost};
 use nf_auth::{ArgonParams, NightfallLock, UnlockError};
 use nf_emergency::{PurgeCategory, PurgePlan};
 use serde_json::{json, Value};
@@ -106,6 +106,74 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             on_ui(move || windows::push_tabs(w));
             ok()
         }
+        "tab.reopen" | "tab.duplicate" | "tab.reload" | "tab.mute" | "tab.closeOthers" | "tab.closeRight" | "tab.newRight" | "tab.unresponsive" => {
+            let id = body.get("id").and_then(Value::as_u64).unwrap_or(0) as u32;
+            let terminate = s(body, "action") == "terminate";
+            let cmd = cmd.to_string();
+            on_ui(move || tab_command(w, id, &cmd, terminate));
+            ok()
+        }
+        "find.run" => {
+            let text = s(body, "text").to_string();
+            let flag = |k: &str, d: bool| body.get(k).and_then(Value::as_bool).unwrap_or(d);
+            let (forward, match_case, next) = (flag("forward", true), flag("matchCase", false), flag("next", false));
+            on_ui(move || super::browsing::find(w, &text, forward, match_case, next));
+            ok()
+        }
+        "find.stop" => {
+            let clear = body.get("clear").and_then(Value::as_bool).unwrap_or(true);
+            on_ui(move || super::browsing::stop_find(w, clear));
+            ok()
+        }
+        "find.open" => {
+            on_ui(move || super::browsing::open_find_bar(w));
+            ok()
+        }
+        "find.close" => {
+            on_ui(move || {
+                windows::popup_close(w);
+                windows::focus_active_tab(w);
+            });
+            ok()
+        }
+        "zoom.in" | "zoom.out" | "zoom.reset" | "page.print" | "page.save" | "page.viewSource" | "window.fullscreen" => {
+            let action = match cmd {
+                "zoom.in" => "zoom.in",
+                "zoom.out" => "zoom.out",
+                "zoom.reset" => "zoom.reset",
+                "page.print" => "print",
+                "page.save" => "save",
+                "page.viewSource" => "view.source",
+                _ => "window.fullscreen",
+            };
+            on_ui(move || shortcut(w, action));
+            ok()
+        }
+        "omnibox.suggest" => omnibox_suggest(s(body, "text")),
+        "omnibox.render" => {
+            // The top view shows its suggestions in the dropdown view.
+            let ev = json!({ "type": "suggest", "items": body.get("items").cloned().unwrap_or(json!([])), "selected": body.get("selected").cloned().unwrap_or(json!(-1)) });
+            if let Ok(mut m) = OMNIBOX.lock() {
+                m.insert(w, ev.clone());
+            }
+            on_ui(move || windows::push_event(w, &ev));
+            ok()
+        }
+        "omnibox.state" => {
+            let ev = OMNIBOX.lock().ok().and_then(|m| m.get(&w).cloned()).unwrap_or(json!({ "items": [], "selected": -1 }));
+            json!({ "ok": true, "state": ev })
+        }
+        "omnibox.pick" => {
+            let url = resolve_input(s(body, "url"), &core().settings);
+            let target = url.clone();
+            on_ui(move || {
+                windows::popup_close(w);
+                windows::navigate_active(w, &target);
+                windows::focus_active_tab(w);
+                windows::push_event(w, &json!({ "type": "omnibox_picked", "url": target }));
+            });
+            json!({ "ok": true, "url": url })
+        }
         "navigate" => {
             let input = s(body, "input").trim().to_string();
             let url = resolve_input(&input, &core().settings);
@@ -142,13 +210,28 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             ok()
         }
         "page.info" => page_info(w),
+        "update.status" => super::updater::status(),
+        "update.set" => super::updater::set(body),
+        "update.check" => {
+            super::updater::check(false);
+            super::updater::status()
+        }
+        "update.install" => super::updater::install_now(),
         "popup.open" => {
             let panel = s(body, "panel").to_string();
             let num = |v: &Value, k: &str| v.get(k).and_then(Value::as_f64).unwrap_or(0.0).round() as i32;
             let a = body.get("anchor").cloned().unwrap_or(Value::Null);
             let anchor = cef::Rect { x: num(&a, "x"), y: num(&a, "y"), width: num(&a, "width"), height: num(&a, "height") };
             let (width, height) = (num(body, "width"), num(body, "height"));
-            on_ui(move || windows::popup_open(w, &panel, anchor, width, height));
+            let flag = |k: &str, d: bool| body.get(k).and_then(Value::as_bool).unwrap_or(d);
+            let opts = windows::PopupOpts {
+                activate: !flag("noActivate", false),
+                toggle: flag("toggle", true),
+                align_left: flag("alignLeft", false),
+                from_side: matches!(caller.kind, BrowserKind::Ui { side: true, .. }),
+                max_width: if panel == "suggest" { 2400 } else { 520 },
+            };
+            on_ui(move || windows::popup_open_ex(w, &panel, anchor, width, height, opts));
             ok()
         }
         "popup.resize" => {
@@ -430,7 +513,7 @@ pub fn resolve_input(input: &str, settings: &state::Settings) -> String {
         return windows::NEW_TAB_URL.into();
     }
     let lower = t.to_ascii_lowercase();
-    if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("nightfall://app/") || lower.starts_with("chrome://extensions") {
+    if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("nightfall://app/") || lower.starts_with("chrome://extensions") || lower.starts_with("view-source:http://") || lower.starts_with("view-source:https://") {
         return t.to_string();
     }
     if lower.starts_with("javascript:") || lower.starts_with("data:") || lower.starts_with("file:") {
@@ -620,6 +703,7 @@ fn open_stores(c: &mut Core, mk: nf_crypto::SecretKey) -> Result<(), String> {
 }
 
 fn after_unlock_ui() {
+    super::updater::load_prefs();
     security::invalidate_detector();
     super::idle::touch();
     let session = {
@@ -988,11 +1072,45 @@ pub fn shortcut(w: u32, action: &str) {
             }
         }
         "nav.home" => windows::navigate_active(w, windows::NEW_TAB_URL),
+        "tab.reload.hard" => {
+            if let Some(b) = browser {
+                b.reload_ignore_cache();
+            }
+        }
+        "tab.reopen" => {
+            windows::reopen_closed_tab(w);
+        }
+        "window.close" => windows::close_window(w),
+        "window.fullscreen" => windows::toggle_window_fullscreen(w),
+        "page.bookmarks" => {
+            windows::add_tab(w, "nightfall://app/bookmarks.html", true);
+        }
+        "find" => super::browsing::open_find_bar(w),
+        "find.next" => super::browsing::find_again(w, false),
+        "find.prev" => super::browsing::find_again(w, true),
+        "zoom.in" => super::browsing::zoom(w, "in"),
+        "zoom.out" => super::browsing::zoom(w, "out"),
+        "zoom.reset" => super::browsing::zoom(w, "reset"),
+        "print" => {
+            if let Some(h) = browser.and_then(|b| b.host()) {
+                h.print();
+            }
+        }
+        "save" => super::browsing::save_page(w, &windows::active_url(w).unwrap_or_default()),
+        "view.source" => {
+            if let Some(t) = windows::active_tab_id(w) {
+                super::browsing::view_source(w, t, &windows::active_url(w).unwrap_or_default());
+            }
+        }
+        a if a.starts_with("tab.index.") => {
+            let n = a.trim_start_matches("tab.index.");
+            windows::activate_index(w, if n == "last" { usize::MAX } else { n.parse().unwrap_or(0) });
+        }
         "lock" => lock_now(),
         "emergency.lockdown" => emergency_lockdown(),
         "window.new" => windows::create_window(false, Vec::new()),
         "window.private" => windows::create_window(true, Vec::new()),
-        "focus.address" => windows::push_event(w, &json!({ "type": "focus_address" })),
+        "focus.address" => windows::focus_address(w),
         "page.history" => {
             windows::add_tab(w, "nightfall://app/history.html", true);
         }
@@ -1021,9 +1139,67 @@ pub fn shortcut(w: u32, action: &str) {
             security::invalidate_detector();
             windows::push_event(w, &json!({ "type": "page_info" }));
         }
-        "tab.reopen" => {}
         _ => {}
     }
+}
+
+/// Tab context menu and tab strip actions (UI thread).
+fn tab_command(w: u32, id: u32, cmd: &str, terminate: bool) {
+    match cmd {
+        "tab.reopen" => {
+            windows::reopen_closed_tab(w);
+        }
+        "tab.duplicate" => {
+            windows::duplicate_tab(w, id);
+        }
+        "tab.newRight" => {
+            windows::new_tab_right(w, id);
+        }
+        "tab.reload" => {
+            if let Some(b) = windows::tab_browser(w, id) {
+                b.reload();
+            }
+        }
+        "tab.mute" => {
+            let muted = windows::tab_muted(w, id);
+            windows::set_tab_muted(w, id, !muted);
+        }
+        "tab.closeOthers" => windows::close_other_tabs(w, id),
+        "tab.closeRight" => windows::close_tabs_right(w, id),
+        "tab.unresponsive" => super::browsing::answer_unresponsive(w, id, terminate),
+        _ => {}
+    }
+}
+
+/// Last suggestions shown by each window's address bar (read by the dropdown).
+static OMNIBOX: std::sync::Mutex<std::collections::BTreeMap<u32, Value>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// Address bar suggestions from the local history and bookmarks only.
+fn omnibox_suggest(text: &str) -> Value {
+    let text = text.trim();
+    if text.is_empty() || text.len() > 300 {
+        return json!({ "ok": true, "items": [] });
+    }
+    let c = core();
+    let resolved = resolve_input(text, &c.settings);
+    let search = c.settings.search_url(text);
+    let typed = if resolved != search { Some(resolved) } else { None };
+    // The SQL filter uses the longest word; the ranking checks every word.
+    let word = text.split_whitespace().max_by_key(|w| w.len()).unwrap_or(text).to_string();
+    let (history, bookmarks) = match c.storage() {
+        Some(st) => (
+            st.history(&nf_storage::HistoryQuery { text: Some(word.clone()), limit: Some(300), ..Default::default() }).unwrap_or_default(),
+            st.search_bookmarks(&word).unwrap_or_default(),
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
+    let mut candidates: Vec<super::omnibox::Candidate> = bookmarks
+        .iter()
+        .map(|b| super::omnibox::Candidate { url: &b.url, title: &b.title, visits: 1, last_visit: b.modified.max(b.created), bookmark: true })
+        .collect();
+    candidates.extend(history.iter().map(|h| super::omnibox::Candidate { url: &h.url, title: &h.title, visits: h.visit_count, last_visit: h.last_visit, bookmark: false }));
+    let items = super::omnibox::suggest(text, typed.as_deref(), &search, &c.settings.search_engine, &candidates, now(), 8);
+    json!({ "ok": true, "items": items })
 }
 
 #[cfg(test)]

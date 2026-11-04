@@ -39,6 +39,21 @@
       <symbol id="i-emergency" viewBox="0 0 24 24"><path d="M8.7 3.8h6.6l4.9 4.9v6.6l-4.9 4.9H8.7l-4.9-4.9V8.7z"/><path d="M12 8v4.6M12 15.9v.1"/></symbol>
       <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9.5 6.5 5.5 5.5-5.5 5.5"/></symbol>
       <symbol id="i-generate" viewBox="0 0 24 24"><path d="M12 4v3.2M12 16.8V20M4 12h3.2M16.8 12H20M6.6 6.6l2.2 2.2M15.2 15.2l2.2 2.2M6.6 17.4l2.2-2.2M15.2 8.8l2.2-2.2"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6"/><path d="m15.3 15.3 4.2 4.2"/></symbol>
+      <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6"/><path d="m15.3 15.3 4.2 4.2M8.3 10.8h5M10.8 8.3v5"/></symbol>
+      <symbol id="i-zoom-out" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6"/><path d="m15.3 15.3 4.2 4.2M8.3 10.8h5"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+      <symbol id="i-up" viewBox="0 0 24 24"><path d="m6.5 14.5 5.5-5.5 5.5 5.5"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></symbol>
+      <symbol id="i-print" viewBox="0 0 24 24"><path d="M7.5 9V4.5h9V9"/><rect x="4.5" y="9" width="15" height="7" rx="1.8"/><path d="M7.5 13.5h9v6h-9z"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M12 4.5v9.5M8 10.2l4 4 4-4"/><path d="M5 15.5v2.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-2.5"/></symbol>
+      <symbol id="i-fullscreen" viewBox="0 0 24 24"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></symbol>
+      <symbol id="i-duplicate" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9.5 4.5h5l-.8 5.2 3.3 3.3H7l3.3-3.3zM12 13v6.5"/></symbol>
+      <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M17.8 6.6a7.6 7.6 0 0 1 0 10.8"/></symbol>
+      <symbol id="i-sound-off" viewBox="0 0 24 24"><path d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3z"/><path d="m15.5 9.5 5 5M20.5 9.5l-5 5"/></symbol>
+      <symbol id="i-reopen" viewBox="0 0 24 24"><path d="M5.5 12a6.5 6.5 0 1 0 2-4.7"/><path d="M5.2 4.3v3.9h3.9"/><rect x="9.5" y="10" width="5" height="4.5" rx="1"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.8"/><path d="M4.2 12h15.6M12 4.2c2.3 2.2 3.4 4.8 3.4 7.8s-1.1 5.6-3.4 7.8c-2.3-2.2-3.4-4.8-3.4-7.8S9.7 6.4 12 4.2z"/></symbol>
       <symbol id="i-eye" viewBox="0 0 24 24"><path d="M3.5 12S6.5 6.5 12 6.5 20.5 12 20.5 12 17.5 17.5 12 17.5 3.5 12 3.5 12z"/><circle cx="12" cy="12" r="2.6"/></symbol>
     </defs>
   </svg>
@@ -108,14 +123,15 @@
       </div>
     </div>
     <div id="toolbar">
-      <button class="icon" id="b-back" title="Précédent" aria-label="Précédent"><svg><use href="#i-back"/></svg></button>
+      <button class="icon" id="b-back" title="Précédent (Alt+←)" aria-label="Précédent"><svg><use href="#i-back"/></svg></button>
       <button class="icon" id="b-fwd" title="Suivant" aria-label="Suivant"><svg><use href="#i-fwd"/></svg></button>
-      <button class="icon" id="b-reload" title="Actualiser" aria-label="Actualiser"><svg><use href="#i-reload"/></svg></button>
+      <button class="icon" id="b-reload" title="Actualiser (Ctrl+R)" aria-label="Actualiser"><svg><use href="#i-reload"/></svg></button>
       <button class="icon quiet" id="b-home" title="Accueil" aria-label="Accueil"><svg><use href="#i-home"/></svg></button>
       <button class="icon" id="b-star" title="Ajouter aux favoris (Ctrl+D)" aria-label="Favori"><svg><use href="#i-star"/></svg></button>
       <div id="omnibox">
         <span id="sec-icon" title=""><svg><use href="#i-internal"/></svg></span>
-        <input id="address" spellcheck="false" placeholder="Rechercher ou saisir une adresse" autocomplete="off">
+        <input id="address" spellcheck="false" placeholder="Rechercher ou saisir une adresse" autocomplete="off" aria-autocomplete="list">
+        <button id="b-zoom" hidden title="Zoom" aria-label="Zoom de la page"><svg><use href="#i-zoom-in"/></svg></button>
         <button id="b-shield" title="NIGHTFALL Shield : éléments bloqués sur cette page" aria-label="NIGHTFALL Shield"><svg><use href="#i-shield"/></svg><span id="shield-count">0</span></button>
       </div>
       <button class="icon" id="b-key" title="Mots de passe" aria-label="Mots de passe"><svg><use href="#i-key"/></svg></button>

@@ -26,6 +26,7 @@ nf-vault = { path = "crates/nf-vault" }
 nf-perf = { path = "crates/nf-perf" }
 nf-downloads = { path = "crates/nf-downloads" }
 nf-sync = { path = "crates/nf-sync" }
+nf-update = { path = "crates/nf-update" }
 
 # External crates (licences checked by cargo-deny, see deny.toml)
 cef = { version = "=156.3.0", default-features = false }
