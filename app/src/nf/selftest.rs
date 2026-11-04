@@ -356,7 +356,45 @@ fn step_tabs() {
     if !found {
         return fail("suggestions de la barre d'adresse : historique absent");
     }
-    step_fullscreen();
+    step_popup();
+}
+
+static TABS_BEFORE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+fn popup_loaded() -> bool {
+    let st = windows::tabs_state(1);
+    st["tabs"].as_array().map(|t| t.iter().any(|t| t["url"].as_str().unwrap_or("").contains("nf-popup") && t["loading"] == false)).unwrap_or(false)
+}
+
+/// "Sign in with..." flows: window.open() with a user gesture opens a tab
+/// that keeps window.opener; its window.close() removes only that tab.
+fn step_popup() {
+    step("fenêtre de connexion : window.open puis window.close");
+    TABS_BEFORE.store(tab_count(), std::sync::atomic::Ordering::SeqCst);
+    let Some(h) = windows::active_browser(1).and_then(|b| b.host()) else { return fail("pas d'onglet actif") };
+    let msg = r#"{"id":4243,"method":"Runtime.evaluate","params":{"expression":"window.nfPopup = window.open('https://example.com/?nf-popup', 'nfpopup', 'width=480,height=600'); 1","userGesture":true}}"#;
+    h.send_dev_tools_message(Some(msg.as_bytes()));
+    wait_for("ouverture de la fenêtre pop-up", 40, popup_loaded, || {
+        let n = TABS_BEFORE.load(std::sync::atomic::Ordering::SeqCst);
+        if tab_count() != n + 1 {
+            return fail(&format!("pop-up : {} onglets au lieu de {}", tab_count(), n + 1));
+        }
+        // The popup page checks its opener, then closes itself.
+        let Some(h) = windows::active_browser(1).and_then(|b| b.host()) else { return fail("pop-up non active") };
+        let msg = r#"{"id":4244,"method":"Runtime.evaluate","params":{"expression":"console.log('opener ' + (window.opener ? 'présent' : 'absent')); window.close(); 1","userGesture":true}}"#;
+        h.send_dev_tools_message(Some(msg.as_bytes()));
+        wait_for("fermeture de la pop-up par sa page", 20, || tab_count() == TABS_BEFORE.load(std::sync::atomic::Ordering::SeqCst), || {
+            if !windows::window_ids().contains(&1) {
+                return fail("window.close() d'une pop-up a fermé la fenêtre");
+            }
+            let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+            if windows::active_tab_id(1) != Some(main) {
+                return fail("retour à la page d'origine après la pop-up : non");
+            }
+            state::log("selftest: pop-up ouverte puis fermée par sa page, fenêtre conservée");
+            on_ui_delayed(500, step_fullscreen);
+        });
+    });
 }
 
 fn step_fullscreen() {
