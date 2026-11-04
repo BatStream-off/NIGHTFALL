@@ -1,11 +1,11 @@
 # M-0001 : Registre initial des fonctionnalités à préserver
 
 - **Rôle** : Analyste
-- **Modèle** : sonnet — raison : inventaire étendu demandant de lire et recouper beaucoup de code (Rust, JS, CI) ; Haiku risquerait des oublis, or l'exhaustivité est l'objet même de la mission.
+- **Modèle** : opus (tentative 2) — raison : montée de niveau après audit REFUSÉ de la tentative 1 (sonnet, choisi pour un inventaire étendu)
 - **Statut** : EN COURS
-- **Branche** : agent/M-0001-registre-fonctionnalites
+- **Branche** : agent/M-0001-registre-v2 (tentative 1 : agent/M-0001-registre-fonctionnalites, commit 76ed70a)
 - **Copie isolée (worktree)** : oui
-- **Dépend de** : PR #19 (organisation multi-agents) — la branche part de `origin/orga/multi-agents`
+- **Dépend de** : rien (la tentative 2 part de `origin/develop`, qui contient déjà la tentative 1)
 - **Créée le** : 2026-11-04
 
 ## Objectif
@@ -55,8 +55,7 @@ docs/agents/missions/M-0001-registre-fonctionnalites/**
 6. Une section finale « Couverture » donne le nombre de fonctionnalités, combien ont
    une preuve automatique, et la liste de celles qui n'en ont aucune (utile pour la 0.1.5).
 7. `python3 tools/agents/preserve.py origin/develop HEAD` ne signale aucune disparition
-   et `python3 tools/agents/mission.py scope M-0001 --base origin/orga/multi-agents --ref HEAD`
-   respecte le périmètre.
+   et `python3 tools/agents/mission.py scope M-0001 --ref HEAD` respecte le périmètre.
 
 ## Interdits
 - Toute règle de `docs/agents/ORGANISATION.md` et de `docs/agents/PROJET.md`.
@@ -68,6 +67,24 @@ docs/agents/missions/M-0001-registre-fonctionnalites/**
 ## Suppressions approuvées par le propriétaire
 (aucune)
 
+## Tentative 2 : corrections
+La tentative 1 (registre déjà présent dans `develop` et `main`) a été REFUSÉE par
+l'audit `audit-1.md` de ce dossier. La tentative 2 corrige le registre existant (elle
+ne repart pas de zéro) :
+- Chaque problème de `audit-1.md` (M1 à M3, m1 à m12) est **vérifié dans le code avant
+  d'être corrigé**. Un point de l'audit que tu trouves faux n'est pas appliqué : tu
+  l'expliques, preuve à l'appui, dans ton rapport.
+- Aucun identifiant F-xxx existant ne disparaît (règle 7, suivi par `preserve.py`) :
+  doublons et éléments non visibles reçoivent un renvoi ou une mention, pas une suppression.
+- Les fonctionnalités ajoutées prennent les identifiants suivants (F-188…).
+- La « Couverture » est recalculée : une ligne ne compte comme prouvée que si la preuve
+  citée teste réellement la fonctionnalité de la ligne. Les preuves partielles sont
+  comptées à part.
+- Le point H1 (raccourcis actifs sur l'écran de verrouillage) est décrit dans les
+  Limites connues comme constat de lecture non encore confirmé par un test ; il n'est
+  pas corrigé dans cette mission (aucun code).
+- Le texte d'en-tête du registre n'affirme que ce qui a été réellement vérifié.
+
 ## Attribution des commits
 ```
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -75,6 +92,6 @@ Claude-Session: https://claude.ai/code/session_01Wxk7V2hzmn6G9JuqKricoW
 ```
 
 ## Livrable
-Commit(s) sur `agent/M-0001-registre-fonctionnalites`, poussés vers `origin` (pas de PR :
-le Directeur l'ouvrira une fois la PR #19 intégrée). Rapport final au format
+Commit(s) sur `agent/M-0001-registre-v2`, poussés vers `origin`, sans PR (le Directeur
+l'ouvre après l'audit). Rapport final au format
 `docs/agents/templates/RAPPORT.md`.

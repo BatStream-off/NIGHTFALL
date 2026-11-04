@@ -4,6 +4,25 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-04 — M-0001 : audit REFUSÉ, montée à Opus
+- **Audit 1** (Opus, agent neuf) : REFUSÉ, 3 MAJEUR (F-137 anti-phishing annoncé mais
+  jamais déclenché, F-147 9 listes et non 6, Couverture comptant des preuves hors
+  sujet), 12 MINEUR. Archivé : `missions/M-0001-registre-fonctionnalites/audit-1.md`.
+- **Vérification du Directeur** : M1 confirmé (`security.rs:40` appelle
+  `check(url, false)`), M2 confirmé (9 `list(...)` dans `default_lists()`), H1
+  plausible (aucun contrôle de verrouillage dans `on_pre_key_event` ni dans `shortcut()`).
+- **Décision** : tentative 2 confiée à un nouvel Analyste **Opus** (règle de montée de
+  niveau), à partir de `origin/develop`, corrections vérifiées une à une.
+- **H1 (sécurité)** : raccourcis actifs sur l'écran de verrouillage. Priorité de la
+  0.1.5 : à reproduire par un test, puis corriger. Signalé au propriétaire.
+- **Processus** : le propriétaire a fusionné lui-même #19 (orga → develop), #20
+  (develop → main) et #21 (M-0001 tentative 1 → **main**, avant la fin de la CI et avant
+  l'audit). Sans effet sur le navigateur (documents). `develop` resynchronisé avec `main`
+  (14d6c60). Le propriétaire a été prié de laisser les fusions au Directeur ou
+  d'attendre sa validation.
+- **Attribution** : un agent Sonnet a signé « Claude Opus 5.5 » parce que la fiche le
+  disait ; le modèle de fiche demande désormais le modèle réellement utilisé.
+
 ## 2026-11-04 — Mode de repli pour cette session
 - **Constat** (tests avec des agents Haiku) : types `nf-*` inconnus en cours de session,
   crochet PreToolUse de Claude Code inactif (`echo NF_DIRECTOR` exécuté), même après
