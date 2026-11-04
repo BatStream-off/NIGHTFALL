@@ -4,13 +4,16 @@ pub mod api;
 pub mod app;
 pub mod assets;
 pub mod browsing;
+pub mod browsing_data;
 pub mod client;
 pub mod downloads;
+pub mod https_first;
 pub mod idle;
 pub mod omnibox;
 #[cfg(target_os = "macos")]
 pub mod mac;
 pub mod permissions;
+pub mod prefs;
 pub mod scheme;
 pub mod scheme_registration;
 pub mod security;

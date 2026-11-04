@@ -424,7 +424,8 @@ pub fn create_window(private: bool, urls: Vec<String>) {
             // Empty cache path = in-memory context: cookies, cache and storage
             // are isolated and disappear with the context.
             let settings = RequestContextSettings::default();
-            request_context_create_context(Some(&settings), None)
+            let mut handler = super::prefs::private_context_handler();
+            request_context_create_context(Some(&settings), Some(&mut handler))
         } else {
             None
         };

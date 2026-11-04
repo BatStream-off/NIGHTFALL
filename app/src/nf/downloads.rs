@@ -101,6 +101,47 @@ pub fn path_for(key: &str) -> Option<String> {
     core().storage()?.downloads().ok()?.into_iter().find(|r| r.id == id).map(|r| r.path)
 }
 
+/// The folder chosen in the settings when it still exists, else the
+/// user's Downloads folder.
+pub fn download_dir(chosen: Option<&str>) -> std::path::PathBuf {
+    match chosen.map(std::path::PathBuf::from) {
+        Some(p) if p.is_absolute() && p.is_dir() => p,
+        _ => nf_downloads::default_download_dir(),
+    }
+}
+
+/// Native folder picker for the download folder (UI thread). `done`
+/// receives the chosen folder, or None when cancelled.
+pub fn choose_folder(browser: &Browser, current: &std::path::Path, done: impl FnOnce(Option<String>) + Send + 'static) {
+    let Some(host) = browser.host() else { return };
+    let mut cb = FolderPicked::new(Arc::new(std::sync::Mutex::new(Some(Box::new(done) as Box<dyn FnOnce(Option<String>) + Send>))));
+    host.run_file_dialog(
+        FileDialogMode::OPEN_FOLDER,
+        Some(&CefString::from("Dossier de téléchargement")),
+        Some(&CefString::from(current.display().to_string().as_str())),
+        None,
+        Some(&mut cb),
+    );
+}
+
+type FolderDone = Arc<std::sync::Mutex<Option<Box<dyn FnOnce(Option<String>) + Send>>>>;
+
+wrap_run_file_dialog_callback! {
+    struct FolderPicked {
+        done: FolderDone,
+    }
+
+    impl RunFileDialogCallback {
+        fn on_file_dialog_dismissed(&self, file_paths: Option<&mut CefStringList>) {
+            // The list belongs to CEF: take it out of the wrapper to read it.
+            let first = file_paths.and_then(|l| std::mem::take(l).into_iter().next()).filter(|p| !p.is_empty());
+            if let Some(done) = self.done.lock().ok().and_then(|mut d| d.take()) {
+                done(first);
+            }
+        }
+    }
+}
+
 fn str_of(s: &CefStringUserfree) -> String {
     CefString::from(s).to_string()
 }
@@ -121,7 +162,11 @@ wrap_download_handler! {
             let (Some(item), Some(callback)) = (download_item, callback) else { return 0 };
             let private = matches!(*self.kind, ClientKind::Tab { private: true, .. });
             let name = suggested_name.map(|s| s.to_string()).unwrap_or_else(|| "telechargement".into());
-            let dir = nf_downloads::default_download_dir();
+            let (chosen, ask) = {
+                let c = core();
+                (c.settings.download_dir.clone(), c.settings.download_ask)
+            };
+            let dir = download_dir(chosen.as_deref());
             let _ = std::fs::create_dir_all(&dir);
             let path = nf_downloads::unique_path(&dir, &name);
             let danger = nf_downloads::classify(&name);
@@ -148,8 +193,11 @@ wrap_download_handler! {
             LIVE.with(|l| {
                 l.borrow_mut().insert(item.id(), Live { record, private, speed: 0, callback: None });
             });
-            // No dialog, no automatic opening: the file goes to Downloads.
-            callback.cont(Some(&CefString::from(path.display().to_string().as_str())), 0);
+            // Never opened automatically. Without "ask where to save", the
+            // file goes straight to the download folder; otherwise the
+            // system "Save as" dialog opens on that path (the final path is
+            // read back in on_download_updated).
+            callback.cont(Some(&CefString::from(path.display().to_string().as_str())), ask as i32);
             notify();
             1
         }

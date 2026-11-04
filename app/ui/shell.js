@@ -34,6 +34,7 @@ async function init() {
   st = await api('state');
   if (!st.ok) { msg('Erreur interne : ' + (st.error || '')); show('lock', true); return; }
   document.body.classList.toggle('vertical', !!st.verticalTabs);
+  document.body.classList.toggle('no-home', st.showHome === false);
   if (MODE === 'side') { show('side', st.unlocked); return; }
   if (MODE === 'popup') { if (st.unlocked) openPopupView(); else api('popup.close'); return; }
   if (!st.unlocked) {
@@ -352,10 +353,12 @@ async function refreshPageInfo() {
 
 // ------------------------------------------------------------------ permissions
 function askPermission(ev) {
-  const done = (allow) => { api('permission.answer', { id: ev.id, allow }); hideBanner(['permission']); if (activeTab) pageBanner(activeTab); };
+  const mem = ev.remember ? el('input', { type: 'checkbox', id: 'perm-remember' }) : null;
+  const done = (allow) => { api('permission.answer', { id: ev.id, allow, remember: !!(mem && mem.checked) }); hideBanner(['permission']); if (activeTab) pageBanner(activeTab); };
   showBanner('permission', false, el('span', { text: `${host(ev.origin) || ev.origin} ${ev.what}.` }),
     el('button', { class: 'primary', text: 'Autoriser', onclick: () => done(true) }),
-    el('button', { text: 'Refuser', onclick: () => done(false) }));
+    el('button', { text: 'Refuser', onclick: () => done(false) }),
+    mem ? el('label', { class: 'perm-remember', for: 'perm-remember' }, mem, 'Mémoriser') : null);
 }
 
 // ------------------------------------------------------------------ popups (top view side)
@@ -558,6 +561,8 @@ function menuPanel(p) {
   const sep = () => el('div', { class: 'm-sep', role: 'separator' });
   p.setAttribute('role', 'menu');
   p.append(...[
+    updateState && updateState.readyToInstall ? item('update', 'Redémarrer pour mettre à jour (' + updateState.latest + ')', () => api('update.install'), null, 'accent') : null,
+    updateState && updateState.readyToInstall ? sep() : null,
     item('newtab', 'Nouvel onglet', () => api('tab.new'), shortcut('T')),
     item('window', 'Nouvelle fenêtre', () => api('window.new'), shortcut('N')),
     item('private', 'Fenêtre de navigation privée', () => api('window.private'), shortcut('N', true)),
@@ -759,8 +764,25 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && MODE ===
 document.addEventListener('mousedown', () => api('ui.activity'));
 
 // ------------------------------------------------------------------ events from the core
+// Automatic updates: a downloaded update shows a dot on the menu button and
+// a "restart to update" entry at the top of the menu.
+let updateState = null;
+function applyUpdateState(st) {
+  updateState = st && st.ok !== false ? st : null;
+  const b = document.getElementById('b-menu');
+  if (b) {
+    const ready = !!(updateState && updateState.readyToInstall);
+    b.classList.toggle('has-update', ready);
+    if (ready) b.title = 'Menu : mise à jour ' + updateState.latest + ' prête';
+  }
+}
+if (MODE === 'top' || MODE === 'popup') api('update.status').then(applyUpdateState);
+
 window.nfEvent = (ev) => {
   switch (ev.type) {
+    case 'update':
+      applyUpdateState(ev.status);
+      break;
     case 'tabs':
       tabs = ev.tabs || [];
       if (MODE === 'side') { show('side', true); renderSide(); }

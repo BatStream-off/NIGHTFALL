@@ -102,11 +102,13 @@ fn saved_zooms() -> HashMap<String, f64> {
     core().storage().and_then(|s| s.setting::<HashMap<String, f64>>(ZOOM_KEY).ok().flatten()).unwrap_or_default()
 }
 
-/// Remember the zoom of a site (normal windows only; 0 = default, forgotten).
+/// Remember the zoom of a site (normal windows only; the default zoom of
+/// the settings is not remembered: the site follows the default).
 fn save_zoom(url: &str, level: f64) {
     let Some(host) = host_of(url) else { return };
     let mut map = saved_zooms();
-    let changed = if level.abs() < 0.001 { map.remove(&host).is_some() } else { map.insert(host, level) != Some(level) };
+    let default = super::prefs::default_zoom_level();
+    let changed = if (level - default).abs() < 0.001 { map.remove(&host).is_some() } else { map.insert(host, level) != Some(level) };
     if changed {
         if let Some(s) = core().storage() {
             let _ = s.set_setting(ZOOM_KEY, &map);
@@ -136,7 +138,8 @@ pub fn zoom(window_id: u32, command: &str) {
     match command {
         "in" => h.zoom(ZoomCommand::IN),
         "out" => h.zoom(ZoomCommand::OUT),
-        _ => h.set_zoom_level(0.0),
+        // Back to the default zoom of the settings (100 % unless changed).
+        _ => h.set_zoom_level(super::prefs::default_zoom_level()),
     }
     // The new level may be applied a little later (macOS): look again.
     for delay in [30, 250, 800] {
@@ -435,7 +438,7 @@ wrap_context_menu_handler! {
                     let selection = cef_str(&params.selection_text());
                     let has_selection = flags & TYPE_SELECTION != 0 && !selection.trim().is_empty();
                     let devtools = core().settings.devtools_enabled;
-                    let engine = super::omnibox::engine_name(&core().settings.search_engine);
+                    let engine = super::omnibox::engine_name(&core().settings.search_engine_label());
                     model.remove(ID_VIEW_SOURCE);
                     if !editable && !link && !image && !has_selection {
                         // Page menu.
