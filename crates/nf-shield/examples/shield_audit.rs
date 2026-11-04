@@ -842,7 +842,7 @@ fn main() {
 
     println!("\n## 2. Construction du moteur, mémoire, sérialisation\n");
     println!("Construction = `FilterSet::add_filter_list` de chaque liste + `Engine::new_with_filter_set` + `use_resources` (exactement `Shield::rebuild`, lecture disque exclue). Mémoire : octets du tas comptés par un allocateur instrumenté. Répétitions : {reps}.\n");
-    println!("| Variante | Listes | Construction médiane | min | max | Tas conservé | Pic pendant la construction | Taille sérialisée | Désérialisation médiane |\n|---|---|---|---|---|---|---|---|---|");
+    println!("| Variante | Listes | Construction médiane | min | max | Tas conservé | Pic pendant la construction (textes compris) | Taille sérialisée | Désérialisation médiane |\n|---|---|---|---|---|---|---|---|---|");
     let mut engines: Vec<(String, Engine)> = Vec::new();
     for v in &variants {
         let texts: Vec<(String, ParseOptions)> = v.ids.iter().filter_map(|id| lists.text(id, v.resolved).map(|t| (t, lists.opts(id)))).collect();
@@ -851,9 +851,11 @@ fn main() {
         let mut peak_b = 0;
         let mut kept: Option<Engine> = None;
         for i in 0..reps.max(1) {
-            let copies = texts.clone();
+            // The base excludes the list texts: the browser also reads them
+            // from disk for each build, and the engine frees them.
             let base = live();
             reset_peak();
+            let copies = texts.clone();
             let t0 = Instant::now();
             let mut set = FilterSet::new(false);
             for (t, o) in copies {
@@ -1335,11 +1337,15 @@ fn main() {
     fact("Scriptlet inconnu", "news.example##+js(nonexistent-scriptlet)", &|s| {
         format!("script injecté contient un appel : {}", s.page_script(page, "T").map(|j| j.contains("nonexistent")).unwrap_or(false))
     });
+    fact("Témoin générique", "##.ad", &|s| format!("CSS générique pour la classe « ad » : {:?}", s.generic_css(page, &["ad".into()], &[])));
     fact("$elemhide", "@@||news.example^$elemhide\n##.ad", &|s| {
-        format!("masquage générique toujours appliqué : {}", s.page_script(page, "T").map(|j| j.contains(".ad{")).unwrap_or(false))
+        format!("CSS générique pour « ad » malgré l'exception : {:?}", s.generic_css(page, &["ad".into()], &[]))
     });
     fact("$generichide", "@@||news.example^$generichide\n##.ad", &|s| {
-        format!("masquage générique appliqué : {}", s.page_script(page, "T").map(|j| j.contains(".ad{")).unwrap_or(false))
+        format!("CSS générique pour « ad » : {:?}", s.generic_css(page, &["ad".into()], &[]))
+    });
+    fact("$specifichide", "@@||news.example^$specifichide\nnews.example##.pub", &|s| {
+        format!("masquage propre au site appliqué malgré l'exception : {}", s.page_script(page, "T").map(|j| j.contains(".pub")).unwrap_or(false))
     });
     fact("Compteur « règles »", "[Adblock Plus 2.0]\n||a.example^$popup\nexample.com#$#abort-on-property-read x\n||b.example^", &|s| {
         format!("`rules_loaded` = {} pour 1 règle réellement chargée", s.rules_loaded())
