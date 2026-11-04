@@ -1,0 +1,19 @@
+A.skip.currentTime => 20
+A.skip.toast => "VideoGuard · Segment ignoré : SponsorRevenir"
+B.revenir.currentTime => 12
+B.no_reskip_after_revenir => 12.3
+D.reskip_after_seek_back => 20
+C.show.toast => "VideoGuard · Intro détectéPasser"
+C.show.currentTime_unchanged => 1
+C.show.toast_after_6.3s => null
+E.show.second_offer_after_seek => null
+F.chain_after_tick1 => 20
+F.chain_after_tick2 => 30
+G.t=end-0.2_not_skipped => 19.8
+H.spa_other_video_no_skip => 12
+I.rate_before => 1.5
+I.ad.rate_during => 16
+I.ad.currentTime => 599.9
+I.rate_after_ad => 1
+K.unknown_action_mute_noop => 52
+L.short_seg_skip => 31.2
