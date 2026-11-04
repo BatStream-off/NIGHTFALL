@@ -4,6 +4,13 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-04 — Mode de repli pour cette session
+- **Constat** (tests avec des agents Haiku) : types `nf-*` inconnus en cours de session,
+  crochet PreToolUse de Claude Code inactif (`echo NF_DIRECTOR` exécuté), même après
+  copie dans `~/.claude`, dans le dossier projet de la session et rechargement du dépôt.
+  Le crochet git pre-push, lui, a refusé `git push --dry-run origin HEAD:develop`.
+- **Décision** : mode de repli de la charte §10 pour la fin de cette session.
+
 ## 2026-11-04 — Mise en place de l'organisation multi-agents
 - **Décision** : création de l'organisation permanente (charte `ORGANISATION.md`,
   5 agents `nf-*`, garde-fous `tools/agents/`, contrôle de préservation en CI).

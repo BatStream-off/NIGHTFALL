@@ -175,3 +175,21 @@ cryptographique. C'est pourquoi le Directeur relit chaque diff avant intégratio
 Mise en place dans une nouvelle session : `sh tools/agents/install.sh` (installe les
 crochets git et copie les définitions d'agents là où Claude Code les charge), puis
 vérifier que les agents `nf-*` apparaissent dans la liste des types d'agents.
+
+## 10. Mode de repli (constaté le 2026-11-04)
+
+Claude Code charge les définitions d'agents et les crochets PreToolUse **au démarrage
+de la session** : ajoutés en cours de session, ils ne sont pas pris en compte (testé :
+type `nf-executeur` inconnu, crochet inactif, y compris après rechargement du dépôt).
+Tant qu'une session n'a pas démarré avec ces fichiers en place :
+- chaque agent est lancé comme agent standard (`general-purpose`) avec le modèle choisi,
+  et sa consigne commence par : « Ton rôle est défini dans
+  `.claude/agents/nf-<rôle>.md` : lis ce fichier en premier ; son contenu (sous
+  l'en-tête) est ta consigne permanente » ;
+- les crochets git (testés, actifs) protègent `develop` et `main` ;
+- le Directeur vérifie après chaque mission, en plus du diff : les branches distantes
+  créées ou modifiées, les PR et leurs commentaires, et pour l'Auditeur qu'il n'a rien
+  écrit (`git status` de sa copie, aucune branche ni PR nouvelle).
+Au démarrage d'une nouvelle session, le Directeur vérifie que les types `nf-*` sont
+listés et qu'un agent de test se voit refuser `echo NF_DIRECTOR` ; il note le résultat
+dans `JOURNAL.md`.
