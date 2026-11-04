@@ -1248,7 +1248,7 @@ fn main() {
     println!("{} adresses de documents (hôtes distincts du jeu adblock-rust). `page_script` est appelé par `on_load_start` pour chaque cadre (principal et iframes).\n", doc_urls.len());
     println!("{LATENCY_HEADER}");
     println!("{}", latency_row("`Engine::url_cosmetic_resources`", &mut t_ucr));
-    println!("{}", latency_row("`Shield::page_script` (2 appels à `url_cosmetic_resources` + JSON)", &mut t_ps));
+    println!("{}", latency_row("`Shield::page_script` (1 appel à `url_cosmetic_resources`, tri, CSS, JSON, moteur cosmétique)", &mut t_ps));
     sizes.sort_unstable();
     hide_counts.sort_unstable();
     proc_counts.sort_unstable();
