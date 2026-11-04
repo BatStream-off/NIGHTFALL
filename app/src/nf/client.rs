@@ -703,8 +703,9 @@ wrap_keyboard_handler! {
                 0x25 if mac && p && alt => Some("tab.prev".into()),         // Cmd+Option+Left
                 0x31..=0x38 if p && !shift && !alt => Some(format!("tab.index.{}", key - 0x31)), // 1..8
                 0x39 if p && !shift && !alt => Some("tab.index.last".into()),  // 9
-                0x25 if alt && !p => Some("tab.back".into()),               // Alt+Left
-                0x27 if alt && !p => Some("tab.forward".into()),            // Alt+Right
+                // Alt+Left/Right (Windows only: on macOS Option+arrows move by word).
+                0x25 if alt && !p && !mac => Some("tab.back".into()),
+                0x27 if alt && !p && !mac => Some("tab.forward".into()),
                 0xDB if mac && p => Some("tab.back".into()),                // Cmd+[
                 0xDD if mac && p => Some("tab.forward".into()),             // Cmd+]
                 0x44 if p => Some("bookmark.toggle".into()),                // D
