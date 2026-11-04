@@ -438,7 +438,7 @@ wrap_context_menu_handler! {
                     let selection = cef_str(&params.selection_text());
                     let has_selection = flags & TYPE_SELECTION != 0 && !selection.trim().is_empty();
                     let devtools = core().settings.devtools_enabled;
-                    let engine = super::omnibox::engine_name(&core().settings.search_engine);
+                    let engine = super::omnibox::engine_name(&core().settings.search_engine_label());
                     model.remove(ID_VIEW_SOURCE);
                     if !editable && !link && !image && !has_selection {
                         // Page menu.

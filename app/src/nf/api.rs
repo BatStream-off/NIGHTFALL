@@ -1338,7 +1338,7 @@ fn omnibox_suggest(text: &str) -> Value {
         .map(|b| super::omnibox::Candidate { url: &b.url, title: &b.title, visits: 1, last_visit: b.modified.max(b.created), bookmark: true })
         .collect();
     candidates.extend(history.iter().map(|h| super::omnibox::Candidate { url: &h.url, title: &h.title, visits: h.visit_count, last_visit: h.last_visit, bookmark: false }));
-    let items = super::omnibox::suggest(text, typed.as_deref(), &search, &c.settings.search_engine, &candidates, now(), 8);
+    let items = super::omnibox::suggest(text, typed.as_deref(), &search, &c.settings.search_engine_label(), &candidates, now(), 8);
     json!({ "ok": true, "items": items })
 }
 

@@ -216,6 +216,16 @@ impl Settings {
         SEARCH_ENGINES.iter().find(|(id, _, _)| *id == self.search_engine).unwrap_or(&SEARCH_ENGINES[0]).2.to_string()
     }
 
+    /// What to name the engine in the interface: the engine id (named by
+    /// omnibox::engine_name), or the custom engine's name.
+    pub fn search_engine_label(&self) -> String {
+        if self.search_engine == "custom" {
+            let n = self.search_custom_name.trim();
+            return if n.is_empty() { "Moteur personnalisé".into() } else { n.to_string() };
+        }
+        self.search_engine.clone()
+    }
+
     pub fn search_url(&self, query: &str) -> String {
         let q: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
         self.search_template().replacen("%s", &q, 1)
