@@ -4,6 +4,41 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-04 — Refonte : phase d'audit lancée
+- **Demande** du propriétaire : `missions/DEMANDE-2026-11-04-refonte.md`. Nouvelles
+  règles reportées dans la charte (§1, règles 9 à 12), dont : **aucune fusion sans son
+  autorisation explicite**, résultats d'audit et plan présentés avant toute
+  modification importante.
+- **Faits établis** : Shield utilise déjà adblock-rust 0.13.5 (dernière version) ;
+  VideoGuard est un client de l'API SponsorBlock sans code de l'extension ; uBlock,
+  tsurlfilter et SponsorBlock sont sous GPL-3.0, NIGHTFALL sous MPL-2.0 : étude
+  seulement (règle 12). `docs/LICENSES.md` indique LGPL-3.0 pour l'extension
+  SponsorBlock, alors qu'elle est sous GPL-3.0 depuis le commit 7338af3 (à corriger).
+- **Missions d'audit** M-0002 à M-0006 préparées (modèles et raisons dans les fiches) ;
+  au plus 3 agents à la fois ; ordre : M-0001 (reprise), M-0002, M-0003, puis M-0004,
+  M-0005, M-0006.
+- **Limite de débit** atteinte à 14:50 (M-0001 tentative 2 interrompue, reprise après
+  la levée de la limite par SendMessage).
+
+## 2026-11-04 — M-0001 : audit REFUSÉ, montée à Opus
+- **Audit 1** (Opus, agent neuf) : REFUSÉ, 3 MAJEUR (F-137 anti-phishing annoncé mais
+  jamais déclenché, F-147 9 listes et non 6, Couverture comptant des preuves hors
+  sujet), 12 MINEUR. Archivé : `missions/M-0001-registre-fonctionnalites/audit-1.md`.
+- **Vérification du Directeur** : M1 confirmé (`security.rs:40` appelle
+  `check(url, false)`), M2 confirmé (9 `list(...)` dans `default_lists()`), H1
+  plausible (aucun contrôle de verrouillage dans `on_pre_key_event` ni dans `shortcut()`).
+- **Décision** : tentative 2 confiée à un nouvel Analyste **Opus** (règle de montée de
+  niveau), à partir de `origin/develop`, corrections vérifiées une à une.
+- **H1 (sécurité)** : raccourcis actifs sur l'écran de verrouillage. Priorité de la
+  0.1.5 : à reproduire par un test, puis corriger. Signalé au propriétaire.
+- **Processus** : le propriétaire a fusionné lui-même #19 (orga → develop), #20
+  (develop → main) et #21 (M-0001 tentative 1 → **main**, avant la fin de la CI et avant
+  l'audit). Sans effet sur le navigateur (documents). `develop` resynchronisé avec `main`
+  (14d6c60). Le propriétaire a été prié de laisser les fusions au Directeur ou
+  d'attendre sa validation.
+- **Attribution** : un agent Sonnet a signé « Claude Opus 5.5 » parce que la fiche le
+  disait ; le modèle de fiche demande désormais le modèle réellement utilisé.
+
 ## 2026-11-04 — Mode de repli pour cette session
 - **Constat** (tests avec des agents Haiku) : types `nf-*` inconnus en cours de session,
   crochet PreToolUse de Claude Code inactif (`echo NF_DIRECTOR` exécuté), même après

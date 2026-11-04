@@ -117,7 +117,7 @@ def cmd_scope(args):
     d = find(args[0])
     t = open(os.path.join(MISSIONS, d, "mission.md"), encoding="utf-8").read()
     base = args[args.index("--base") + 1] if "--base" in args else "origin/develop"
-    ref = args[args.index("--ref") + 1] if "--ref" in args else field(t, "Branche")
+    ref = args[args.index("--ref") + 1] if "--ref" in args else (field(t, "Branche").split() or [""])[0]
     if not ref:
         die("branche introuvable dans la fiche ; précise --ref")
     m = re.search(r"<!-- scope -->(.*?)<!-- /scope -->", t, re.S)
@@ -142,7 +142,7 @@ def cmd_worktree(args):
         die("usage : mission.py worktree <ID> [--from origin/develop]")
     d = find(args[0])
     t = open(os.path.join(MISSIONS, d, "mission.md"), encoding="utf-8").read()
-    branch = field(t, "Branche")
+    branch = (field(t, "Branche").split() or [""])[0]
     if not branch.startswith("agent/"):
         die("la fiche doit nommer une branche agent/...")
     start = args[args.index("--from") + 1] if "--from" in args else "origin/develop"

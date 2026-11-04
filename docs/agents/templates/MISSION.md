@@ -34,7 +34,9 @@ Chaque critère doit être vérifiable par l'Auditeur (test, journal de CI, capt
 (aucune)
 
 ## Attribution des commits
-(lignes fournies par le Directeur)
+(lignes fournies par le Directeur, avec le modèle réellement utilisé par l'agent :
+`Co-Authored-By: Claude <Opus|Sonnet|Haiku> 5.5 <noreply@anthropic.com>`, puis la
+ligne `Claude-Session` de la session en cours)
 
 ## Livrable
 Rapport final au format `docs/agents/templates/RAPPORT.md`.
