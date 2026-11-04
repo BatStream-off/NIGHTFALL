@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <link rel="icon" href="favicon.png">
+  <title>Connexion non sécurisée · NIGHTFALL</title>
+  <link rel="stylesheet" href="nf.css">
+</head>
+<body>
+  <main class="page" style="max-width:640px;padding-top:12vh">
+    <div class="page-head"><img src="emblem.png" alt=""><div><h1>Connexion non sécurisée</h1><div class="muted">HTTPS-First</div></div></div>
+    <p><strong id="host"></strong> ne propose pas de connexion sécurisée (HTTPS).</p>
+    <p class="muted">Sur une connexion non sécurisée, les informations que vous envoyez ou recevez (mots de passe, messages, numéros de carte) peuvent être lues ou modifiées par d'autres personnes du réseau.</p>
+    <div class="row" style="margin-top:22px">
+      <button class="primary" id="back">Revenir en lieu sûr</button>
+      <button id="go">Continuer vers le site (non sécurisé)</button>
+    </div>
+    <p class="muted small" style="margin-top:22px">Vous pouvez désactiver cet avertissement dans Paramètres › Confidentialité et sécurité › HTTPS-First. Le choix « Continuer » vaut pour ce site jusqu'à la fermeture de NIGHTFALL.</p>
+  </main>
+  <script src="nf.js"></script>
+  <script src="insecure.js"></script>
+</body>
+</html>

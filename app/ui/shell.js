@@ -34,6 +34,7 @@ async function init() {
   st = await api('state');
   if (!st.ok) { msg('Erreur interne : ' + (st.error || '')); show('lock', true); return; }
   document.body.classList.toggle('vertical', !!st.verticalTabs);
+  document.body.classList.toggle('no-home', st.showHome === false);
   if (MODE === 'side') { show('side', st.unlocked); return; }
   if (MODE === 'popup') { if (st.unlocked) openPopupView(); else api('popup.close'); return; }
   if (!st.unlocked) {
@@ -352,10 +353,12 @@ async function refreshPageInfo() {
 
 // ------------------------------------------------------------------ permissions
 function askPermission(ev) {
-  const done = (allow) => { api('permission.answer', { id: ev.id, allow }); hideBanner(['permission']); if (activeTab) pageBanner(activeTab); };
+  const mem = ev.remember ? el('input', { type: 'checkbox', id: 'perm-remember' }) : null;
+  const done = (allow) => { api('permission.answer', { id: ev.id, allow, remember: !!(mem && mem.checked) }); hideBanner(['permission']); if (activeTab) pageBanner(activeTab); };
   showBanner('permission', false, el('span', { text: `${host(ev.origin) || ev.origin} ${ev.what}.` }),
     el('button', { class: 'primary', text: 'Autoriser', onclick: () => done(true) }),
-    el('button', { text: 'Refuser', onclick: () => done(false) }));
+    el('button', { text: 'Refuser', onclick: () => done(false) }),
+    mem ? el('label', { class: 'perm-remember', for: 'perm-remember' }, mem, 'Mémoriser') : null);
 }
 
 // ------------------------------------------------------------------ popups (top view side)
