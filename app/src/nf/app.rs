@@ -58,6 +58,7 @@ wrap_browser_process_handler! {
                 .collect();
             windows::create_window(false, urls);
             timers::start();
+            super::browsing::start_zoom_watch();
             #[cfg(feature = "selftest")]
             super::selftest::start();
         }

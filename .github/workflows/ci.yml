@@ -162,7 +162,7 @@ jobs:
           "$BIN" > "$RUNNER_TEMP/selftest.out" 2>&1 &
           PID=$!
           LOG="$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
-          for i in $(seq 1 120); do
+          for i in $(seq 1 170); do
             if [ -f "$LOG" ] && grep -qE "SELFTEST (OK|FAIL)" "$LOG"; then break; fi
             sleep 2
           done

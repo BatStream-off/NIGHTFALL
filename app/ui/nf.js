@@ -78,3 +78,7 @@ let __nfLastPing = 0;
   const now = Date.now();
   if (now - __nfLastPing > 20000) { __nfLastPing = now; api('ui.activity'); }
 }, true));
+
+// Chromium zooms per host and every NIGHTFALL page shares one (the toolbar
+// included): Ctrl+wheel zoom is disabled on internal pages.
+document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });

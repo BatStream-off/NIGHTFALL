@@ -47,6 +47,7 @@ nf-perf.workspace = true
 nf-downloads.workspace = true
 nf-sync.workspace = true
 serde.workspace = true
+base64.workspace = true
 serde_json.workspace = true
 url.workspace = true
 

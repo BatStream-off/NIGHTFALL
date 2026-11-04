@@ -3,9 +3,11 @@
 pub mod api;
 pub mod app;
 pub mod assets;
+pub mod browsing;
 pub mod client;
 pub mod downloads;
 pub mod idle;
+pub mod omnibox;
 #[cfg(target_os = "macos")]
 pub mod mac;
 pub mod permissions;
