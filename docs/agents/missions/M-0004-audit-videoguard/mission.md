@@ -1,9 +1,9 @@
 # M-0004 : Audit complet de VideoGuard face à SponsorBlock
 
 - **Rôle** : Analyste
-- **Modèle** : sonnet — raison : analyse fonctionnelle bien délimitée (un module, une référence publique) ; montée à Opus si l'audit révèle une difficulté technique
-- **Statut** : PRÉPARÉE
-- **Branche** : agent/M-0004-audit-videoguard
+- **Modèle** : opus (tentative 2) — raison : montée de niveau après audit REFUSÉ (tentative 1 : sonnet)
+- **Statut** : EN COURS
+- **Branche** : agent/M-0004-audit-videoguard-v2 (tentative 1 : agent/M-0004-audit-videoguard, 72740e4)
 - **Copie isolée (worktree)** : oui
 - **Dépend de** : rien (phase d'audit de la refonte, aucune fusion)
 - **Créée le** : 2026-11-04
@@ -60,9 +60,15 @@ docs/agents/missions/M-0004-audit-videoguard/**
 ## Suppressions approuvées par le propriétaire
 (aucune)
 
+## Tentative 2 : corrections
+La tentative 1 (`resultats.md`, `preuves/`) a été REFUSÉE (`audit-1.md`). La tentative 2
+corrige le document existant : chaque point de l'audit est vérifié dans le code avant
+d'être appliqué ; un point jugé faux est justifié dans le rapport. Reprendre aussi les
+décisions demandées au propriétaire à la lumière des corrections.
+
 ## Attribution des commits
 ```
-Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01Wxk7V2hzmn6G9JuqKricoW
 ```
 
