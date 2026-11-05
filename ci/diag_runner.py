@@ -18,6 +18,12 @@ import time
 
 import psutil
 
+# Windows consoles default to cp1252: the log contains "←", "⌘"...
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except AttributeError:
+    pass
+
 BIN = sys.argv[1]
 WORK = sys.argv[2]
 WIN = sys.platform.startswith("win")
@@ -62,6 +68,24 @@ def memory(pid):
                 pass
     mib = 1024 * 1024
     return n, rss / mib, (uss / mib if uss_ok else None), (priv / mib if priv_ok and WIN else None)
+
+
+def by_type(pid):
+    """Process count and RSS MiB per Chromium process type (--type=...)."""
+    out = {}
+    for q in tree(pid):
+        try:
+            cmd = " ".join(q.cmdline())
+            m = re.search(r"--type=([a-z-]+)", cmd)
+            kind = m.group(1) if m else "principal"
+            if kind == "utility":
+                m2 = re.search(r"--utility-sub-type=([\w.]+)", cmd)
+                kind = "utility:" + (m2.group(1).split(".")[-1] if m2 else "?")
+            n, rss = out.get(kind, (0, 0))
+            out[kind] = (n + 1, rss + q.memory_info().rss / (1024 * 1024))
+        except psutil.Error:
+            pass
+    return " ".join(f"{k}={n}/{rss:.0f}Mo" for k, (n, rss) in sorted(out.items()))
 
 
 def kill(proc):
@@ -131,7 +155,7 @@ def run_scenario(profile):
                     vals = [s[i] for s in samples]
                     return statistics.median(vals) if all(v is not None for v in vals) else None
 
-                mem_line = f"MEM etiquette={m.group(1)} processus={fmt(col(0))} rss_mo={fmt(col(1))} uss_mo={fmt(col(2))} prive_mo={fmt(col(3))}"
+                mem_line = f"MEM etiquette={m.group(1)} processus={fmt(col(0))} rss_mo={fmt(col(1))} uss_mo={fmt(col(2))} prive_mo={fmt(col(3))} par_type: {by_type(proc.pid)}"
                 say(mem_line)
                 lines.append(mem_line)
             if "DIAG FIN" in line:

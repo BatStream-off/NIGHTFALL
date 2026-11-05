@@ -91,7 +91,7 @@ async function activate(browser, pg, i, expected) {
     else if (!d.visible) state = 'masque';
     else if (d.disabled) state = 'desactive';
     if (state === 'clique') {
-      if (d.tag === 'select') {
+      if (d.tag.startsWith('select')) {
         const values = await loc.evaluate((s) => [...s.options].map((o) => o.value));
         const cur = await loc.inputValue();
         const next = values.find((v) => v !== cur);

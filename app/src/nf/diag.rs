@@ -365,6 +365,19 @@ fn browsers_alive() -> usize {
     state::browsers().len()
 }
 
+/// Live browsers by kind: top views and dropdowns (ui), side views, tabs.
+fn browsers_by_kind() -> String {
+    let (mut ui, mut side, mut tabs) = (0, 0, 0);
+    for info in state::browsers().values() {
+        match info.kind {
+            BrowserKind::Ui { side: true, .. } => side += 1,
+            BrowserKind::Ui { .. } => ui += 1,
+            BrowserKind::Tab { .. } => tabs += 1,
+        }
+    }
+    format!("vivants_ui={ui} vivants_laterale={side} vivants_onglets={tabs}")
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum View {
     Top,
@@ -425,7 +438,7 @@ fn mouse(b: &Option<Browser>, kind: &str, x: f64, y: f64, button: &str) {
     devtools(b, "Input.dispatchMouseEvent", json!({ "type": kind, "x": x, "y": y, "button": button, "buttons": buttons, "clickCount": clicks }));
 }
 
-const JS_RECT: &str = r#"(function(){var l=document.querySelectorAll(__SEL__);var e=l[__IDX__];var o={ok:false,n:l.length};if(e){var r=e.getBoundingClientRect();var cs=getComputedStyle(e);var lab=(e.querySelector&&e.querySelector('.m-label'))||e;o={ok:r.width>0&&r.height>0,n:l.length,x:r.left+r.width/2,y:r.top+r.height/2,w:r.width,h:r.height,dis:!!e.disabled,hid:!!e.hidden||cs.display==='none'||cs.visibility==='hidden',t:(lab.textContent||'').trim().slice(0,40),title:(e.title||e.getAttribute('aria-label')||'').slice(0,40),tag:e.tagName};}console.log('diag-rect '+JSON.stringify(o));})();"#;
+const JS_RECT: &str = r#"(function(){var l=document.querySelectorAll(__SEL__);var e=l[__IDX__];var o={ok:false,n:l.length};if(e){var r=e.getBoundingClientRect();var cs=getComputedStyle(e);var lab=(e.querySelector&&e.querySelector('.m-label'))||e;o={ok:r.width>0&&r.height>0,n:l.length,x:r.left+r.width/2,y:r.top+r.height/2,w:r.width,h:r.height,dis:!!e.disabled,hid:!!e.hidden||cs.display==='none'||cs.visibility==='hidden',t:(lab.textContent||'').trim().slice(0,40),title:(e.title||e.getAttribute('aria-label')||'').slice(0,40),tag:e.tagName,vh:innerHeight};}console.log('diag-rect '+JSON.stringify(o));})();"#;
 
 fn query_rect(v: View, sel: &str, idx: usize) {
     console_clear("diag-rect ");
@@ -1021,8 +1034,10 @@ fn click_one(zone: &'static str, v: View, sel: String, idx: usize) -> Seq {
         if let Ok(mut g) = TRIAL.lock() {
             *g = Some(Trial { x: if state == "clique" { x } else { -1.0 }, y, ok: state == "clique", ..Default::default() });
         }
+        let place = format!("y={:.0} hauteur_vue={}", y, r["vh"].as_f64().map(|v| format!("{v:.0}")).unwrap_or_else(|| "-".into()));
+        let outside = r["vh"].as_f64().map(|vh| y > vh).unwrap_or(false);
         if let Ok(mut l) = LABEL.lock() {
-            *l = (label, state.to_string());
+            *l = (label, format!("{state} {place} hors_vue={}", outside as u8));
         }
         save_snap("bouton");
         mark("bouton");
@@ -1042,10 +1057,11 @@ fn click_one(zone: &'static str, v: View, sel: String, idx: usize) -> Seq {
     });
     s.wait(1500);
     s.run(move || {
-        let (label, state) = LABEL.lock().map(|l| l.clone()).unwrap_or_default();
+        let (label, full) = LABEL.lock().map(|l| l.clone()).unwrap_or_default();
+        let state = full.split(' ').next().unwrap_or("").to_string();
         let effect = if state == "clique" { diff(&saved_snap("bouton"), &snap()) } else { "-".into() };
         let api = if state == "clique" { apis_since(marked("bouton")) } else { "-".into() };
-        dlog(format!("bouton zone={zone} selecteur={} n={idx} libelle={} etat={state} api={api} effet={effect}", clean(&sel), clean(&label)));
+        dlog(format!("bouton zone={zone} n={idx} libelle={} etat={full} api={api} effet={effect} selecteur={}", clean(&label), clean(&sel)));
     });
     s
 }
@@ -1107,7 +1123,7 @@ fn buttons() -> Seq {
     s.wait(2500);
     s.run(|| {
         let url = windows::active_url(W).unwrap_or_default();
-        dlog(format!("navigation_interne_depuis_page_web cible=newtab page_finale={} reussi={}", clean(&kind_of(&url)), url.starts_with("nightfall://") as u8));
+        dlog(format!("accueil_web cible=newtab page_finale={} reussi={}", clean(&kind_of(&url)), url.starts_with("nightfall://") as u8));
     });
     // An active tab with history, so that "Précédent" can be used.
     s.then(reset_seq(2));
@@ -1271,7 +1287,7 @@ const ARTICLES: &[&str] = &[
 fn mem_point(s: &mut Seq, label: &'static str) {
     s.wait(4000);
     s.run(move || {
-        dlog(format!("mem-demande etiquette={label} onglets={} navigateurs_vivants={}", tab_ids().len(), browsers_alive()));
+        dlog(format!("mem-demande etiquette={label} onglets={} navigateurs_vivants={} {} fenetres={} menu={}", tab_ids().len(), browsers_alive(), browsers_by_kind(), windows::window_ids().len(), windows::popup_panel(W).unwrap_or_else(|| "-".into())));
     });
     // ci/diag_runner.py samples the processes during this pause.
     s.wait(9000);
@@ -1298,6 +1314,23 @@ fn memory() -> Seq {
     mem_point(&mut s, "apres_fermeture");
     s.wait(20000);
     mem_point(&mut s, "apres_fermeture_30s");
+    // Dropdowns opened then closed by NIGHTFALL (popup_open / popup_close):
+    // are their browsers and renderer processes released?
+    for _ in 0..20 {
+        s.run(|| {
+            mark("panneau");
+            windows::popup_open(W, "menu", cef::Rect { x: 700, y: 44, width: 34, height: 34 }, 340, 640);
+        });
+        s.until("menu affiché", 6000.0, || popup_ready("menu", "panneau"));
+        s.wait(300);
+        s.run(|| windows::popup_close(W));
+        s.wait(500);
+    }
+    s.wait(3000);
+    s.run(|| {
+        dlog(format!("menus_ouverts_fermes nombre=20 navigateurs_vivants={} {}", browsers_alive(), browsers_by_kind()));
+    });
+    mem_point(&mut s, "apres_20_menus");
     s
 }
 
