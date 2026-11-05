@@ -253,6 +253,8 @@ wrap_life_span_handler! {
         fn on_after_created(&self, browser: Option<&mut Browser>) {
             let Some(browser) = browser else { return };
             state::log(&format!("navigateur créé id={} type={:?}", browser.identifier(), *self.kind));
+            #[cfg(feature = "selftest")]
+            super::diag::browser_created(browser.identifier());
             let kind = match *self.kind {
                 ClientKind::Ui { window_id, side } => BrowserKind::Ui { window_id, side },
                 ClientKind::Tab { window_id, tab_id, private } => BrowserKind::Tab { window_id, tab_id, private },
@@ -270,6 +272,8 @@ wrap_life_span_handler! {
         fn on_before_close(&self, browser: Option<&mut Browser>) {
             if let Some(b) = browser {
                 let id = b.identifier();
+                #[cfg(feature = "selftest")]
+                super::diag::browser_closed(id);
                 state::browsers().remove(&id);
                 blocked_map().remove(&id);
                 super::browsing::forget_browser(id);
@@ -360,6 +364,8 @@ wrap_load_handler! {
             if let ClientKind::Tab { window_id, tab_id, .. } = *self.kind {
                 #[cfg(feature = "selftest")]
                 state::log(&format!("onglet {tab_id} : chargement {}", if is_loading != 0 { "en cours" } else { "terminé" }));
+                #[cfg(feature = "selftest")]
+                super::diag::loading(tab_id, is_loading != 0);
                 windows::update_tab(window_id, tab_id, move |t| {
                     t.loading = is_loading != 0;
                     t.can_back = can_go_back != 0;
@@ -416,7 +422,12 @@ wrap_load_handler! {
                 }
                 // Shield: scriptlets, hiding rules and procedural filters,
                 // injected as early as possible (before the page's scripts).
-                if let Some(js) = state::shield().page_script(&url, &shield_token()) {
+                #[cfg(feature = "selftest")]
+                let script_start = std::time::Instant::now();
+                let script = state::shield().page_script(&url, &shield_token());
+                #[cfg(feature = "selftest")]
+                super::diag::page_script(script_start.elapsed().as_nanos() as u64, script.as_ref().map(|s| s.len()).unwrap_or(0));
+                if let Some(js) = script {
                     frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
                 }
                 // Global Privacy Control, also readable by the page's scripts.
@@ -437,6 +448,10 @@ wrap_load_handler! {
             let (Some(_browser), Some(frame)) = (browser, frame) else { return };
             if frame.is_main() == 0 {
                 return;
+            }
+            #[cfg(feature = "selftest")]
+            if let ClientKind::Tab { tab_id, .. } = *self.kind {
+                super::diag::load_end(tab_id, &cef_to_string(&frame.url()), http_status_code);
             }
             if let ClientKind::Ui { .. } = *self.kind {
                 state::log(&format!("interface chargée : {} (HTTP {http_status_code})", cef_to_string(&frame.url())));
@@ -698,7 +713,12 @@ wrap_resource_request_handler! {
             let id = browser.identifier();
             let page = state::browser_info(id).map(|i| i.url).unwrap_or_default();
             let source = frame.map(|f| cef_to_string(&f.url())).filter(|s| !s.is_empty()).unwrap_or_else(|| page.clone());
-            if state::shield().should_block(&url, &source, rtype, &page) {
+            #[cfg(feature = "selftest")]
+            let check_start = std::time::Instant::now();
+            let blocked = state::shield().should_block(&url, &source, rtype, &page);
+            #[cfg(feature = "selftest")]
+            super::diag::shield_check(check_start.elapsed().as_nanos() as u64, blocked);
+            if blocked {
                 *blocked_map().entry(id).or_default() += 1;
                 return ReturnValue::CANCEL;
             }
@@ -812,6 +832,8 @@ wrap_keyboard_handler! {
                 0x49 if mac && p && alt => Some("devtools".into()),         // Cmd+Option+I
                 _ => None,
             };
+            #[cfg(feature = "selftest")]
+            super::diag::key(key, m, action.as_deref());
             match action {
                 Some(a) => {
                     on_ui(move || super::api::shortcut(window_id, &a));

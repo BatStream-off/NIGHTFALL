@@ -31,6 +31,49 @@ UPDATE = {"ok": True, "current": "0.1.3", "latest": "0.1.4", "available": True, 
           "readyToInstall": False, "lastCheck": 1767000000, "error": None, "signed": True, "autoCheck": True, "autoInstall": False,
           "releaseUrl": "https://github.com/BatStream-off/NIGHTFALL/releases/tag/v0.1.4", "notInstallable": None}
 
+# ---- Sample data for the lists of the internal pages (button inventory, M-0002).
+NOW = 1767000000
+SAMPLES = {
+    "history.query": {"ok": True, "entries": [
+        {"id": 1, "url": "https://fr.wikipedia.org/wiki/Navigateur_web", "title": "Navigateur web — Wikipédia", "last_visit": NOW, "visit_count": 3},
+        {"id": 2, "url": "https://www.lemonde.fr/", "title": "Le Monde", "last_visit": NOW - 3600, "visit_count": 1}]},
+    "bookmarks.list": {"ok": True, "folders": [{"id": 1, "title": "Actualités", "parent_id": None}],
+                       "bookmarks": [{"id": 1, "title": "Wikipédia", "url": "https://fr.wikipedia.org/", "folder_id": None},
+                                     {"id": 2, "title": "Le Monde", "url": "https://www.lemonde.fr/", "folder_id": 1}]},
+    "bookmarks.search": {"ok": True, "bookmarks": [{"id": 1, "title": "Wikipédia", "url": "https://fr.wikipedia.org/", "folder_id": None}]},
+    "downloads.list": {"ok": True, "downloads": [
+        {"key": "a", "file_name": "rapport.pdf", "path": "", "url": "https://exemple.fr/rapport.pdf", "state": "complete", "total_bytes": 182000,
+         "received_bytes": 182000, "speed": 0, "started": NOW, "signature": "unsigned", "live": False, "danger": None},
+        {"key": "b", "file_name": "image.iso", "path": "", "url": "https://exemple.fr/image.iso", "state": "in_progress", "total_bytes": 900000000,
+         "received_bytes": 120000000, "speed": 4000000, "started": NOW, "signature": "unknown", "live": True, "danger": None}]},
+    "vault.list": {"ok": True, "entries": [{"id": "1", "origin": "https://exemple.fr", "username": "camille", "notes": ""}]},
+    "vault.forPage": {"ok": True, "origin": "https://example.com", "entries": [{"id": "1", "username": "camille"}]},
+    "page.info": {"ok": True, "site": "example.com", "shieldActive": True, "internal": False, "bookmarked": False, "passwords": 1},
+    "extensions.list": {"ok": True, "extensions": [{"assessment": {"name": "Exemple", "version": "1.0", "manifest_version": 3, "overall": "medium",
+                                                                   "findings": [{"permission": "tabs", "risk": "medium", "explanation": "Voit les adresses des onglets."}]}}]},
+    "security.status": {"ok": True, "status": {
+        "lock": {"hardwareBacked": True, "backend": "TPM 2.0"},
+        "shield": {"enabled": True, "rules": 120000, "blockPopups": True, "customFilters": "", "allowlist": ["exemple.fr"],
+                   "lists": [{"id": "easylist", "name": "EasyList", "enabled": True, "updated": NOW}, {"id": "easyprivacy", "name": "EasyPrivacy", "enabled": True, "updated": None}],
+                   "stats": {"total_blocked": 735, "popups_blocked": 2, "per_site": {"lemonde.fr": 120}}},
+        "videoguard": {"config": {"enabled": True, "skip_video_ads": True, "actions": {"sponsor": "skip"}}, "categories": [["sponsor", "Sponsor"], ["intro", "Introduction"]],
+                       "attribution": "Segments fournis par SponsorBlock (sponsor.ajay.app)."},
+        "sessionVault": True, "phishingWarnings": True, "chromium": {"sandbox": True}, "signals": [],
+        "autoPurge": {"enabled": False, "min_independent_critical": 2, "categories": []}}},
+}
+
+
+# Initial state, restored by POST /api/__reset (tests that click every button).
+import copy
+INITIAL = copy.deepcopy((STATE, SETTINGS, UIPREFS, UPDATE))
+
+
+def reset_state():
+    for live, init in zip((STATE, SETTINGS, UIPREFS, UPDATE), copy.deepcopy(INITIAL)):
+        live.clear()
+        live.update(init)
+
+
 def settings_cmd(cmd, req):
     """Answers of the settings commands, or None for other commands."""
     if cmd == 'settings.get':
@@ -82,8 +125,12 @@ class H(http.server.SimpleHTTPRequestHandler):
                 "topSites": [{"title": "RTBF", "url": "https://www.rtbf.be/"}, {"title": "Reddit", "url": "https://www.reddit.com/"},
                              {"title": "OpenStreetMap", "url": "https://www.openstreetmap.org/"}, {"title": "Qwant", "url": "https://www.qwant.com/"}],
                 "stats": {"blocked": 735, "bytesSaved": 26738688, "secondsSaved": 37}}
+        elif cmd == '__reset':
+            reset_state(); r = {"ok": True}
         elif cmd == 'state':
             r = STATE
+        elif cmd in SAMPLES:
+            r = SAMPLES[cmd]
         else:
             r = {"ok": True}
         body = json.dumps(r).encode()

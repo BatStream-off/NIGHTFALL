@@ -22,9 +22,10 @@ wrap_app! {
                 if !hw {
                     cl.append_switch(Some(&CefString::from("disable-gpu")));
                 }
-                // CI self test only: record network events for diagnosis.
+                // CI self test only: record network events for diagnosis
+                // (not during the M-0002 measurements: it slows Chromium down).
                 #[cfg(feature = "selftest")]
-                if let Ok(dir) = std::env::var("NIGHTFALL_PROFILE_DIR") {
+                if let (Ok(dir), false) = (std::env::var("NIGHTFALL_PROFILE_DIR"), super::diag::requested()) {
                     let path = std::path::Path::new(&dir).join("logs").join("netlog.json");
                     cl.append_switch_with_value(Some(&CefString::from("log-net-log")), Some(&CefString::from(path.display().to_string().as_str())));
                 }
@@ -66,6 +67,8 @@ wrap_browser_process_handler! {
 
     impl BrowserProcessHandler {
         fn on_context_initialized(&self) {
+            #[cfg(feature = "selftest")]
+            super::diag::startup_mark("contexte_cef");
             scheme::register_factory();
             // Chromium-side settings (defaults until unlock, then the
             // user's: see api.rs open_stores).

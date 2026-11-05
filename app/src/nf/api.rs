@@ -44,6 +44,8 @@ fn now() -> i64 {
 const PRE_UNLOCK: &[&str] = &["state", "setup", "unlock", "unlock.recovery", "recovery.confirm", "ui.activity", "ui.expand", "popup.close"];
 
 pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
+    #[cfg(feature = "selftest")]
+    super::diag::api_called(&caller.kind, cmd);
     let unlocked = core().is_unlocked();
     if !unlocked && !PRE_UNLOCK.contains(&cmd) {
         return err("NIGHTFALL est verrouillé");
@@ -53,6 +55,8 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         "state" => {
             if matches!(caller.kind, BrowserKind::Ui { side: false, .. }) {
                 state::log(&format!("interface prête (fenêtre {w})"));
+                #[cfg(feature = "selftest")]
+                super::diag::ui_ready();
             }
             state_json(w)
         }

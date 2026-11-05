@@ -123,8 +123,12 @@ wrap_scheme_handler_factory! {
                     }
                 };
                 let caller = Caller { kind: info.kind };
+                #[cfg(feature = "selftest")]
+                let api_start = std::time::Instant::now();
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| api::handle(&caller, cmd, &value)))
                     .unwrap_or_else(|_| serde_json::json!({ "ok": false, "error": "erreur interne" }));
+                #[cfg(feature = "selftest")]
+                super::diag::api_cost(cmd, api_start.elapsed().as_secs_f64() * 1000.0);
                 return json_response(&result);
             }
 

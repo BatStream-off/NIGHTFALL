@@ -4,6 +4,22 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-04 — Refonte : phase d'audit lancée
+- **Demande** du propriétaire : `missions/DEMANDE-2026-11-04-refonte.md`. Nouvelles
+  règles reportées dans la charte (§1, règles 9 à 12), dont : **aucune fusion sans son
+  autorisation explicite**, résultats d'audit et plan présentés avant toute
+  modification importante.
+- **Faits établis** : Shield utilise déjà adblock-rust 0.13.5 (dernière version) ;
+  VideoGuard est un client de l'API SponsorBlock sans code de l'extension ; uBlock,
+  tsurlfilter et SponsorBlock sont sous GPL-3.0, NIGHTFALL sous MPL-2.0 : étude
+  seulement (règle 12). `docs/LICENSES.md` indique LGPL-3.0 pour l'extension
+  SponsorBlock, alors qu'elle est sous GPL-3.0 depuis le commit 7338af3 (à corriger).
+- **Missions d'audit** M-0002 à M-0006 préparées (modèles et raisons dans les fiches) ;
+  au plus 3 agents à la fois ; ordre : M-0001 (reprise), M-0002, M-0003, puis M-0004,
+  M-0005, M-0006.
+- **Limite de débit** atteinte à 14:50 (M-0001 tentative 2 interrompue, reprise après
+  la levée de la limite par SendMessage).
+
 ## 2026-11-04 — M-0001 : audit REFUSÉ, montée à Opus
 - **Audit 1** (Opus, agent neuf) : REFUSÉ, 3 MAJEUR (F-137 anti-phishing annoncé mais
   jamais déclenché, F-147 9 listes et non 6, Couverture comptant des preuves hors

@@ -57,6 +57,16 @@ jobs:
           sleep 1
           mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y > /dev/null && npm install --silent playwright@1 && npx playwright install --with-deps chromium > /dev/null
           cp "$GITHUB_WORKSPACE/ci/ui_render_test.js" . && node ui_render_test.js
+      - name: Inventaire des boutons de l'interface M-0002 (navigateur sans affichage)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          rm -rf "$RUNNER_TEMP/ui2" && cp -r app/ui "$RUNNER_TEMP/ui2"
+          sed -i "s#'nightfall://app/api/'#'/api/'#" "$RUNNER_TEMP/ui2/nf.js"
+          NF_UI_DIR="$RUNNER_TEMP/ui2" NF_PORT=8775 python3 ci/ui_mock_server.py &
+          NF_UI_DIR="$RUNNER_TEMP/ui2" NF_PORT=8776 NF_UNLOCKED=1 python3 ci/ui_mock_server.py &
+          sleep 1
+          cd "$RUNNER_TEMP/pw" && cp "$GITHUB_WORKSPACE/ci/ui_buttons_test.js" . && NF_PORT_LOCKED=8775 NF_PORT_UNLOCKED=8776 node ui_buttons_test.js
       - name: Lockfile
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -190,6 +200,26 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then scutil --proxy || true; scutil --dns | head -n 30 || true; fi
           grep -q "SELFTEST OK" "$LOG"
           [ "$WEBFAIL" = 0 ]
+      # Mission M-0002 (draft branch, never merged): diagnostic and
+      # performance measurements on a release build of the self test
+      # (app/src/nf/diag.rs, ci/diag_runner.py). Informative only.
+      - name: Diagnostic et mesures M-0002 (navigateur réel, compilation release)
+        if: always() && steps.pkg.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 75
+        shell: bash
+        env:
+          NIGHTFALL_FEATURES: selftest
+          NIGHTFALL_DIST_DIR: ${{ runner.temp }}/diag-dist
+        run: |
+          cargo xtask bundle --release
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PY=python; BIN="$NIGHTFALL_DIST_DIR/NIGHTFALL/nightfall.exe"
+          else
+            PY=python3; BIN="$NIGHTFALL_DIST_DIR/NIGHTFALL.app/Contents/MacOS/nightfall"
+          fi
+          $PY -m pip install --quiet psutil 2>/dev/null || $PY -m pip install --quiet --break-system-packages psutil
+          $PY ci/diag_runner.py "$BIN" "$RUNNER_TEMP/diag"
       - uses: actions/upload-artifact@v4
         with:
           name: NIGHTFALL-${{ runner.os }}
