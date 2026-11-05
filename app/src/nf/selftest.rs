@@ -980,6 +980,10 @@ fn step_toggle() {
                 // L0 : then the lock checks (M-0007), which end on the final menu.
                 on_ui_delayed(800, step_lock_guard);
             });
+        });
+    });
+}
+
 /// Integrated title bar (prototype M-0005): the frameless window received
 /// the draggable regions of the tab strip and, on Windows, the real window
 /// procedure answers "caption" there and "client" on a tab, keeps its
