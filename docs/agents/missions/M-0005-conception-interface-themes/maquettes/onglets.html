@@ -1,0 +1,42 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Onglets — états</title>
+<link rel="stylesheet" href="ds.css"><style>
+body { padding: 28px 32px; background: var(--c-bg); }
+h3 { font: 600 12px/1 var(--f-ui); color: var(--c-text-2); letter-spacing: .06em; text-transform: uppercase; margin: 22px 0 10px; }
+.strip { display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 6px; background: var(--header-bg); border-radius: 10px; border: 1px dashed #ffffff14; width: fit-content; }
+.tab { position: relative; display: flex; align-items: center; gap: 8px; width: 216px; height: 32px; padding: 0 6px 0 10px; border-radius: var(--r-md); color: var(--header-text); font-size: var(--t-12); }
+.tab.hover { background: var(--tab-hover); color: var(--c-text); }
+.tab.active { background: var(--tab-active-bg); color: var(--c-text); box-shadow: var(--e-1), 0 0 0 1px var(--c-line); }
+.tab.active::after { content: ""; position: absolute; left: 50%; bottom: -1px; width: 22px; height: 2px; margin-left: -11px; border-radius: 2px; background: var(--tab-indicator); }
+.tab .ttl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; -webkit-mask: linear-gradient(90deg, #000 calc(100% - 16px), transparent); }
+.tab .x { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; color: var(--c-text-2); }
+.tab .x.hover { background: var(--c-press); color: var(--c-text); }
+.tab .x svg.i { width: 12px; height: 12px; stroke-width: 2; }
+.tab .snd { color: var(--c-accent-2); display: grid; } .tab .snd svg.i { width: 14px; height: 14px; }
+.tab .snd.muted { color: var(--c-text-3); }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 1.6px solid var(--c-accent-2); border-right-color: transparent; flex: none; }
+.tab.pinned { width: 40px; padding: 0; justify-content: center; }
+.tab.compact { width: 84px; } .tab.narrow { width: 40px; padding: 0; justify-content: center; }
+.tab.drag { transform: translateY(-1px) rotate(-.6deg); background: var(--c-overlay); box-shadow: var(--e-2); color: var(--c-text); }
+.tab.discarded .ttl { opacity: .55; font-style: italic; }
+.tab.crashed .fav-x { width: 16px; height: 16px; border-radius: 4px; background: var(--c-danger); color: #fff; display: grid; place-items: center; font: 700 10px/1 var(--f-ui); }
+.drop { width: 2px; height: 22px; border-radius: 2px; background: var(--c-accent-2); margin: 0 -2px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 40px; }
+.lab { font: 500 11px/1.3 var(--f-mono); color: #ffb86b; margin-top: 4px; }
+.tip { margin-top: 8px; width: 300px; padding: 10px 12px; border-radius: 10px; background: var(--c-overlay); border: 1px solid var(--c-line-strong); box-shadow: var(--e-3); font-size: 12px; }
+.tip b { display: block; font-weight: 500; font-size: 13px; color: var(--c-text); } .tip span { color: var(--c-text-2); }
+.tip .mem { margin-top: 6px; display: flex; gap: 10px; color: var(--c-text-3); font-size: 11px; }
+</style></head><body>
+<h3>Bande d'onglets — 40 px, onglets flottants 32 px, arrondi 8, indicateur « horizon » 22 × 2 px</h3>
+<div id="strip1"></div><div class="lab">repos · survol · actif · chargement · son · son coupé · bouton +</div>
+<h3>Rétrécissement progressif (beaucoup d'onglets)</h3>
+<div id="strip2"></div><div class="lab">216 px → 84 px (icône + ✕ au survol) → 40 px (icône seule, ✕ seulement sur l'actif) ; épinglés : 40 px fixes</div>
+<h3>Glisser-déposer, onglet déchargé, onglet planté</h3>
+<div id="strip3"></div><div class="lab">l'onglet soulevé suit le pointeur (ombre e-2), trait d'insertion 2 px accent ; déchargé : titre estompé ; planté : pastille rouge</div>
+<h3>Info-bulle d'onglet (au survol prolongé, 600 ms) — informations avancées à la demande</h3>
+<div class="tip"><b>Crépuscule — Wikipédia</b><span>fr.wikipedia.org</span><div class="mem"><span>Mémoire : 84 Mo</span><span>Shield : 3 bloqués</span><span>Joue du son</span></div></div>
+<script src="common.js"></script><script>
+const t = (cls, c, l, title, extra = '') => `<div class="tab ${cls}">${cls.includes('loading') ? '<span class="spin"></span>' : cls.includes('crashed') ? '<span class="fav-x">!</span>' : fav(c, l)}<span class="ttl">${title}</span>${extra}${cls.includes('pinned') || cls.includes('narrow') || (cls.includes('compact') && !cls.includes('hover')) ? '' : `<span class="x ${cls.includes('xh') ? 'hover' : ''}">${I('close')}</span>`}</div>`;
+document.getElementById('strip1').outerHTML = `<div class="strip">${t('', '#1f6feb', 'L', 'Le Monde.fr — Actualités')}${t('hover xh', '#e7462e', 'M', 'Messagerie — Boîte de réception')}${t('active', '#3d7a5c', 'W', 'Crépuscule — Wikipédia')}${t('loading', '', '', 'Chargement…')}${t('', '#ff0033', 'Y', 'Vidéo — YouTube', `<span class="snd">${I('sound')}</span>`)}${t('', '#ff0033', 'Y', 'Musique', `<span class="snd muted">${I('mute')}</span>`)}<span class="ib">${I('plus')}</span></div>`;
+document.getElementById('strip2').outerHTML = `<div class="strip">${t('pinned', '#e7462e', 'M', '')}${t('pinned', '#5865f2', 'D', '')}${t('compact', '#1f6feb', 'L', 'Le Monde')}${t('compact hover', '#24292f', 'G', 'GitHub')}${t('compact active', '#3d7a5c', 'W', 'Wikipédia')}${'#ff6314,R|#7ebc6f,O|#0a66c2,L|#1db954,S|#ff0033,Y|#f48024,S|#5b4bd6,N'.split('|').map((x) => t('narrow', ...x.split(','), '')).join('')}${t('narrow active', '#0b9bb5', 'Q', '')}<span class="ib">${I('plus')}</span></div>`;
+document.getElementById('strip3').outerHTML = `<div class="strip">${t('', '#1f6feb', 'L', 'Le Monde.fr')}<span class="drop"></span>${t('', '#24292f', 'G', 'GitHub · NIGHTFALL')}${t('drag', '#3d7a5c', 'W', 'Crépuscule — Wikipédia')}${t('discarded', '#7ebc6f', 'O', 'OpenStreetMap (en veille)')}${t('crashed', '', '', 'Page plantée — recharger')}</div>`;
+</script><script src="icons.js"></script></body></html>

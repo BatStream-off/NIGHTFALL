@@ -1,0 +1,52 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Paramètres — Apparence</title>
+<link rel="stylesheet" href="ds.css"><link rel="stylesheet" href="themes.css"><link rel="stylesheet" href="page.css"><style>
+.themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 16px; }
+.th { display: grid; gap: 8px; font-size: 12px; color: var(--c-text-2); }
+.th .pv { height: 86px; border-radius: 10px; overflow: hidden; border: 1px solid var(--c-line); position: relative; background: var(--c-bg); }
+.th.on .pv { box-shadow: 0 0 0 2px var(--page-bg), 0 0 0 4px var(--c-accent-2); }
+.th .pv .h { height: 16px; background: var(--c-bg); display: flex; align-items: flex-end; padding-left: 6px; gap: 3px; }
+.th .pv .h i { width: 34px; height: 11px; border-radius: 3px 3px 0 0; background: var(--c-raised); }
+.th .pv .tb { height: 14px; background: var(--c-surface); display: flex; align-items: center; padding: 0 6px; }
+.th .pv .tb i { flex: 1; height: 7px; border-radius: 4px; background: var(--c-bg); }
+.th .pv .bd { position: absolute; left: 0; right: 0; bottom: 0; top: 30px; background: radial-gradient(70% 80% at 50% 120%, color-mix(in oklab, var(--c-accent) 60%, transparent), transparent); }
+.th .pv .ac { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 3px; } .th .pv .ac i { width: 10px; height: 10px; border-radius: 50%; background: var(--c-accent); } .th .pv .ac i + i { background: var(--c-accent-2); }
+.th .n { display: flex; align-items: center; gap: 6px; color: var(--c-text); font-size: 12.5px; }
+.th .n small { margin-left: auto; color: var(--c-text-3); font-size: 11px; }
+.add .pv { display: grid; place-items: center; border-style: dashed; color: var(--c-text-2); background: transparent; }
+.sel { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 12px; border-radius: var(--r-md); background: var(--c-bg); border: 1px solid var(--c-line-strong); font-size: 13px; }
+.accents { display: flex; gap: 8px; } .accents i { width: 22px; height: 22px; border-radius: 50%; } .accents i.on { box-shadow: 0 0 0 2px var(--c-raised), 0 0 0 4px var(--c-text); }
+.walls { display: flex; gap: 8px; } .walls i { width: 64px; height: 40px; border-radius: 8px; border: 1px solid var(--c-line); } .walls i.on { box-shadow: 0 0 0 2px var(--c-raised), 0 0 0 4px var(--c-accent-2); }
+.seg { display: flex; padding: 3px; border-radius: 9px; background: var(--c-bg); } .seg span { height: 26px; padding: 0 12px; display: grid; place-items: center; border-radius: 6px; color: var(--c-text-2); font-size: 12px; } .seg span.on { background: var(--c-raised); color: var(--c-text); box-shadow: 0 0 0 1px var(--c-line); }
+</style></head><body>
+<div class="shell"><div class="nav" id="nav"></div><div class="main"><div class="in">
+<h1 class="page">Apparence</h1><p class="lead">Thème, couleurs et disposition de NIGHTFALL.</p>
+<h2 class="sec">Thème</h2>
+<div class="card"><div class="themes" id="themes"></div></div>
+<h2 class="sec">Personnalisation rapide</h2>
+<div class="card">
+ <div class="row"><div class="tt"><b>Couleur d'accent</b><span>Boutons principaux, sélection, indicateurs</span></div><div class="accents"></div></div>
+ <div class="row"><div class="tt"><b>Fond du nouvel onglet</b><span>Image NIGHTFALL, couleur unie ou dégradé du thème</span></div><div class="walls" id="walls"></div></div>
+ <div class="row"><div class="tt"><b>Densité</b><span>Hauteur des onglets et de la barre d'outils</span></div><div class="seg"><span>Compacte</span><span class="on">Normale</span><span>Aérée</span></div></div>
+</div>
+<h2 class="sec">Disposition</h2>
+<div class="card">
+ <div class="row"><div class="tt"><b>Onglets verticaux</b><span>Liste des onglets dans une barre latérale</span></div><span class="sw"></span></div>
+ <div class="row"><div class="tt"><b>Bouton Accueil</b></div><span class="sw on"></span></div>
+ <div class="row"><div class="tt"><b>Animation de démarrage</b></div><span class="sw on"></span></div>
+ <div class="row"><div class="tt"><b>Animations de l'interface</b><span>Suit le réglage « réduire les animations » du système</span></div><span class="sel">Système <i data-i="chevd" data-size="sm"></i></span></div>
+</div>
+<h2 class="sec">Pages</h2>
+<div class="card">
+ <div class="row"><div class="tt"><b>Zoom par défaut</b></div><span class="sel">100 % <i data-i="chevd" data-size="sm"></i></span></div>
+ <div class="row"><div class="tt"><b>Taille de police</b></div><span class="sel">Moyenne (16) <i data-i="chevd" data-size="sm"></i></span></div>
+</div>
+</div></div></div>
+<script src="common.js"></script><script>
+const NAV = [['settings', 'Général'], ['palette', 'Apparence et thèmes', 1], ['private', 'Confidentialité'], ['lock', 'Sécurité'], ['shieldok', 'NIGHTFALL Shield'], ['video', 'VideoGuard'], ['camera', 'Autorisations des sites'], ['download', 'Téléchargements'], ['globe', 'Navigation'], ['search', 'Moteurs de recherche'], ['reload', 'Performances'], ['eye', 'Accessibilité'], ['more', 'Avancé'], 0, ['info', 'À propos']];
+document.getElementById('nav').innerHTML = `<div class="brand"><img src="../../../../../app/ui/emblem.png">Paramètres</div><div class="field srch">${I('search', 'sm')}<span class="ph">Rechercher un réglage</span></div>` + NAV.map((n) => n ? `<div class="ni ${n[2] ? 'on' : ''}">${I(n[0])}${n[1]}</div>` : '<div class="ngap"></div>').join('');
+const TH = [['crepuscule', 'Crépuscule', 'défaut', 1], ['minuit', 'Minuit', 'OLED'], ['aube', 'Aube', 'clair'], ['aurore', 'Aurore'], ['braise', 'Braise'], ['brume', 'Brume'], ['perso', 'Mon thème', 'perso']];
+document.getElementById('themes').innerHTML = TH.map(([id, n, s, on]) => `<div class="th ${on ? "on" : ""}"><div class="pv" data-theme="${id}"><div class="h"><i></i><i style="background:transparent"></i></div><div class="tb"><i></i></div><div class="bd"></div><div class="ac"><i></i><i></i></div></div><div class="n">${n}${s ? `<small>${s}</small>` : ''}</div></div>`).join('') + `<div class="th add"><div class="pv">${I('plus', 'lg')}</div><div class="n">Créer un thème</div></div>`;
+document.querySelector('[data-theme="perso"]').style.cssText = '--c-accent:#d6408f;--c-accent-2:#ff9bd0;--c-bg:#0b0710;--c-surface:#140d1b;--c-raised:#1d1426';
+document.querySelector('.accents').innerHTML = ['#2967ff', '#5ad2e8', '#8b6cff', '#18b892', '#e8793a', '#d6408f', '#8a8f9c'].map((c, i) => `<i style="background:${c}" class="${i ? '' : 'on'}"></i>`).join('') + `<span class="ib" style="width:24px;height:24px">${I('plus', 'sm')}</span>`;
+document.getElementById('walls').innerHTML = ['radial-gradient(80% 90% at 50% 120%,#2967ff,#05070c)', 'linear-gradient(160deg,#0b1d2a,#062018 60%,#18b892)', 'linear-gradient(#141a28,#141a28)', 'radial-gradient(70% 90% at 30% 110%,#8b6cff,#05070c)'].map((g, i) => `<i style="background:${g}" class="${i ? '' : 'on'}"></i>`).join('');
+</script><script src="icons.js"></script></body></html>

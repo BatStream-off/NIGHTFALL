@@ -1,0 +1,44 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Menus et panneaux déroulants</title>
+<link rel="stylesheet" href="ds.css"><style>
+body { padding: 24px; background: #3a3f47; display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+.col { display: grid; gap: 10px; } .cap { font: 500 11px/1.3 var(--f-mono); color: #ffd7a8; max-width: 300px; }
+.menu { width: 288px; }
+.zoom { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px 0 8px; }
+.zoom .lbl { flex: 1; } .zoom .v { width: 48px; text-align: center; font: 600 12px/1 var(--f-display); }
+.seg { display: flex; border-radius: 6px; background: var(--c-hover); } .seg span { width: 30px; height: 26px; display: grid; place-items: center; color: var(--c-text-2); }
+.sh-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 10px; }
+.sh-head .n { flex: 1; } .sh-head .n b { display: block; font-weight: 600; font-size: 13px; } .sh-head .n span { color: var(--c-text-2); font-size: 12px; }
+.big { display: flex; align-items: center; gap: 14px; margin: 0 2px; padding: 14px; border-radius: 10px; background: var(--c-bg); }
+.big b { font: 600 34px/1 var(--f-display); font-variant-numeric: tabular-nums; } .big span { color: var(--c-text-2); font-size: 12px; line-height: 1.35; }
+.big .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in oklab, var(--c-accent-2) 14%, transparent); color: var(--c-accent-2); }
+.mrow { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 8px; }
+.mrow .t { flex: 1; } .mrow .t b { display: block; font-weight: 500; } .mrow .t span { color: var(--c-text-2); font-size: 12px; }
+.adv { display: flex; align-items: center; gap: 6px; padding: 8px; color: var(--c-text-2); font-size: 12px; }
+.find { display: flex; align-items: center; gap: 6px; width: 420px; height: 44px; padding: 0 6px 0 12px; background: var(--menu-bg); border: 1px solid var(--c-line-strong); }
+.find .in { flex: 1; } .find .c { color: var(--c-text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.pw { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; } .pw .u { flex: 1; } .pw .u span { display: block; color: var(--c-text-2); font-size: 12px; }
+.sug .mi { height: 36px; } .sug .mi b { font-weight: 600; } .sug .mi .h { color: var(--c-text-3); font-size: 12px; margin-left: 6px; }
+</style></head><body>
+<div class="col"><div class="menu" id="main"></div><div class="cap">Menu principal (288 px). Groupes courts, libellés d'un ou deux mots, raccourcis à droite. « Plus d'outils » (sous-menu) : Imprimer, Enregistrer la page, Accueil, Outils de développement, Security Center, À propos — aucune entrée actuelle ne disparaît (F-063).</div></div>
+<div class="col"><div class="menu" id="shield"></div><div class="cap">Panneau Shield : le chiffre d'abord, un seul interrupteur pour le site, le détail (« Avancé ») replié par défaut.</div>
+<div class="menu" id="tabmenu"></div><div class="cap">Menu contextuel d'onglet.</div></div>
+<div class="col"><div class="menu sug" id="sug" style="width:560px"></div><div class="cap">Suggestions de la barre d'adresse : même vue superposée, alignée sous le champ.</div>
+<div class="find" id="find"></div><div class="cap">Recherche dans la page.</div>
+<div class="menu" id="pw"></div><div class="cap">Mots de passe du site.</div></div>
+<script src="common.js"></script><script>
+const mi = (i, t, k = '', cls = '') => `<div class="mi ${cls}">${I(i)}<span>${t}</span>${k ? `<span class="k">${k}</span>` : ''}</div>`;
+document.getElementById('main').innerHTML = mi('newtab', 'Nouvel onglet', 'Ctrl T') + mi('window', 'Nouvelle fenêtre', 'Ctrl N') + mi('private', 'Fenêtre privée', 'Ctrl Maj N') + mi('reopen', 'Rouvrir l\'onglet fermé', 'Ctrl Maj T') + '<div class="msep"></div>'
+ + `<div class="zoom"><span class="lbl">Zoom</span><span class="seg"><span>${I('winmin', 'sm')}</span></span><span class="v">100 %</span><span class="seg"><span>${I('plus', 'sm')}</span></span><span class="seg" style="margin-left:4px"><span>${I('fullscreen', 'sm')}</span></span></div><div class="msep"></div>`
+ + mi('history', 'Historique', 'Ctrl H', 'hover') + mi('bookmarks', 'Favoris', 'Ctrl Maj O') + mi('download', 'Téléchargements', 'Ctrl J') + mi('key', 'Mots de passe') + mi('extensions', 'Extensions') + '<div class="msep"></div>'
+ + mi('search', 'Rechercher', 'Ctrl F') + mi('fullscreen', 'Plein écran', 'F11') + `<div class="mi">${I('more')}<span>Plus d'outils</span><span class="chev">${I('chev', 'sm')}</span></div>` + '<div class="msep"></div>'
+ + mi('shield', 'Confidentialité et sécurité') + mi('palette', 'Apparence et thèmes') + mi('settings', 'Paramètres', 'Ctrl ,') + '<div class="msep"></div>' + mi('lock', 'Verrouiller', 'Ctrl Maj L') + mi('emergency', 'Verrouillage d\'urgence', 'Ctrl Maj F12', 'danger');
+document.getElementById('shield').innerHTML = `<div class="sh-head">${fav('#3d7a5c', 'W', 28)}<div class="n"><b>fr.wikipedia.org</b><span>Connexion sécurisée</span></div></div>
+ <div class="big"><span class="ico">${I('shieldok', 'lg')}</span><div><b>3</b><br><span>traqueurs et publicités<br>bloqués sur cette page</span></div></div>
+ <div class="mrow" style="margin-top:6px"><div class="t"><b>Shield sur ce site</b><span>Désactiver si la page ne fonctionne pas</span></div><span class="sw on"></span></div>
+ <div class="msep"></div><div class="adv">${I('chevd', 'sm')}Avancé : 2 domaines, 1 règle cosmétique, cookies tiers bloqués</div>
+ ${mi('settings', 'Réglages de Shield')}`;
+document.getElementById('tabmenu').innerHTML = mi('plus', 'Nouvel onglet à droite') + '<div class="msep"></div>' + mi('reload', 'Actualiser', 'Ctrl R') + mi('copy', 'Dupliquer') + mi('pin', 'Épingler') + mi('mute', 'Couper le son') + '<div class="msep"></div>' + mi('close', 'Fermer', 'Ctrl W') + mi('close', 'Fermer les autres onglets');
+document.getElementById('sug').innerHTML = `<div class="mi hover">${I('search')}<span>crépuscule <b>définition</b></span><span class="k">DuckDuckGo</span></div><div class="mi">${I('history')}<span><b>Crépuscule</b> — Wikipédia</span><span class="h">fr.wikipedia.org</span></div><div class="mi">${I('star')}<span><b>Crépuscule</b> nautique — favoris</span><span class="h">meteo.fr</span></div><div class="mi">${I('search')}<span>crépuscule <b>heure aujourd'hui</b></span></div>`;
+document.getElementById('find').innerHTML = `${I('search')}<span class="in">horizon</span><span class="c">3 sur 12</span><span class="tsep" style="width:1px;height:20px;background:var(--c-line-strong);margin:0 4px"></span><span class="ib">${I('chevd')}</span><span class="ib" style="transform:rotate(180deg)">${I('chevd')}</span><span class="ib">${I('close')}</span>`;
+document.getElementById('pw').innerHTML = `<div class="mlabel">github.com</div><div class="pw">${fav('#24292f', 'G', 26)}<div class="u">camille<span>Enregistré le 2 nov.</span></div><span class="btn sm primary">Remplir</span></div><div class="msep"></div>${mi('plus', 'Ajouter un identifiant')}${mi('key', 'Gérer les mots de passe')}`;
+</script><script src="icons.js"></script></body></html>
