@@ -27,6 +27,8 @@ pub const NEW_TAB_URL: &str = "nightfall://app/newtab.html";
 
 static NEXT_WINDOW: AtomicU32 = AtomicU32::new(1);
 static NEXT_TAB: AtomicU32 = AtomicU32::new(1);
+/// Instance number of each dropdown popup (see `popup_close_if`).
+static NEXT_POPUP: AtomicU32 = AtomicU32::new(1);
 
 pub fn next_tab_id() -> u32 {
     NEXT_TAB.fetch_add(1, Ordering::Relaxed)
@@ -124,6 +126,9 @@ pub struct WinCtx {
 
 pub struct Popup {
     pub panel: String,
+    /// Instance number, passed to the popup page (`&n=`): a late close
+    /// request from a popup never closes the one opened after it.
+    pub serial: u32,
     pub view: BrowserView,
     pub overlay: OverlayController,
     /// Horizontal anchor (right edge, or left edge with `align_left`) and
@@ -636,6 +641,11 @@ fn prepare_window_close(id: u32) {
     if is_last_window || !private {
         super::session::save_session_snapshot();
     }
+    if is_last_window {
+        // Chromium's copy of the remembered permission decisions does not
+        // outlive the session (given back at the next unlock).
+        super::permissions::forget_remembered_in_chromium();
+    }
     // Collect first, close after: closing calls back into NIGHTFALL.
     let hosts: Vec<BrowserHost> = with_window(id, |ctx| {
         let tabs = ctx.tabs.iter().filter_map(|t| t.view.as_ref().and_then(|v| v.browser()));
@@ -718,7 +728,11 @@ pub fn add_tab_at(window_id: u32, url: &str, activate: bool, index: Option<usize
         Some(())
     })
     .flatten();
-    created?;
+    if created.is_none() {
+        // No browser was created: no internal authorisation may stay pending.
+        state::forget_internal_for_tab(tab_id);
+        return None;
+    }
     if activate || with_window(window_id, |c| c.active.is_none()).unwrap_or(false) {
         activate_tab(window_id, tab_id);
     } else {
@@ -802,11 +816,13 @@ pub fn activate_tab(window_id: u32, tab_id: u32) {
     if fs.is_some() && fs != Some(tab_id) {
         exit_content_fullscreen(window_id);
     }
+    let already_active = with_window(window_id, |c| c.active == Some(tab_id)).unwrap_or(false);
     // Restore a discarded tab first.
     let restore = with_window(window_id, |ctx| {
         ctx.tabs.iter().find(|t| t.id == tab_id && t.discarded).map(|t| (t.url.clone(), ctx.private, ctx.request_context.clone()))
     })
     .flatten();
+    let restored = restore.is_some();
     if let Some((url, private, rc)) = restore {
         if url.starts_with("nightfall://") {
             state::allow_internal_for_tab(tab_id);
@@ -844,7 +860,11 @@ pub fn activate_tab(window_id: u32, tab_id: u32) {
             w.set_title(Some(&CefString::from(format!("{title} — {prefix}").as_str())));
         }
     });
-    push_tabs(window_id);
+    // Pressing the tab already shown changes nothing: no "tabs" event (each
+    // one rebuilds the tab strip under the mouse).
+    if !already_active || restored {
+        push_tabs(window_id);
+    }
 }
 
 /// Refresh the OS window title from the active tab.
@@ -933,6 +953,7 @@ fn close_tab_inner(window_id: u32, tab_id: u32, self_closed: bool) {
     .flatten();
     // Unknown tab (already closed): nothing to do.
     let Some((was_active, next)) = found else { return };
+    state::forget_internal_for_tab(tab_id);
     if let Some(h) = closing {
         mark_closing(&h);
         h.close_browser(1);
@@ -1195,13 +1216,22 @@ pub fn navigate_active(window_id: u32, url: &str) {
     let tab = active_tab_id(window_id);
     match tab {
         Some(tab_id) => {
+            let Some(b) = tab_browser(window_id, tab_id) else {
+                // No browser (cannot happen for the active tab): new tab.
+                add_tab(window_id, url, true);
+                return;
+            };
             if url.starts_with("nightfall://") {
-                state::allow_internal_for_tab(tab_id);
-            }
-            if let Some(b) = tab_browser(window_id, tab_id) {
-                if let Some(f) = b.main_frame() {
-                    f.load_url(Some(&CefString::from(url)));
+                // Asked by NIGHTFALL itself (Accueil, address bar): allowed
+                // once on this tab's existing browser. The per-tab list
+                // (`allow_internal_for_tab`) is only read when a browser is
+                // created, so it is not used here.
+                if let Some(info) = state::browsers().get_mut(&b.identifier()) {
+                    info.allow_internal_nav = true;
                 }
+            }
+            if let Some(f) = b.main_frame() {
+                f.load_url(Some(&CefString::from(url)));
             }
         }
         None => {
@@ -1329,7 +1359,7 @@ pub fn popup_panel(window_id: u32) -> Option<String> {
 }
 
 pub fn popup_open_ex(window_id: u32, panel: &str, anchor: Rect, width: i32, height: i32, opts: PopupOpts) {
-    let panel_id: String = panel.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(24).collect();
+    let panel_id: String = panel_id(panel);
     let current = popup_panel(window_id);
     if current.as_deref() == Some(panel_id.as_str()) && !opts.toggle {
         popup_resize(window_id, width, height);
@@ -1350,8 +1380,9 @@ pub fn popup_open_ex(window_id: u32, panel: &str, anchor: Rect, width: i32, heig
     .flatten() else {
         return;
     };
+    let serial = NEXT_POPUP.fetch_add(1, Ordering::Relaxed);
     let url = format!(
-        "nightfall://app/shell.html?mode=popup&w={window_id}&private={}&panel={panel_id}",
+        "nightfall://app/shell.html?mode=popup&w={window_id}&private={}&panel={panel_id}&n={serial}",
         if private { 1 } else { 0 }
     );
     let max_w = opts.max_width.clamp(160, 2400);
@@ -1363,6 +1394,10 @@ pub fn popup_open_ex(window_id: u32, panel: &str, anchor: Rect, width: i32, heig
         state::log("menu déroulant : superposition refusée par CEF");
         return;
     };
+    // The browser is created when the view joins the overlay widget.
+    if let Some(b) = view.browser() {
+        POPUP_BROWSERS.with(|p| p.borrow_mut().insert(b.identifier()));
+    }
     let right = if opts.align_left { origin.0 + anchor.x } else { origin.0 + anchor.x + anchor.width };
     let top = origin.1 + anchor.y + anchor.height + 6;
     place_popup(area, &overlay, right, opts.align_left, top, w, h);
@@ -1371,7 +1406,7 @@ pub fn popup_open_ex(window_id: u32, panel: &str, anchor: Rect, width: i32, heig
         view.request_focus();
     }
     with_window(window_id, |ctx| {
-        ctx.popup = Some(Popup { panel: panel_id, view, overlay, right, top, align_left: opts.align_left, max_width: max_w, target });
+        ctx.popup = Some(Popup { panel: panel_id, serial, view, overlay, right, top, align_left: opts.align_left, max_width: max_w, target });
     });
 }
 
@@ -1410,19 +1445,102 @@ pub fn popup_resize(window_id: u32, width: i32, height: i32) {
 }
 
 pub fn popup_close(window_id: u32) {
-    let popup = with_window(window_id, |ctx| ctx.popup.take()).flatten();
-    if let Some(p) = popup {
-        let host = p.view.browser().and_then(|b| b.host());
-        p.overlay.destroy();
-        if let Some(h) = host {
-            h.close_browser(1);
+    popup_close_if(window_id, None, None);
+}
+
+fn panel_id(panel: &str) -> String {
+    panel.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(24).collect()
+}
+
+/// Close the popup only if it is the one named: `panel` (its panel name)
+/// and `serial` (its instance number), each checked when given. A popup
+/// asks to close itself when it loses the focus; on macOS that request can
+/// arrive after the next popup was opened, which must stay open.
+pub fn popup_close_if(window_id: u32, panel: Option<&str>, serial: Option<u32>) -> bool {
+    let wanted = panel.map(panel_id);
+    let popup = with_window(window_id, |ctx| {
+        let same = ctx.popup.as_ref().map(|p| wanted.as_deref().is_none_or(|n| p.panel == n) && serial.is_none_or(|n| p.serial == n)).unwrap_or(false);
+        if same { ctx.popup.take() } else { None }
+    })
+    .flatten();
+    match popup {
+        Some(p) => {
+            destroy_popup(window_id, p);
+            true
         }
-        if let Some(h) = p.target.and_then(|b| b.host()) {
-            // Find bar closed: remove the highlights.
-            h.stop_finding(1);
-        }
-        push_event(window_id, &serde_json::json!({ "type": "popup_closed", "panel": p.panel }));
+        None => false,
     }
+}
+
+/// Close the popup showing this browser, if it is still the open one.
+pub fn popup_close_browser(window_id: u32, browser_id: i32) {
+    let serial = with_window(window_id, |ctx| {
+        let p = ctx.popup.as_ref()?;
+        (p.view.browser().map(|b| b.identifier()) == Some(browser_id)).then_some(p.serial)
+    })
+    .flatten();
+    if let Some(n) = serial {
+        popup_close_if(window_id, None, Some(n));
+    }
+}
+
+// Browsers of the dropdown popups (overlay views): their close is handled
+// by NIGHTFALL, never by CEF's default DoClose (see client.rs `do_close`).
+thread_local! {
+    static POPUP_BROWSERS: RefCell<std::collections::HashSet<i32>> = RefCell::new(std::collections::HashSet::new());
+}
+
+pub fn is_popup_browser(browser_id: i32) -> bool {
+    POPUP_BROWSERS.with(|p| p.borrow().contains(&browser_id))
+}
+
+/// A popup browser was destroyed (on_before_close).
+pub fn forget_popup_browser(browser_id: i32) {
+    POPUP_BROWSERS.with(|p| p.borrow_mut().remove(&browser_id));
+    take_closing(browser_id);
+}
+
+/// Free a popup's view and browser.
+///
+/// Order matters (each closed popup used to keep its browser and renderer
+/// process): the view is first taken out of its overlay widget, then our
+/// last reference to it is released. CEF then destroys the browser through
+/// the view's tear-down (`WindowDestroyed`), which does not call `DoClose`:
+/// CEF's default close (asking the parent window to close, i.e. the whole
+/// NIGHTFALL window) can never be reached. Calling `close_browser` first,
+/// as before, put the browser in the "closing" state with no window to
+/// close, and the view tear-down then skipped it: it was never destroyed
+/// (CEF sources: `AlloyBrowserHostImpl::CloseContents`,
+/// `CefBrowserViewImpl::~CefBrowserViewImpl`).
+fn destroy_popup(window_id: u32, p: Popup) {
+    let Popup { panel, view, overlay, target, .. } = p;
+    let browser = view.browser();
+    if let Some(h) = browser.as_ref().and_then(|b| b.host()) {
+        mark_closing(&h);
+    }
+    overlay.destroy();
+    drop(overlay);
+    drop(view);
+    if let Some(b) = browser {
+        // Normally already destroyed (synchronously) at this point. If some
+        // other reference keeps the view alive, close the browser
+        // explicitly: `do_close` answers 1 for popup browsers, so CEF never
+        // closes a window for it, and the view's tear-down completes it.
+        super::ui_thread::on_ui_delayed(1000, move || {
+            let id = b.identifier();
+            if state::browsers().contains_key(&id) {
+                state::log("menu déroulant : navigateur encore vivant après sa vue, fermeture explicite");
+                if let Some(h) = b.host() {
+                    h.close_browser(1);
+                }
+            }
+        });
+    }
+    if let Some(h) = target.and_then(|b| b.host()) {
+        // Find bar closed: remove the highlights.
+        h.stop_finding(1);
+    }
+    push_event(window_id, &serde_json::json!({ "type": "popup_closed", "panel": panel }));
 }
 
 /// Give the keyboard focus back to the page (after closing the find bar).
@@ -1583,6 +1701,12 @@ pub fn show_devtools(window_id: u32) {
             h.show_dev_tools(Some(&wi), None, Some(&settings), None);
         }
     }
+}
+
+/// Diagnostic (CI self test): interface browsers alive (top, side, popups).
+#[cfg(feature = "selftest")]
+pub fn ui_browsers_alive() -> usize {
+    state::browsers().values().filter(|i| matches!(i.kind, state::BrowserKind::Ui { .. })).count()
 }
 
 /// Diagnostic (CI self test): bounds and visibility of a window's views.

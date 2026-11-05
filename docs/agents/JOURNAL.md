@@ -4,6 +4,82 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-05 — Décisions du propriétaire ; lot L0 lancé
+- **Validé** : plan (ordre L0 → L6) ; lancement de L0 ; le Directeur corrige lui-même M-0002 et
+  M-0003 (refusées deux fois) puis audit final ; protection de `main` (le proxy refuse ce réglage
+  au Directeur : instructions données au propriétaire) ; effacement de la copie Chromium des
+  autorisations mémorisées au verrouillage et à la fermeture ; uBlock Origin exécuté en CI comme
+  outil de mesure seulement.
+- **Non validé** : VideoGuard désactivé par défaut en navigation privée (comportement actuel conservé).
+- **Design** : le propriétaire veut voir les maquettes avant de décider ; 8 maquettes envoyées.
+- **M-0005** : corrections livrées (011d19d), second audit à faire. **M-0006** : audit 2 REFUSÉ
+  (2 MAJEUR : remise à zéro des autorisations ≠ comportement identique → réappliquer au
+  déverrouillage ; critères de la vue d'ensemble du Security Center absents et parallélisme
+  M-E3/M-E4/M-E5 faux) → deux refus : propriétaire à consulter.
+- **L0** : M-0007 (sécurité du verrouillage, réglages robustes, autorisations Chromium) et M-0008
+  (onglets, menus, Accueil), Exécuteurs Opus en parallèle ; M-0007 intègre en premier.
+
+## 2026-11-05 — M-0004 ACCEPTÉE ; M-0003 arrêtée (règle 6) ; M-0002 livrée
+- **M-0004** : audit 2 (Opus, agent neuf) ACCEPTÉ, 5 MINEUR (§0 licence à aligner sur
+  §9.3, clause §4 simplifiée, empreinte par la liste des catégories envoyées → paramètres
+  constants et filtrage local, moyen de l'auto-test VG-25 à préciser, réserve licence à
+  lever). Banc rejoué et éprouvé par mutation de `videoguard.js`.
+- **M-0003** : audit 2 (agent neuf) **REFUSÉ** — 3 MAJEUR sur la justesse des risques :
+  `$to` en réalité ignoré par adblock-rust (`fb_network_builder.rs:260-264`), donc perte
+  de couverture et non faux positifs (erreur introduite par la correction) ; P1-6
+  `$removeparam` : exceptions `@@…$removeparam` rejetées par adblock-rust
+  (`network.rs:850-851`) → réécriture d'URL là où uBO s'abstient ; analyse de sécurité
+  incohérente : listes en cache non authentifiées déjà chargées avant déverrouillage
+  avec la permission TRUSTED. Mesures et outillage confirmés. **Deux refus successifs →
+  arrêt et consultation du propriétaire (charte §5).** Recommandation du Directeur :
+  le Directeur corrige lui-même ces trois points (précis et vérifiables), puis troisième
+  audit par un agent neuf.
+- **Constat de sécurité à prioriser** (M-0003 audit 2, M3) : intégrité des listes
+  Shield en cache (texte clair, permission TRUSTED pour 5 listes, chargées avant
+  déverrouillage).
+- **M-0002** livrée (Opus) : 4 bugs reproduits avec cause ; audit lancé.
+- **M-0006** lancée (Architecte Opus) ; **M-0005** en cours.
+
+## 2026-11-05 — Reprise après la limite hebdomadaire ; M-0003 et M-0004
+- Limite **hebdomadaire** atteinte le 2026-11-04 au soir (M-0002, M-0003, audit M-0004
+  interrompus), levée le 2026-11-05 à 8:00 ; reprise par SendMessage.
+- **M-0004** : audit 1 REFUSÉ (4 MAJEUR) ; MAJEUR 1 vérifié par le Directeur
+  (`lock_now` ne touche ni VideoGuard ni les médias ; aucun `is_unlocked()` dans
+  `on_navigation`). Tentative 2 (Opus) livrée 7bf3f63 ; audit 2 lancé.
+- **Constat de sécurité ajouté aux priorités** : pendant le verrouillage, les onglets
+  masqués continuent de tourner (lecture vidéo et son, requêtes VideoGuard).
+- **M-0003** : audit REFUSÉ (1 MAJEUR : cache du moteur sérialisé présenté à tort comme
+  sûr ; 9 MINEUR) ; mesures confirmées. **Arbitrage** : le producteur était déjà Opus
+  (pas de modèle supérieur) ; les corrections, textuelles et précises, sont confiées
+  au même agent producteur, puis un **nouvel** Auditeur vérifiera.
+- **Décisions à soumettre au propriétaire** : exécution de uBlock Origin (GPL) cloné
+  en CI comme outil de mesure ; conservation des jobs « Audit Shield ».
+
+## 2026-11-04 — M-0001 ACCEPTÉE (tentative 2)
+- Analyste Opus ; audit 2 (Opus, agent neuf) : ACCEPTÉ, 9 MINEUR (P1–P9), à corriger
+  dans une mission ultérieure de mise à jour du registre.
+- **Processus** : #22 (`orga/refonte` → `main`) et #24 (`agent/M-0001-registre-v2` →
+  `main`) fusionnées depuis l'interface web avant audit (titre tronqué par GitHub,
+  10 s entre ouverture et fusion). Documents seulement. Le propriétaire a été prié de
+  ne plus fusionner et s'est vu proposer une protection de `main` (non activée sans
+  son accord). `develop` non resynchronisé : c'est une fusion (règle 9).
+
+## 2026-11-04 — Refonte : phase d'audit lancée
+- **Demande** du propriétaire : `missions/DEMANDE-2026-11-04-refonte.md`. Nouvelles
+  règles reportées dans la charte (§1, règles 9 à 12), dont : **aucune fusion sans son
+  autorisation explicite**, résultats d'audit et plan présentés avant toute
+  modification importante.
+- **Faits établis** : Shield utilise déjà adblock-rust 0.13.5 (dernière version) ;
+  VideoGuard est un client de l'API SponsorBlock sans code de l'extension ; uBlock,
+  tsurlfilter et SponsorBlock sont sous GPL-3.0, NIGHTFALL sous MPL-2.0 : étude
+  seulement (règle 12). `docs/LICENSES.md` indique LGPL-3.0 pour l'extension
+  SponsorBlock, alors qu'elle est sous GPL-3.0 depuis le commit 7338af3 (à corriger).
+- **Missions d'audit** M-0002 à M-0006 préparées (modèles et raisons dans les fiches) ;
+  au plus 3 agents à la fois ; ordre : M-0001 (reprise), M-0002, M-0003, puis M-0004,
+  M-0005, M-0006.
+- **Limite de débit** atteinte à 14:50 (M-0001 tentative 2 interrompue, reprise après
+  la levée de la limite par SendMessage).
+
 ## 2026-11-04 — M-0001 : audit REFUSÉ, montée à Opus
 - **Audit 1** (Opus, agent neuf) : REFUSÉ, 3 MAJEUR (F-137 anti-phishing annoncé mais
   jamais déclenché, F-147 9 listes et non 6, Couverture comptant des preuves hors

@@ -53,7 +53,7 @@ fn dir() -> PathBuf {
 
 /// Load preferences once the encrypted database is open.
 pub fn load_prefs() {
-    let prefs = core().storage().and_then(|s| s.setting::<UpdatePrefs>("updates").ok().flatten()).unwrap_or_default();
+    let prefs = core().storage().and_then(|s| super::state::load_setting::<UpdatePrefs>(s, "updates")).unwrap_or_default();
     with(|s| s.prefs = prefs);
 }
 

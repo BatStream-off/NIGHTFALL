@@ -1,3 +1,15 @@
+**0.1.5**
+- **Sécurité du verrouillage :**
+  - les raccourcis clavier n'agissent plus quand NIGHTFALL est verrouillé (seul le verrouillage d'urgence reste disponible) ;
+  - au verrouillage, le son de tous les onglets est coupé et les vidéos sont mises en pause ; VideoGuard ne fait plus rien tant que NIGHTFALL est verrouillé ;
+  - les autorisations mémorisées (position, presse-papiers…) sont retirées du fichier de préférences de Chromium pendant le verrouillage et à la fermeture, puis rendues au déverrouillage : elles ne sont plus lisibles en clair sans votre code.
+- **Réglages plus sûrs :** un réglage manquant ou ajouté par une version future ne peut plus faire perdre tous vos réglages.
+- **Corrections :**
+  - la croix ferme vraiment l'onglet (barre horizontale et onglets verticaux) ; fermer un onglet d'arrière-plan ne change plus l'onglet affiché ;
+  - les menus déroulants ne restent plus en mémoire après fermeture ;
+  - ouvrir un menu juste après en avoir fermé un autre fonctionne aussi sur macOS ;
+  - le bouton Accueil fonctionne depuis une page web.
+
 **0.1.4**
 - **Mises à jour automatiques :**
   - NIGHTFALL recherche les nouvelles versions au démarrage puis toutes les 6 h ;

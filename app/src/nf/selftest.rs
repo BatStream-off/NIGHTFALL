@@ -9,7 +9,7 @@ use super::api::{self, Caller};
 use super::state::{self, core, BrowserKind};
 use super::ui_thread::on_ui_delayed;
 use super::windows;
-use cef::{ImplBrowser, ImplBrowserHost, ImplFrame, ImplValue};
+use cef::{ImplBrowser, ImplBrowserHost, ImplBrowserView, ImplFrame, ImplValue, ImplView};
 use serde_json::{json, Value};
 
 const PIN: &str = "739204";
@@ -398,9 +398,22 @@ pub fn console_result(msg: &str) {
             *c = Some(msg.to_string());
         }
     }
+    if let Some(json) = msg.strip_prefix("m8-rect ") {
+        if let Ok(mut r) = RECT.lock() {
+            *r = serde_json::from_str(json).ok();
+        }
+    }
     if msg.starts_with("copy-check") {
         if let Ok(mut c) = COPY_CHECK.lock() {
             *c = Some(msg.to_string());
+        }
+    }
+    if let Some(rest) = msg.strip_prefix("nfcheck-") {
+        if let Some((key, payload)) = rest.split_once(' ') {
+            if let Ok(mut c) = CHECKS.lock() {
+                c.retain(|(k, _)| k != key);
+                c.push((key.to_string(), payload.to_string()));
+            }
         }
     }
 }
@@ -586,7 +599,387 @@ fn step_copy() {
         on_ui_delayed(1500, || {
             let r = COPY_CHECK.lock().ok().and_then(|c| c.clone()).unwrap_or_else(|| "pas de réponse".into());
             state::log(&format!("selftest: presse-papiers : {r}"));
-            step_final_menu();
+            step_home();
+        });
+    });
+}
+
+// ------------------------------------- real clicks in the interface (M-0008)
+//
+// The interface views receive real mouse events through the DevTools
+// protocol (`Input.dispatchMouseEvent`, press and release sent separately),
+// processed by Chromium like hardware events: the bugs that depend on the
+// order of events (tab strip rebuilt between press and release, a popup's
+// late close) only show up this way.
+
+static RECT: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+static DT_ID_CLICK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(950_000);
+static UI_BASE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ANCHOR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static TARGET: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static RACE_OK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+const TRIALS: u32 = 5;
+const MENU_CYCLES: u32 = 20;
+
+/// Interface view of window 1: top bar or vertical tab strip.
+fn ui_browser(side: bool) -> Option<cef::Browser> {
+    windows::with_window(1, |c| if side { c.side.browser() } else { c.top.browser() }).flatten()
+}
+
+fn ui_js(side: bool, code: &str) {
+    if let Some(f) = ui_browser(side).and_then(|b| b.main_frame()) {
+        f.execute_java_script(Some(&cef::CefString::from(code)), Some(&cef::CefString::from("nightfall://selftest")), 0);
+    }
+}
+
+fn mouse(side: bool, kind: &str, x: f64, y: f64) {
+    let (button, buttons) = match kind {
+        "mousePressed" => ("left", 1),
+        "mouseReleased" => ("left", 0),
+        _ => ("none", 0),
+    };
+    let clicks = if kind == "mouseMoved" { 0 } else { 1 };
+    let msg = json!({ "id": DT_ID_CLICK.fetch_add(1, std::sync::atomic::Ordering::Relaxed), "method": "Input.dispatchMouseEvent",
+        "params": { "type": kind, "x": x, "y": y, "button": button, "buttons": buttons, "clickCount": clicks } }).to_string();
+    if let Some(h) = ui_browser(side).and_then(|b| b.host()) {
+        h.send_dev_tools_message(Some(msg.as_bytes()));
+    }
+}
+
+/// Poll `cond` every 200 ms up to `tries` times, then `next(met)`.
+fn poll_ok<C, N>(tries: u32, cond: C, next: N)
+where
+    C: Fn() -> bool + Send + 'static,
+    N: FnOnce(bool) + Send + 'static,
+{
+    on_ui_delayed(200, move || {
+        if cond() {
+            next(true);
+        } else if tries == 0 {
+            next(false);
+        } else {
+            poll_ok(tries - 1, cond, next);
+        }
+    });
+}
+
+/// Centre of the element matching `sel` in an interface view.
+fn with_rect<N: FnOnce(f64, f64) + Send + 'static>(side: bool, sel: String, next: N) {
+    if let Ok(mut r) = RECT.lock() {
+        *r = None;
+    }
+    let sel_js = serde_json::to_string(&sel).unwrap_or_else(|_| "\"\"".into());
+    ui_js(side, &format!("(function(){{var e=document.querySelector({sel_js});var o={{ok:false}};if(e){{var r=e.getBoundingClientRect();o={{ok:r.width>0&&r.height>0,x:r.left+r.width/2,y:r.top+r.height/2}};}}console.log('m8-rect '+JSON.stringify(o));}})();"));
+    poll_ok(25, || RECT.lock().map(|r| r.is_some()).unwrap_or(false), move |_| {
+        let r = RECT.lock().ok().and_then(|r| r.clone()).unwrap_or(Value::Null);
+        if r["ok"].as_bool() != Some(true) {
+            return fail(&format!("élément introuvable ou invisible dans l'interface : {sel} ({r})"));
+        }
+        next(r["x"].as_f64().unwrap_or(0.0), r["y"].as_f64().unwrap_or(0.0));
+    });
+}
+
+/// Real left click: move, press, `during` (between press and release), release.
+fn real_click<D, N>(side: bool, x: f64, y: f64, during: D, next: N)
+where
+    D: FnOnce() + Send + 'static,
+    N: FnOnce() + Send + 'static,
+{
+    mouse(side, "mouseMoved", x, y);
+    mouse(side, "mousePressed", x, y);
+    on_ui_delayed(60, move || {
+        during();
+        on_ui_delayed(90, move || {
+            mouse(side, "mouseReleased", x, y);
+            next();
+        });
+    });
+}
+
+// ---- Accueil from a web page
+
+fn step_home() {
+    step("bouton Accueil depuis une page web (clic réel)");
+    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    if windows::active_tab_id(1) != Some(main) || !active_tab_url_starts("https://example.com") {
+        return fail(&format!("Accueil : l'onglet actif n'est pas la page web attendue ; onglets = {}", windows::tabs_state(1)));
+    }
+    with_rect(false, "#b-home".into(), |x, y| {
+        real_click(false, x, y, || {}, || {
+            poll_ok(75, || active_tab_loaded("nightfall://app/newtab"), |ok| {
+                let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+                if !ok {
+                    return fail(&format!("Accueil depuis une page web : page Nouvel onglet non affichée ; onglets = {}", windows::tabs_state(1)));
+                }
+                if windows::active_tab_id(1) != Some(main) {
+                    return fail("Accueil : la page Nouvel onglet ne s'est pas ouverte dans l'onglet actif");
+                }
+                let pending = state::internal_pending_for_tab(main);
+                let flag = windows::tab_browser(1, main).and_then(|b| state::browser_info(b.identifier())).map(|i| i.allow_internal_nav);
+                state::log(&format!("selftest: Accueil depuis https://example.com : Nouvel onglet affiché dans le même onglet ; autorisations en attente pour l'onglet = {pending} ; autorisation du navigateur restante = {flag:?}"));
+                if pending != 0 || flag != Some(false) {
+                    return fail("Accueil : une autorisation de page interne est restée en attente");
+                }
+                let _ = call("navigate", json!({ "input": "https://example.com/" }));
+                wait_for("retour sur https://example.com après Accueil", 60, || active_tab_loaded("https://example.com"), || {
+                    // A web page still cannot open an internal page by itself.
+                    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+                    windows::exec_in_tab(1, main, "location.href = 'nightfall://app/settings.html';");
+                    on_ui_delayed(2000, || {
+                        if !active_tab_url_starts("https://example.com") {
+                            return fail(&format!("une page web a ouvert une page interne après Accueil ; onglets = {}", windows::tabs_state(1)));
+                        }
+                        state::log("selftest: après Accueil, une page web ne peut toujours pas ouvrir nightfall:// (refusé)");
+                        step_close_buttons();
+                    });
+                });
+            });
+        });
+    });
+}
+
+// ---- tab close button (horizontal and vertical strips)
+
+fn step_close_buttons() {
+    step("croix des onglets : clics réels (barre horizontale)");
+    // Leftover tabs of the previous steps: only the main tab stays.
+    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    let others: Vec<u32> = windows::with_window(1, |c| c.tabs.iter().map(|t| t.id).filter(|id| *id != main).collect()).unwrap_or_default();
+    for id in others {
+        windows::close_tab(1, id);
+    }
+    on_ui_delayed(800, || {
+        close_trial(false, false, 0, Box::new(|| close_trial(false, true, 0, Box::new(step_vertical_on))));
+    });
+}
+
+fn step_vertical_on() {
+    step("croix des onglets : clics réels (onglets verticaux)");
+    let mut s = core().settings.clone();
+    s.vertical_tabs = true;
+    if !expect_ok("onglets verticaux activés", &call("settings.set", json!({ "settings": s }))) {
+        return;
+    }
+    // The interface views reload with the new layout.
+    on_ui_delayed(3000, || {
+        windows::push_tabs(1);
+        on_ui_delayed(800, || close_trial(true, false, 0, Box::new(|| close_trial(true, true, 0, Box::new(step_vertical_off)))));
+    });
+}
+
+fn step_vertical_off() {
+    let mut s = core().settings.clone();
+    s.vertical_tabs = false;
+    if !expect_ok("onglets verticaux désactivés", &call("settings.set", json!({ "settings": s }))) {
+        return;
+    }
+    on_ui_delayed(3000, || {
+        windows::push_tabs(1);
+        on_ui_delayed(800, step_menus);
+    });
+}
+
+/// One real click on the close button of a new tab: active (`background`
+/// false) or in the background. The strip is rebuilt between the press and
+/// the release (as a page load does).
+fn close_trial(side: bool, background: bool, i: u32, done: Box<dyn FnOnce() + Send>) {
+    if i == TRIALS {
+        done();
+        return;
+    }
+    let Some(anchor) = windows::active_tab_id(1) else { return fail("croix : aucun onglet actif") };
+    let before = tab_count();
+    let Some(target) = windows::add_tab(1, windows::NEW_TAB_URL, !background) else { return fail("croix : onglet de test non créé") };
+    ANCHOR.store(anchor, std::sync::atomic::Ordering::SeqCst);
+    TARGET.store(target, std::sync::atomic::Ordering::SeqCst);
+    let tab_sel = if side { format!(".vtab[data-id=\"{target}\"]") } else { format!("#tabs .tab[data-id=\"{target}\"]") };
+    on_ui_delayed(900, move || {
+        let close_sel = format!("{tab_sel} .t-close");
+        // Hover the tab first: narrow background tabs show their close
+        // button on hover only.
+        with_rect(side, tab_sel, move |tx, ty| {
+            mouse(side, "mouseMoved", tx, ty);
+            on_ui_delayed(200, move || {
+                with_rect(side, close_sel, move |x, y| {
+                    real_click(side, x, y, || windows::push_tabs(1), move || {
+                        on_ui_delayed(1200, move || {
+                            let target = TARGET.load(std::sync::atomic::Ordering::SeqCst);
+                            let anchor = ANCHOR.load(std::sync::atomic::Ordering::SeqCst);
+                            let closed = windows::tab_url(1, target).is_none();
+                            let active = windows::active_tab_id(1);
+                            let active_ok = if background { active == Some(anchor) } else { active.is_some() && active != Some(target) };
+                            let count_ok = tab_count() == before;
+                            state::log(&format!(
+                                "selftest: croix {} onglet {} essai {}/{TRIALS} : fermé={} onglet_actif_conservé={} onglets={} (attendu {before})",
+                                if side { "verticale" } else { "horizontale" },
+                                if background { "d'arrière-plan" } else { "actif" },
+                                i + 1,
+                                closed as u8,
+                                if background { (active == Some(anchor)) as u8 } else { 1 },
+                                tab_count()
+                            ));
+                            if !closed || !active_ok || !count_ok {
+                                return fail(&format!("croix de l'onglet : onglet {target} non fermé ou onglet actif changé ; onglets = {}", windows::tabs_state(1)));
+                            }
+                            close_trial(side, background, i + 1, done);
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+// ---- dropdown popups: no leak, DoClose, race
+
+fn popup_open_cmd(panel: &str) -> Value {
+    call("popup.open", json!({ "panel": panel, "anchor": { "x": 600, "y": 40, "width": 30, "height": 30 }, "width": 320, "height": 330 }))
+}
+
+fn step_menus() {
+    step("menus déroulants : 20 ouvertures-fermetures sans fuite");
+    windows::popup_close(1);
+    on_ui_delayed(1500, || {
+        UI_BASE.store(windows::ui_browsers_alive(), std::sync::atomic::Ordering::SeqCst);
+        TABS_BEFORE.store(tab_count(), std::sync::atomic::Ordering::SeqCst);
+        menu_cycle(0);
+    });
+}
+
+fn menu_cycle(i: u32) {
+    if i == MENU_CYCLES {
+        let base = UI_BASE.load(std::sync::atomic::Ordering::SeqCst);
+        poll_ok(50, move || windows::ui_browsers_alive() == base, move |ok| {
+            let alive = windows::ui_browsers_alive();
+            let window = windows::window_ids().contains(&1);
+            let tabs = tab_count();
+            state::log(&format!("selftest: menus : {MENU_CYCLES} ouverts puis fermés ; navigateurs d'interface vivants avant={base} après={alive} ; fenêtre ouverte={} ; onglets avant={} après={tabs}", window as u8, TABS_BEFORE.load(std::sync::atomic::Ordering::SeqCst)));
+            if !ok || !window || tabs != TABS_BEFORE.load(std::sync::atomic::Ordering::SeqCst) {
+                return fail(&format!("menus déroulants : navigateurs non libérés ({base} avant, {alive} après) ou fenêtre/onglets touchés"));
+            }
+            step_doclose();
+        });
+        return;
+    }
+    let panel = if i % 2 == 0 { "menu" } else { "shield" };
+    if !expect_ok("ouverture d'un menu", &popup_open_cmd(panel)) {
+        return;
+    }
+    on_ui_delayed(500, move || {
+        if windows::popup_panel(1).as_deref() != Some(panel) {
+            return fail(&format!("menu {panel} non ouvert (cycle {})", i + 1));
+        }
+        // Both ways a popup closes: its own request, and NIGHTFALL itself.
+        if i % 4 < 2 {
+            let _ = call("popup.close", json!({ "panel": panel }));
+        } else {
+            windows::popup_close(1);
+        }
+        on_ui_delayed(150, move || menu_cycle(i + 1));
+    });
+}
+
+/// A close of a popup browser that NIGHTFALL did not start (as CEF would
+/// do it): `do_close` must keep the window and only close the popup.
+fn step_doclose() {
+    step("menu déroulant : fermeture demandée par CEF (DoClose)");
+    if !expect_ok("ouverture du menu", &popup_open_cmd("menu")) {
+        return;
+    }
+    on_ui_delayed(700, || {
+        let Some(h) = windows::with_window(1, |c| c.popup.as_ref().and_then(|p| p.view.browser())).flatten().and_then(|b| b.host()) else {
+            return fail("DoClose : navigateur du menu introuvable");
+        };
+        h.close_browser(1);
+        let base = UI_BASE.load(std::sync::atomic::Ordering::SeqCst);
+        poll_ok(40, move || windows::popup_panel(1).is_none() && windows::ui_browsers_alive() == base, move |ok| {
+            let window = windows::window_ids().contains(&1);
+            let tabs = tab_count();
+            state::log(&format!("selftest: DoClose d'un menu : menu fermé={} navigateurs d'interface={} (attendu {base}) fenêtre ouverte={} onglets={tabs}", windows::popup_panel(1).is_none() as u8, windows::ui_browsers_alive(), window as u8));
+            if !ok || !window || tabs != TABS_BEFORE.load(std::sync::atomic::Ordering::SeqCst) {
+                return fail("DoClose d'un menu : fenêtre fermée, onglets perdus ou navigateur non libéré");
+            }
+            step_race();
+        });
+    });
+}
+
+fn step_race() {
+    step("menus déroulants : un menu puis un autre (clics réels)");
+    // Deterministic: the first menu's close request arrives after the
+    // second menu was opened (the macOS order).
+    windows::popup_close(1);
+    let _ = popup_open_cmd("menu");
+    let first = windows::with_window(1, |c| c.popup.as_ref().map(|p| p.serial)).flatten().unwrap_or(0);
+    let _ = popup_open_cmd("shield");
+    let _ = call("popup.close", json!({ "panel": "menu", "n": first }));
+    let _ = call("popup.close", json!({ "panel": "menu" }));
+    let kept = windows::popup_panel(1);
+    state::log(&format!("selftest: fermeture tardive du premier menu (n={first}) : menu affiché = {kept:?}"));
+    if kept.as_deref() != Some("shield") {
+        return fail("une fermeture tardive du premier menu a fermé le second");
+    }
+    // Without a name: still closes the open popup (compatibility).
+    let _ = call("popup.close", json!({}));
+    if windows::popup_panel(1).is_some() {
+        return fail("popup.close sans nom n'a pas fermé le menu");
+    }
+    RACE_OK.store(0, std::sync::atomic::Ordering::SeqCst);
+    on_ui_delayed(800, || race_trial(0));
+}
+
+/// Real clicks: menu button, then (keyboard focus moved to the toolbar, as
+/// a native click does) the Shield button: Shield must stay open.
+fn race_trial(i: u32) {
+    if i == TRIALS {
+        state::log(&format!("selftest: menu puis Shield : Shield resté ouvert {}/{TRIALS}", RACE_OK.load(std::sync::atomic::Ordering::SeqCst)));
+        return step_toggle();
+    }
+    windows::popup_close(1);
+    on_ui_delayed(500, move || {
+        with_rect(false, "#b-menu".into(), move |x, y| {
+            real_click(false, x, y, || {}, move || {
+                poll_ok(25, || windows::popup_panel(1).as_deref() == Some("menu"), move |ok| {
+                    if !ok {
+                        return fail(&format!("clic réel sur le bouton Menu : menu non ouvert (essai {})", i + 1));
+                    }
+                    on_ui_delayed(700, move || {
+                        with_rect(false, "#b-shield".into(), move |x, y| {
+                            if let Some(top) = windows::with_window(1, |c| c.top.clone()) {
+                                top.request_focus();
+                            }
+                            real_click(false, x, y, || {}, move || {
+                                on_ui_delayed(1500, move || {
+                                    let panel = windows::popup_panel(1);
+                                    state::log(&format!("selftest: menu puis Shield essai {}/{TRIALS} : menu affiché = {panel:?}", i + 1));
+                                    if panel.as_deref() != Some("shield") {
+                                        return fail("menu puis Shield : le second menu ne reste pas ouvert");
+                                    }
+                                    RACE_OK.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                    race_trial(i + 1);
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+/// Informative: Shield open, second click on its button closes it.
+fn step_toggle() {
+    with_rect(false, "#b-shield".into(), |x, y| {
+        if let Some(top) = windows::with_window(1, |c| c.top.clone()) {
+            top.request_focus();
+        }
+        real_click(false, x, y, || {}, || {
+            on_ui_delayed(1500, || {
+                state::log(&format!("selftest: second clic sur Shield (informatif) : menu affiché = {:?}", windows::popup_panel(1)));
+                windows::popup_close(1);
+                // L0 : then the lock checks (M-0007), which end on the final menu.
+                on_ui_delayed(800, step_lock_guard);
+            });
         });
     });
 }
@@ -609,4 +1002,447 @@ fn step_final_menu() {
         state::log("SELFTEST OK");
         finish();
     });
+}
+
+// ------------------------------------------- nothing acts while locked
+
+/// Results of `js_check` (key, JSON), filled by `console_result`.
+static CHECKS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+/// Tab playing the test media.
+static MEDIA_TAB: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static DT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(6000);
+/// State seen before the shortcuts sent while locked.
+static BEFORE: std::sync::Mutex<Option<Snapshot>> = std::sync::Mutex::new(None);
+/// Index in lock_guard::SHORTCUTS where the current batch starts.
+static SHORTCUTS_MARK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static VG_FETCHES_BEFORE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Origin and kind of the remembered permission used by the test.
+const PERM_ORIGIN: &str = "https://example.com";
+const PERM_HOST: &str = "example.com";
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Snapshot {
+    tabs: usize,
+    windows: usize,
+    active: Option<u32>,
+    zoom: f64,
+    fullscreen: bool,
+}
+
+fn snapshot() -> Snapshot {
+    Snapshot { tabs: tab_count(), windows: windows::window_ids().len(), active: windows::active_tab_id(1), zoom: active_zoom(), fullscreen: windows::fullscreen_report(1).2 }
+}
+
+/// Poll `cond` every 500 ms up to `tries` times, then run `next` or fail.
+fn poll<C, N>(what: String, tries: u32, cond: C, next: N)
+where
+    C: Fn() -> bool + Send + 'static,
+    N: FnOnce() + Send + 'static,
+{
+    on_ui_delayed(500, move || {
+        if cond() {
+            next();
+        } else if tries == 0 {
+            fail(&format!("délai dépassé : {what}"));
+        } else {
+            poll(what, tries - 1, cond, next);
+        }
+    });
+}
+
+/// DevTools protocol message to a browser (in process, no debugging port).
+fn devtools(b: Option<cef::Browser>, method: &str, params: Value) {
+    if let Some(h) = b.and_then(|b| b.host()) {
+        let msg = json!({ "id": DT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed), "method": method, "params": params }).to_string();
+        h.send_dev_tools_message(Some(msg.as_bytes()));
+    }
+}
+
+/// Script run with a user gesture (play(), as after a click).
+fn eval_with_gesture(tab: u32, expression: &str) {
+    devtools(windows::tab_browser(1, tab), "Runtime.evaluate", json!({ "expression": expression, "userGesture": true, "awaitPromise": false }));
+}
+
+/// Evaluate `expr` (a value or a promise) in a tab's page and hand the
+/// result (JSON) to `next`.
+fn js_check(tab: u32, key: &'static str, expr: &str, next: impl FnOnce(Value) + Send + 'static) {
+    if let Ok(mut c) = CHECKS.lock() {
+        c.retain(|(k, _)| k != key);
+    }
+    let js = format!(
+        "Promise.resolve().then(function(){{ return ({expr}); }}).then(function(r){{ console.log('nfcheck-{key} ' + JSON.stringify(r)); }}, function(e){{ console.log('nfcheck-{key} ' + JSON.stringify({{ error: String(e) }})); }});"
+    );
+    match windows::tab_browser(1, tab).and_then(|b| b.main_frame()) {
+        Some(f) => f.execute_java_script(Some(&cef::CefString::from(js.as_str())), Some(&cef::CefString::from("nightfall://selftest")), 0),
+        None => return fail(&format!("contrôle {key} : onglet {tab} introuvable")),
+    }
+    let found = move || CHECKS.lock().map(|c| c.iter().any(|(k, _)| k == key)).unwrap_or(false);
+    poll(format!("réponse de la page au contrôle {key}"), 20, found, move || {
+        let raw = CHECKS.lock().ok().and_then(|c| c.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())).unwrap_or_default();
+        state::log(&format!("selftest: contrôle {key} : {raw}"));
+        next(serde_json::from_str(&raw).unwrap_or(Value::Null));
+    });
+}
+
+const K_P: u32 = 1; // Ctrl (Windows) / Cmd (macOS)
+const K_SH: u32 = 2;
+const K_ALT: u32 = 4;
+const K_CTRL: u32 = 8;
+
+/// Key press sent to the top interface view of window 1 (the lock screen
+/// while locked), by the DevTools protocol: it goes through
+/// `on_pre_key_event` like a key typed by the user.
+fn key(code: i32, mods: u32) {
+    let mac = cfg!(target_os = "macos");
+    let mut m = 0;
+    if mods & K_P != 0 {
+        m |= if mac { 4 } else { 2 };
+    }
+    if mods & K_SH != 0 {
+        m |= 8;
+    }
+    if mods & K_ALT != 0 {
+        m |= 1;
+    }
+    if mods & K_CTRL != 0 {
+        m |= 2;
+    }
+    let top = windows::with_window(1, |c| c.top.browser()).flatten();
+    for t in ["rawKeyDown", "keyUp"] {
+        devtools(top.clone(), "Input.dispatchKeyEvent", json!({ "type": t, "modifiers": m, "windowsVirtualKeyCode": code, "nativeVirtualKeyCode": code }));
+    }
+}
+
+/// (action expected, key code, modifiers)
+fn lock_shortcuts() -> Vec<(&'static str, i32, u32)> {
+    let mac = cfg!(target_os = "macos");
+    vec![
+        ("tab.new", 0x54, K_P),
+        ("tab.close", 0x57, K_P),
+        ("tab.reopen", 0x54, K_P | K_SH),
+        ("window.new", 0x4E, K_P),
+        ("zoom.in", 0xBB, K_P),
+        ("window.fullscreen", if mac { 0x46 } else { 0x7A }, if mac { K_P | K_CTRL } else { 0 }),
+        ("print", 0x50, K_P),
+        ("devtools", if mac { 0x49 } else { 0x7B }, if mac { K_P | K_ALT } else { 0 }),
+        ("view.source", 0x55, K_P),
+        ("page.history", if mac { 0x59 } else { 0x48 }, K_P),
+    ]
+}
+
+fn mark_shortcuts() {
+    let n = super::lock_guard::SHORTCUTS.lock().map(|s| s.len()).unwrap_or(0);
+    SHORTCUTS_MARK.store(n, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn shortcuts_since_mark() -> Vec<(String, bool)> {
+    let from = SHORTCUTS_MARK.load(std::sync::atomic::Ordering::SeqCst);
+    super::lock_guard::SHORTCUTS.lock().map(|s| s.iter().skip(from).cloned().collect()).unwrap_or_default()
+}
+
+fn shortcut_done(action: &'static str) -> impl Fn() -> bool + Send + 'static {
+    move || shortcuts_since_mark().iter().any(|(a, ok)| a == action && *ok)
+}
+
+/// Content setting categories of Chromium's `Preferences` file that hold
+/// an exception for `host`.
+fn chromium_prefs_categories(host: &str) -> (String, Vec<String>) {
+    let base = core().paths.chromium_profile();
+    let file = [base.join("Default").join("Preferences"), base.join("Preferences")].into_iter().find(|p| p.exists());
+    let Some(file) = file else { return ("(fichier Preferences absent)".into(), Vec::new()) };
+    let name = file.display().to_string();
+    let v: Value = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+    let mut out = Vec::new();
+    if let Some(ex) = v["profile"]["content_settings"]["exceptions"].as_object() {
+        for (cat, entries) in ex {
+            if entries.as_object().map(|o| o.keys().any(|k| k.contains(host))).unwrap_or(false) {
+                out.push(cat.clone());
+            }
+        }
+    }
+    (name, out)
+}
+
+fn prefs_has_decision(host: &'static str) -> bool {
+    chromium_prefs_categories(host).1.iter().any(|c| c.starts_with("clipboard"))
+}
+
+fn step_lock_guard() {
+    step("verrouillage : page qui joue un média");
+    let page = "data:text/html,<title>nf-media</title><body>media</body>";
+    let Some(tab) = windows::add_tab(1, page, true) else { return fail("onglet média non ouvert") };
+    MEDIA_TAB.store(tab, std::sync::atomic::Ordering::SeqCst);
+    wait_for("chargement de la page média", 30, || active_tab_loaded("data:text/html"), || {
+        let tab = MEDIA_TAB.load(std::sync::atomic::Ordering::SeqCst);
+        // A 2 s looping tone (WAV made in the page), a video element inside
+        // a YouTube-like player for VideoGuard's video ad fast-forward.
+        let setup = "(function(){var sr=8000,n=sr*2,b=new ArrayBuffer(44+n*2),d=new DataView(b);\
+            function w(o,s){for(var i=0;i<s.length;i++)d.setUint8(o+i,s.charCodeAt(i));}\
+            w(0,'RIFF');d.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,1,true);\
+            d.setUint32(24,sr,true);d.setUint32(28,sr*2,true);d.setUint16(32,2,true);d.setUint16(34,16,true);w(36,'data');d.setUint32(40,n*2,true);\
+            for(var i=0;i<n;i++)d.setInt16(44+i*2,Math.round(Math.sin(i*2*Math.PI*440/sr)*6000),true);\
+            var a=document.createElement('audio');a.id='nf-a';a.loop=true;a.src=URL.createObjectURL(new Blob([b],{type:'audio/wav'}));document.body.appendChild(a);\
+            var p=document.createElement('div');p.id='movie_player';p.className='html5-video-player';var v=document.createElement('video');v.id='nf-v';p.appendChild(v);document.body.appendChild(p);\
+            return 1;})()";
+        js_check(tab, "media-setup", setup, move |_| {
+            eval_with_gesture(tab, "document.getElementById('nf-a').play()");
+            // VideoGuard's page script, as on YouTube.
+            if let Some(js) = nf_videoguard::page_script("https://www.youtube.com/", &nf_videoguard::VideoGuardConfig::default()) {
+                windows::exec_in_tab(1, tab, &js);
+            }
+            on_ui_delayed(1500, move || {
+                js_check(tab, "media-before", MEDIA_STATE, move |r| {
+                    if r["playing"] != true || r["vg"] != true {
+                        return fail(&format!("média de test non lancé avant le verrouillage : {r}"));
+                    }
+                    step_lock_guard_permission();
+                });
+            });
+        });
+    });
+}
+
+/// State of the test page: audio playing, VideoGuard present, video rate.
+const MEDIA_STATE: &str = "(function(){var a=document.getElementById('nf-a'),v=document.getElementById('nf-v');return {playing:!a.paused,time:a.currentTime,rate:v.playbackRate,videoMuted:v.muted,vg:!!window.__nightfallVideoGuardSuspend};})()";
+
+// Clipboard rather than geolocation: geolocation also depends on the
+// operating system (denied on the macOS CI runner), the clipboard does not.
+const PERM_QUERY: &str = "navigator.permissions.query({name:'clipboard-read'}).then(function(s){return s.state;})";
+
+/// Answer of `navigator.permissions.query` before any decision.
+static PERM_INITIAL: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+
+fn step_lock_guard_permission() {
+    step("verrouillage : décision d'autorisation mémorisée");
+    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    js_check(main, "perm-initial", PERM_QUERY, |r| {
+        if r == "granted" {
+            return fail(&format!("autorisation déjà accordée avant le test : {r}"));
+        }
+        if let Ok(mut p) = PERM_INITIAL.lock() {
+            *p = Some(r);
+        }
+        step_lock_guard_remember();
+    });
+}
+
+fn step_lock_guard_remember() {
+    {
+        let mut c = core();
+        super::permissions::remember(&mut c.settings, PERM_ORIGIN, &["clipboard"], true, nf_core::unix_now());
+        c.save_settings();
+    }
+    // As at unlock: the remembered decision is given to Chromium.
+    super::permissions::reapply_remembered();
+    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    js_check(main, "perm-unlocked", PERM_QUERY, |r| {
+        if r != "granted" {
+            return fail(&format!("autorisation mémorisée non appliquée par Chromium : {r}"));
+        }
+        // Chromium writes its preferences about 10 s after a change.
+        poll("décision écrite par Chromium dans Preferences".into(), 60, || prefs_has_decision(PERM_HOST), || {
+            let (file, cats) = chromium_prefs_categories(PERM_HOST);
+            state::log(&format!("selftest: Preferences ({file}) avant verrouillage, catégories pour {PERM_HOST} : {cats:?}"));
+            step_lock_guard_lock();
+        });
+    });
+}
+
+fn step_lock_guard_lock() {
+    step("verrouillage : raccourcis, médias, VideoGuard, autorisations");
+    if let Ok(mut b) = BEFORE.lock() {
+        *b = Some(snapshot());
+    }
+    VG_FETCHES_BEFORE.store(super::lock_guard::VG_FETCHES.load(std::sync::atomic::Ordering::SeqCst), std::sync::atomic::Ordering::SeqCst);
+    api::lock_now();
+    let locked = || {
+        let keys_forgotten = {
+            let c = core();
+            !c.is_unlocked() && c.unlocked.is_none()
+        };
+        keys_forgotten && !super::lock_guard::is_locking()
+    };
+    poll("verrouillage complet".into(), 20, locked, || {
+        on_ui_delayed(1000, || {
+            mark_shortcuts();
+            for (_, code, mods) in lock_shortcuts() {
+                key(code, mods);
+            }
+            on_ui_delayed(2500, step_lock_guard_check_shortcuts);
+        });
+    });
+}
+
+fn step_lock_guard_check_shortcuts() {
+    let seen = shortcuts_since_mark();
+    state::log(&format!("selftest: raccourcis reçus pendant le verrouillage : {seen:?}"));
+    for (action, _, _) in lock_shortcuts() {
+        if !seen.iter().any(|(a, ok)| a == action && !*ok) {
+            return fail(&format!("raccourci {action} : non reçu par NIGHTFALL pendant le verrouillage (test sans valeur)"));
+        }
+    }
+    if seen.iter().any(|(_, ok)| *ok) {
+        return fail(&format!("raccourci exécuté pendant le verrouillage : {seen:?}"));
+    }
+    let before = BEFORE.lock().ok().and_then(|b| *b);
+    let after = snapshot();
+    state::log(&format!("selftest: état avant {before:?} / après {after:?}"));
+    if before != Some(after) {
+        return fail(&format!("état changé pendant le verrouillage : avant {before:?}, après {after:?}"));
+    }
+    state::log("selftest: raccourcis sans effet pendant le verrouillage ok");
+    let tab = MEDIA_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    if !windows::tab_muted(1, tab) {
+        return fail("onglet média non coupé pendant le verrouillage");
+    }
+    js_check(tab, "media-locked", MEDIA_STATE, move |r| {
+        if r["playing"] != false {
+            return fail(&format!("média toujours en lecture pendant le verrouillage : {r}"));
+        }
+        // The page tries to play again (as after a click), and a video ad
+        // shows in the player: nothing must happen.
+        eval_with_gesture(tab, "document.getElementById('nf-a').play()");
+        windows::exec_in_tab(1, tab, "document.getElementById('movie_player').classList.add('ad-showing');");
+        // VideoGuard asked for a YouTube video in a hidden tab.
+        super::client::videoguard_on_navigation(1, tab, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        on_ui_delayed(2000, move || {
+            js_check(tab, "media-locked-later", MEDIA_STATE, move |r| {
+                if r["playing"] != false {
+                    return fail(&format!("média relancé pendant le verrouillage : {r}"));
+                }
+                if r["rate"] != 1.0 || r["videoMuted"] != false {
+                    return fail(&format!("VideoGuard a agi pendant le verrouillage : {r}"));
+                }
+                let fetches = super::lock_guard::VG_FETCHES.load(std::sync::atomic::Ordering::SeqCst);
+                let deferred = super::lock_guard::VG_DEFERRED.load(std::sync::atomic::Ordering::SeqCst);
+                state::log(&format!("selftest: VideoGuard pendant le verrouillage : requêtes {fetches} (avant {}), reportées {deferred}", VG_FETCHES_BEFORE.load(std::sync::atomic::Ordering::SeqCst)));
+                if fetches != VG_FETCHES_BEFORE.load(std::sync::atomic::Ordering::SeqCst) || deferred == 0 {
+                    return fail("VideoGuard : requête envoyée (ou non vue) pendant le verrouillage");
+                }
+                state::log("selftest: son coupé, médias en pause, VideoGuard inactif pendant le verrouillage ok");
+                let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+                js_check(main, "perm-locked", PERM_QUERY, |r| {
+                    let initial = PERM_INITIAL.lock().ok().and_then(|p| p.clone()).unwrap_or(Value::Null);
+                    if r != initial {
+                        return fail(&format!("autorisation mémorisée encore connue de Chromium pendant le verrouillage : {r}"));
+                    }
+                    poll("décision retirée du fichier Preferences".into(), 60, || !prefs_has_decision(PERM_HOST), || {
+                        let (file, cats) = chromium_prefs_categories(PERM_HOST);
+                        state::log(&format!("selftest: Preferences ({file}) pendant le verrouillage, catégories pour {PERM_HOST} : {cats:?}"));
+                        step_lock_guard_unlock();
+                    });
+                });
+            });
+        });
+    });
+}
+
+fn step_lock_guard_unlock() {
+    step("déverrouillage : son rétabli, médias en pause, autorisation rendue");
+    if !expect_ok("déverrouillage", &call("unlock", json!({ "pin": PIN }))) {
+        return;
+    }
+    let tab = MEDIA_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    poll("son rétabli après le déverrouillage".into(), 20, move || !windows::tab_muted(1, tab), move || {
+        on_ui_delayed(1500, move || {
+            js_check(tab, "media-unlocked", MEDIA_STATE, move |r| {
+                if r["playing"] != false {
+                    return fail(&format!("média relancé au déverrouillage : {r}"));
+                }
+                // VideoGuard acts again (the ad shown in the player).
+                if r["rate"] != 16.0 {
+                    return fail(&format!("VideoGuard non repris après le déverrouillage : {r}"));
+                }
+                windows::exec_in_tab(1, tab, "document.getElementById('movie_player').classList.remove('ad-showing');");
+                let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+                js_check(main, "perm-after", PERM_QUERY, |r| {
+                    if r != "granted" {
+                        return fail(&format!("autorisation mémorisée non rendue à Chromium au déverrouillage : {r}"));
+                    }
+                    state::log("selftest: déverrouillage : son rétabli, média en pause, VideoGuard repris, autorisation rendue ok");
+                    step_unlocked_shortcuts();
+                });
+            });
+        });
+    });
+}
+
+fn step_unlocked_shortcuts() {
+    step("raccourcis après le déverrouillage");
+    let before = snapshot();
+    mark_shortcuts();
+    key(0x54, K_P);
+    let n = before.tabs;
+    poll("Ctrl/Cmd+T déverrouillé".into(), 20, move || tab_count() == n + 1, move || {
+        key(0x57, K_P);
+        poll("Ctrl/Cmd+W déverrouillé".into(), 20, move || tab_count() == n, move || {
+            windows::activate_tab(1, MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst));
+            key(0xBB, K_P);
+            poll("Ctrl/Cmd+= déverrouillé".into(), 20, || active_zoom() > 0.1, || {
+                key(0x30, K_P);
+                poll("Ctrl/Cmd+0 déverrouillé".into(), 20, || active_zoom().abs() < 0.01 && !saved_zoom_for_example(), || {
+                    let w = windows::window_ids().len();
+                    key(0x4E, K_P);
+                    poll("Ctrl/Cmd+N déverrouillé".into(), 20, move || windows::window_ids().len() == w + 1, move || {
+                        on_ui_delayed(1500, move || {
+                            for id in windows::window_ids() {
+                                if id != 1 {
+                                    windows::close_window(id);
+                                }
+                            }
+                            poll("fermeture de la fenêtre ouverte par Ctrl/Cmd+N".into(), 20, move || windows::window_ids().len() == w, step_unlocked_fullscreen);
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+fn fullscreen_key() {
+    if cfg!(target_os = "macos") {
+        key(0x46, K_P | K_CTRL);
+    } else {
+        key(0x7A, 0);
+    }
+}
+
+fn step_unlocked_fullscreen() {
+    fullscreen_key();
+    poll("plein écran par raccourci déverrouillé".into(), 20, || windows::fullscreen_report(1).2, || {
+        on_ui_delayed(1000, || {
+            fullscreen_key();
+            poll("sortie du plein écran par raccourci".into(), 20, || !windows::fullscreen_report(1).2, || {
+                // Developer tools are off by default: the shortcut reaches
+                // NIGHTFALL, which opens nothing. Printing is not sent here
+                // (it would open the system print dialog).
+                key(if cfg!(target_os = "macos") { 0x49 } else { 0x7B }, if cfg!(target_os = "macos") { K_P | K_ALT } else { 0 });
+                poll("raccourci des outils de développement reçu".into(), 10, shortcut_done("devtools"), || {
+                    let seen = shortcuts_since_mark();
+                    state::log(&format!("selftest: raccourcis après le déverrouillage : {seen:?}"));
+                    for a in ["tab.new", "tab.close", "zoom.in", "zoom.reset", "window.new", "window.fullscreen", "devtools"] {
+                        if !seen.iter().any(|(x, ok)| x == a && *ok) {
+                            return fail(&format!("raccourci {a} non exécuté après le déverrouillage"));
+                        }
+                    }
+                    state::log("selftest: raccourcis actifs après le déverrouillage ok");
+                    step_lock_guard_cleanup();
+                });
+            });
+        });
+    });
+}
+
+fn step_lock_guard_cleanup() {
+    let tab = MEDIA_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    windows::close_tab(1, tab);
+    {
+        let mut c = core();
+        c.settings.site_permissions.retain(|p| p.origin != PERM_ORIGIN);
+        c.save_settings();
+    }
+    super::permissions::reset_chromium(PERM_ORIGIN, "clipboard");
+    windows::activate_tab(1, MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst));
+    on_ui_delayed(1000, step_final_menu);
 }
