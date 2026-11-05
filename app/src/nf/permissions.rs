@@ -7,9 +7,14 @@
 //! Before asking, the user's choices apply: a decision remembered for the
 //! site ("Mémoriser" ticked in the prompt), then the default of the
 //! permission ("Bloquer" in the settings). Chromium itself keeps the answers
-//! to its permission prompts (location, notifications...): answers given
-//! without "Mémoriser" are reset at the next lock or start, and forgetting a
-//! decision in the settings resets Chromium's copy too.
+//! to its permission prompts (location, notifications...) in its profile,
+//! origins in plain text: answers given without "Mémoriser" are reset at the
+//! next lock or start, and forgetting a decision in the settings resets
+//! Chromium's copy too. Remembered decisions live in the encrypted database;
+//! Chromium's copy of them exists only while NIGHTFALL is unlocked: removed
+//! at lock and when the last window closes, given back at unlock (so that
+//! `navigator.permissions.query` keeps answering the same). After a crash
+//! the copy stays until the next unlock (the list is encrypted before).
 
 use super::client::ClientKind;
 use super::state::{core, Settings, SitePermission};
@@ -134,6 +139,43 @@ pub fn reset_chromium(origin: &str, kind: &str) {
     for t in content_types(kind) {
         rc.set_content_setting(Some(&url), Some(&url), t, ContentSettingValues::DEFAULT);
     }
+}
+
+/// Remembered decisions: content setting value for Chromium.
+fn chromium_value(allow: bool) -> ContentSettingValues {
+    if allow {
+        ContentSettingValues::ALLOW
+    } else {
+        ContentSettingValues::BLOCK
+    }
+}
+
+/// Remove Chromium's copy of every remembered decision (UI thread; at lock
+/// and when the last window closes).
+pub fn forget_remembered_in_chromium() {
+    let list = core().settings.site_permissions.clone();
+    for p in &list {
+        reset_chromium(&p.origin, &p.kind);
+    }
+    if !list.is_empty() {
+        super::state::log(&format!("autorisations mémorisées : copie de Chromium effacée ({} décision(s))", list.len()));
+    }
+}
+
+/// Give the remembered decisions back to Chromium (UI thread; at unlock).
+pub fn reapply_remembered() {
+    let list = core().settings.site_permissions.clone();
+    if list.is_empty() {
+        return;
+    }
+    let Some(rc) = request_context_get_global_context() else { return };
+    for p in &list {
+        let url = CefString::from(format!("{}/", p.origin).as_str());
+        for t in content_types(&p.kind) {
+            rc.set_content_setting(Some(&url), Some(&url), t, chromium_value(p.allow));
+        }
+    }
+    super::state::log(&format!("autorisations mémorisées : rendues à Chromium ({} décision(s))", list.len()));
 }
 
 /// Defaults "Bloquer" / "Demander" as Chromium content settings (UI

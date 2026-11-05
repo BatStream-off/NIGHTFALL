@@ -48,7 +48,10 @@ pub fn memory_snapshot() -> MemorySnapshot {
     MemorySnapshot { total_bytes: sys.total_memory(), available_bytes: sys.available_memory() }
 }
 
+/// Nested in the saved settings: a missing field takes its default value,
+/// the others are kept.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PerfConfig {
     /// Unload inactive tabs when memory is short.
     pub discard_enabled: bool,

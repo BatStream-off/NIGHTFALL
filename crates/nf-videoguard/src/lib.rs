@@ -40,7 +40,10 @@ pub enum Action {
     Ignore,
 }
 
+/// Saved encrypted in the profile: a missing field takes its default value,
+/// the others are kept.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct VideoGuardConfig {
     pub enabled: bool,
     pub actions: BTreeMap<String, Action>,
@@ -282,5 +285,28 @@ mod tests {
         let json = r#"{"enabled":true,"actions":{},"min_duration":1}"#;
         let cfg: VideoGuardConfig = serde_json::from_str(json).unwrap();
         assert!(cfg.skip_video_ads);
+    }
+
+    #[test]
+    fn saved_config_with_missing_fields_keeps_the_others() {
+        let json = r#"{"enabled":false,"min_duration":7}"#;
+        let cfg: VideoGuardConfig = serde_json::from_str(json).unwrap();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.min_duration, 7);
+        assert!(cfg.skip_video_ads);
+        assert_eq!(cfg.actions, VideoGuardConfig::default().actions);
+        let json = r#"{"actions":{"sponsor":"ignore"},"skip_video_ads":false}"#;
+        let cfg: VideoGuardConfig = serde_json::from_str(json).unwrap();
+        assert!(cfg.enabled && !cfg.skip_video_ads);
+        assert_eq!(cfg.actions.get("sponsor"), Some(&Action::Ignore));
+        assert_eq!(cfg.min_duration, 1);
+        assert_eq!(serde_json::from_str::<VideoGuardConfig>("{}").unwrap(), VideoGuardConfig::default());
+    }
+
+    #[test]
+    fn content_script_can_be_suspended() {
+        // Suspended while NIGHTFALL is locked: no skip, no ad fast-forward.
+        assert!(CONTENT_SCRIPT.contains("window.__nightfallVideoGuardSuspend = function"));
+        assert_eq!(CONTENT_SCRIPT.matches("if (state.suspended) return;").count(), 2);
     }
 }

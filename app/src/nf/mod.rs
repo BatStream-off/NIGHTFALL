@@ -9,6 +9,7 @@ pub mod client;
 pub mod downloads;
 pub mod https_first;
 pub mod idle;
+pub mod lock_guard;
 pub mod omnibox;
 #[cfg(target_os = "macos")]
 pub mod mac;
