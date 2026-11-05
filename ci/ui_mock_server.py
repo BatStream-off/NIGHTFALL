@@ -59,6 +59,8 @@ def settings_cmd(cmd, req):
         UPDATE.update({"lastCheck": 1767003600}); return {"ok": True}
     if cmd == 'update.install':
         return {"ok": True}
+    if cmd == 'security.status':
+        return {"ok": True, "status": SECURITY}
     if cmd == 'theme.get':
         return {"ok": True, "active": THEMES["active"], "presets": PRESETS, "custom": THEMES["custom"]}
     if cmd == 'theme.set':
@@ -82,6 +84,17 @@ PRESETS = [dict(zip(("id", "name", "bg", "surface", "text", "accent", "accent2")
     ("braise", "Braise", "#110807", "#1b0f0d", "#fbeee9", "#c4472a", "#ff9a5c"),
     ("brume", "Brume", "#0b0d12", "#151922", "#e6e9f0", "#4f5f9e", "#9fb0e8"),
     ("aube", "Aube (clair)", "#f6f7fb", "#ffffff", "#141824", "#2253e0", "#0b7a99"))]
+SECURITY = {"lock": {"configured": True, "backend": "Windows Hello / TPM", "hardwareBacked": True, "autoLockMinutes": 15, "lockOnSleep": True},
+    "shield": {"enabled": True, "blockPopups": True, "rules": 159585, "integrityErrors": [], "listsCached": True,
+               "lists": [{"id": "easylist", "name": "EasyList (publicités)", "url": "", "enabled": True, "updated": 1767000000, "trusted": False},
+                         {"id": "ubo_filters", "name": "uBlock filters (publicités, YouTube)", "url": "", "enabled": True, "updated": 1767000000, "trusted": True},
+                         {"id": "fanboy_annoyance", "name": "Fanboy Annoyances (bandeaux, pop-ups)", "url": "", "enabled": False, "updated": None, "trusted": False}],
+               "allowlist": ["exemple-banque.fr"], "customFilters": "", "stats": {"total_blocked": 735, "popups_blocked": 3, "per_site": {"lemonde.fr": 120, "youtube.com": 98}}},
+    "videoguard": {"config": {"enabled": True, "actions": {"sponsor": "skip", "intro": "show"}, "min_duration": 1, "skip_video_ads": True, "mute_segments": True, "full_video_labels": True},
+                   "categories": [["sponsor", "Sponsor"], ["intro", "Intro / animation d'ouverture"], ["hook", "Accroche / teaser d'ouverture"]],
+                   "attribution": "Segments fournis par SponsorBlock (sponsor.ajay.app), licence CC BY-NC-SA 4.0."},
+    "sessionVault": True, "phishingWarnings": True, "autoPurge": {"enabled": False, "min_independent_critical": 2, "categories": []}, "signals": [],
+    "chromium": {"sandbox": True, "siteIsolation": True, "remoteDebugging": False}}
 THEMES = {"active": "crepuscule", "custom": [{"id": "custom-1", "name": "Mon thème", "bg": "#0a0612", "surface": "#140d22", "text": "#f1ebff", "accent": "#7a4dff", "accent2": "#c9a6ff"}]}
 
 class H(http.server.SimpleHTTPRequestHandler):

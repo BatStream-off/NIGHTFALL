@@ -560,6 +560,144 @@ function sSystem() {
   ];
 }
 
+// ---- Security Center, NIGHTFALL Shield and VideoGuard: live state from
+// security.status, changes through their own commands.
+let SEC = null;
+async function loadSecurity() {
+  const r = await api('security.status');
+  SEC = r && r.ok ? r.status : null;
+  return SEC;
+}
+
+function apiSwitch(checked, onChange, label) {
+  const input = el('input', { type: 'checkbox', class: 'sw', role: 'switch' });
+  if (label) input.setAttribute('aria-label', label);
+  input.checked = !!checked;
+  input.addEventListener('change', async () => { if (!(await onChange(input.checked))) input.checked = !input.checked; });
+  return input;
+}
+
+function shieldCfg() {
+  const sh = SEC.shield;
+  return { enabled: sh.enabled, block_popups: sh.blockPopups, lists: sh.lists, custom_filters: sh.customFilters, allowlist: sh.allowlist };
+}
+
+async function saveShieldCfg(mut, msg) {
+  const cfg = shieldCfg();
+  mut(cfg);
+  const r = await api('shield.set', { config: cfg });
+  if (!r || !r.ok) { note((r && r.error) || 'Enregistrement impossible', true); return false; }
+  note(msg || 'Shield mis à jour');
+  await loadSecurity();
+  return true;
+}
+
+async function saveVideoGuard(mut, msg) {
+  const cfg = JSON.parse(JSON.stringify(SEC.videoguard.config));
+  mut(cfg);
+  const r = await api('videoguard.set', { config: cfg });
+  if (!r || !r.ok) { note((r && r.error) || 'Enregistrement impossible', true); return false; }
+  SEC.videoguard.config = cfg;
+  note(msg || 'VideoGuard mis à jour');
+  return true;
+}
+
+/** A section filled once security.status has answered. */
+function asyncSection(build) {
+  const box = el('div', {}, el('p', { class: 'muted', text: 'Chargement…' }));
+  loadSecurity().then((st) => {
+    if (!st) { box.replaceChildren(el('p', { class: 'muted', text: 'État de sécurité indisponible.' })); return; }
+    box.replaceChildren(...build(st).flat().filter(Boolean));
+  });
+  return [box];
+}
+
+function badge(ok, text) { return el('span', { class: 'badge ' + (ok ? 'ok' : 'warn'), text }); }
+
+function sSecurityCenter() {
+  return asyncSection((st) => {
+    const alerts = [];
+    if (!st.shield.enabled) alerts.push(['NIGHTFALL Shield est désactivé : publicités et traqueurs ne sont plus bloqués.', 'shield']);
+    else if (!st.shield.listsCached) alerts.push(['Les listes de filtres de Shield ne sont pas encore téléchargées.', 'shield']);
+    for (const e of st.shield.integrityErrors || []) alerts.push(['Liste refusée : ' + e, 'shield']);
+    for (const g of st.signals || []) alerts.push(['Signal de sécurité : ' + g, null]);
+    if (!st.lock.autoLockMinutes && !st.lock.lockOnSleep) alerts.push(['NIGHTFALL ne se verrouille jamais tout seul (ni après inactivité, ni à la mise en veille).', 'lock']);
+    if (!st.phishingWarnings) alerts.push(['Les avertissements anti-phishing sont désactivés.', 'confidentialite']);
+    const protections = [
+      ['NIGHTFALL LOCK', true, st.lock.backend + (st.lock.autoLockMinutes ? ' · verrouillage après ' + st.lock.autoLockMinutes + ' min' : ''), 'lock'],
+      ['NIGHTFALL Shield', st.shield.enabled && st.shield.rules > 0, st.shield.enabled ? (st.shield.rules > 0 ? st.shield.rules.toLocaleString('fr-FR') + ' règles' : 'listes en attente') : 'désactivé', 'shield'],
+      ['VideoGuard', st.videoguard.config.enabled, st.videoguard.config.enabled ? 'actif sur YouTube' : 'désactivé', 'videoguard'],
+      ['Session Vault', st.sessionVault, st.sessionVault ? 'cookies chiffrés au verrouillage' : 'désactivé', 'lock'],
+      ['Anti-phishing (analyse locale)', st.phishingWarnings, st.phishingWarnings ? 'actif' : 'désactivé', 'confidentialite'],
+      ['Sandbox et isolation des sites de Chromium', st.chromium.sandbox, st.chromium.sandbox ? 'conservées' : 'désactivée (build de test)', null],
+      ['Débogage à distance', true, 'interdit', null],
+    ];
+    const ok = protections.filter((p) => p[1]).length;
+    const sites = (st.shield.allowlist || []);
+    const exceptions = sites.length ? sites.map((d) => row({ label: d, desc: 'Shield désactivé sur ce site', ctl: button('Réactiver Shield', async () => {
+      if (await saveShieldCfg((c) => { c.allowlist = c.allowlist.filter((x) => x !== d); }, 'Shield réactivé sur ' + d)) show('security');
+    }) })) : [row({ label: 'Aucune exception Shield', desc: 'Shield est actif sur tous les sites.' })];
+    const blocked = st.shield.stats || {};
+    return [
+      el('div', { class: 'sc-head' },
+        el('div', { class: 'sc-score figure', text: ok + '/' + protections.length }),
+        el('div', {}, el('div', { class: 'lbl', text: alerts.length ? alerts.length + (alerts.length > 1 ? ' points demandent votre attention' : ' point demande votre attention') : 'Toutes les protections sont en place' }),
+          el('div', { class: 'desc', text: (blocked.total_blocked || 0).toLocaleString('fr-FR') + ' requêtes et ' + (blocked.popups_blocked || 0) + ' pop-ups bloquées depuis le démarrage' }))),
+      alerts.length ? group('Alertes', alerts.map(([t, sec]) => row({ label: t, cls: 'alert', onclick: sec ? () => show(sec) : null }))) : null,
+      group('Protections actives', protections.map(([name, good, detail, sec]) => row({ label: name, desc: detail, ctl: badge(good, good ? 'actif' : 'à vérifier'), onclick: sec ? () => show(sec) : null }))),
+      group('Sites avec exceptions',
+        exceptions,
+        row({ label: 'Autorisations mémorisées (caméra, micro, position…)', desc: 'Décisions « Mémoriser » par site.', onclick: () => show('autorisations') })),
+      group('Réglages avancés',
+        row({ label: 'Filtres personnalisés et listes de filtres', onclick: () => show('shield') }),
+        row({ label: 'Auto-Purge, Emergency Lockdown et effacement d\'urgence', desc: 'Dans la page Security Center complète.', onclick: () => openSection('security', 'emergency') }),
+        row({ label: 'Outils de développement', onclick: () => show('systeme') })),
+    ];
+  });
+}
+
+function sShield() {
+  return asyncSection((st) => {
+    const sh = st.shield;
+    const lists = sh.lists.map((l, i) => row({ label: l.name, desc: l.updated ? 'Mise à jour : ' + new Date(l.updated * 1000).toLocaleString('fr-FR') : 'Jamais téléchargée',
+      ctl: apiSwitch(l.enabled, (v) => saveShieldCfg((c) => { c.lists[i].enabled = v; }), l.name) }));
+    const custom = el('textarea', { placeholder: '||publicite.exemple^\nexemple.com##.banniere', 'aria-label': 'Filtres personnalisés' });
+    custom.value = sh.customFilters || '';
+    const top = Object.entries((sh.stats && sh.stats.per_site) || {}).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    return [
+      group('',
+        row({ label: 'Activer NIGHTFALL Shield', desc: 'Bloque publicités et traqueurs (moteur adblock-rust de Brave, listes EasyList et uBlock).', ctl: apiSwitch(sh.enabled, (v) => saveShieldCfg((c) => { c.enabled = v; }), 'Activer Shield'), keywords: 'bloqueur publicite adblock traqueurs' }),
+        row({ label: 'Bloquer les pop-ups', desc: 'Bloque les fenêtres ouvertes sans action de votre part.', ctl: apiSwitch(sh.blockPopups, (v) => saveShieldCfg((c) => { c.block_popups = v; }), 'Bloquer les pop-ups'), keywords: 'fenetres popup' }),
+        row({ label: 'Bloqué depuis le démarrage', desc: ((sh.stats && sh.stats.total_blocked) || 0).toLocaleString('fr-FR') + ' requêtes' + (top.length ? ' · surtout sur ' + top.map(([d, n]) => d + ' (' + n + ')').join(', ') : '') })),
+      group('Listes de filtres', lists,
+        row({ label: 'Mettre à jour les listes', desc: 'Les listes sont mises à jour automatiquement toutes les 12 heures.', ctl: button('Mettre à jour maintenant', async () => { if (check(await api('shield.update'), 'Téléchargement des listes en cours…')) setTimeout(() => show('shield'), 8000); }) })),
+      group('Filtres personnalisés',
+        row({ label: 'Vos règles', desc: 'Syntaxe Adblock Plus / uBlock Origin, une règle par ligne.', stack: true, below: el('div', { class: 'stack-ctl' }, custom, button('Enregistrer les filtres', () => saveShieldCfg((c) => { c.custom_filters = custom.value; }, 'Filtres enregistrés'), 'primary')), keywords: 'regles filtres' })),
+      group('Sites où Shield est désactivé',
+        (sh.allowlist || []).length ? sh.allowlist.map((d) => row({ label: d, ctl: button('Retirer', async () => { if (await saveShieldCfg((c) => { c.allowlist = c.allowlist.filter((x) => x !== d); })) show('shield'); }) }))
+          : [row({ label: 'Aucune exception', desc: 'Désactivez Shield pour un site avec le bouton Shield de la barre d\'outils.' })]),
+    ];
+  });
+}
+
+function sVideoGuard() {
+  return asyncSection((st) => {
+    const vg = st.videoguard.config;
+    const cats = st.videoguard.categories.map(([id, label]) => row({ label,
+      ctl: select([['skip', 'Sauter automatiquement'], ['show', 'Proposer de sauter'], ['ignore', 'Ignorer']], (vg.actions || {})[id] || 'ignore', (v) => saveVideoGuard((c) => { c.actions = c.actions || {}; c.actions[id] = v; })) }));
+    const sw2 = (label, desc, key, def) => row({ label, desc, ctl: apiSwitch(vg[key] !== undefined ? vg[key] : def, (v) => saveVideoGuard((c) => { c[key] = v; }), label) });
+    return [
+      group('',
+        sw2('Activer VideoGuard', 'Saute ou signale les passages sponsorisés des vidéos YouTube, avec un bouton pour revenir en arrière.', 'enabled', true),
+        sw2('Couper le son des segments « sourdine »', 'Le son est coupé pendant les passages signalés seulement pour le son.', 'mute_segments', true),
+        sw2('Étiquette « vidéo entière »', 'Signale les vidéos entièrement sponsorisées ou en accès exclusif.', 'full_video_labels', true),
+        sw2('Accélérer les publicités vidéo', 'Si une publicité YouTube passe malgré Shield, VideoGuard la coupe et l\'avance jusqu\'à la fin.', 'skip_video_ads', true)),
+      group('Catégories', cats),
+      group('Données', row({ label: 'Source des segments', desc: st.videoguard.attribution + ' Seul un préfixe de hachage de l\'identifiant de la vidéo est envoyé, avec toujours la même liste de catégories.' })),
+    ];
+  });
+}
+
 function sLock() {
   const autoLock = select([0, 1, 5, 15, 30, 60].map((m) => [m, m ? `Après ${m} min d'inactivité` : 'Jamais']), S.auto_lock_minutes, async (v) => { S.auto_lock_minutes = Number(v); await save(); });
   const pin = (ph) => el('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', placeholder: ph, 'aria-label': ph });
@@ -680,10 +818,13 @@ function sAbout() {
 }
 
 const SECTIONS = [
+  { id: 'security', title: 'Security Center', icon: 's-center', build: sSecurityCenter },
   { id: 'demarrage', title: 'Démarrage', icon: 's-start', build: sStartup },
   { id: 'apparence', title: 'Apparence', icon: 's-look', build: sAppearance },
   { id: 'recherche', title: 'Moteur de recherche', icon: 's-search', build: sSearch },
   { id: 'confidentialite', title: 'Confidentialité et sécurité', icon: 's-privacy', build: sPrivacy },
+  { id: 'shield', title: 'NIGHTFALL Shield', icon: 's-shield', build: sShield },
+  { id: 'videoguard', title: 'VideoGuard', icon: 's-video', build: sVideoGuard },
   { id: 'autorisations', title: 'Autorisations des sites', icon: 's-perm', build: sPermissions },
   { id: 'mots-de-passe', title: 'Mots de passe', icon: 's-key', build: sPasswords },
   { id: 'telechargements', title: 'Téléchargements', icon: 's-down', build: sDownloads },

@@ -102,6 +102,16 @@ impl VideoGuardConfig {
             .collect()
     }
 
+    /// The configuration with every known category listed (defaults for the
+    /// ones missing from a configuration saved by an older version).
+    pub fn with_all_categories(&self) -> Self {
+        let mut c = self.clone();
+        for (cat, _) in CATEGORIES {
+            c.actions.entry((*cat).to_string()).or_insert_with(|| default_action(cat));
+        }
+        c
+    }
+
     /// User choice for a category, with the default for categories missing
     /// from a configuration saved by an older version.
     pub fn action_for(&self, category: &str) -> Action {
@@ -332,6 +342,10 @@ mod tests {
         assert_eq!(old.action_for("intro"), Action::Ignore);
         assert_eq!(old.action_for("hook"), Action::Show);
         assert!(old.mute_segments && old.full_video_labels && old.skip_video_ads);
+        let full = old.with_all_categories();
+        assert_eq!(full.actions.get("hook"), Some(&Action::Show));
+        assert_eq!(full.actions.get("intro"), Some(&Action::Ignore));
+        assert_eq!(full.actions.len(), CATEGORIES.len());
     }
 
     #[test]

@@ -149,3 +149,12 @@ mark { background: rgba(92, 214, 230, .25); color: inherit; border-radius: 3px; 
 .th-err { color: var(--danger); margin: 0 0 12px; }
 .th-sw { display: inline-flex; gap: 2px; }
 .th-sw i { width: 10px; height: 10px; border-radius: 2px; }
+
+/* ---- Security Center */
+.sc-head { display: flex; align-items: center; gap: 18px; margin: 4px 0 20px; padding: 18px 20px; border-radius: var(--r-lg); background: var(--c-raised); border: 1px solid var(--c-line); }
+.sc-score { font-size: 34px; font-weight: 600; line-height: 1; color: var(--c-accent-2); min-width: 72px; }
+.sc-head .lbl { font-weight: 600; color: var(--c-text); }
+.sc-head .desc { color: var(--c-text-2); font-size: 13px; }
+.srow.alert .lbl { color: var(--warn); }
+.stack-ctl { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; width: 100%; }
+.stack-ctl textarea { width: 100%; }
