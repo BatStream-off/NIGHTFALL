@@ -4,6 +4,27 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-05 — M-0004 ACCEPTÉE ; M-0003 arrêtée (règle 6) ; M-0002 livrée
+- **M-0004** : audit 2 (Opus, agent neuf) ACCEPTÉ, 5 MINEUR (§0 licence à aligner sur
+  §9.3, clause §4 simplifiée, empreinte par la liste des catégories envoyées → paramètres
+  constants et filtrage local, moyen de l'auto-test VG-25 à préciser, réserve licence à
+  lever). Banc rejoué et éprouvé par mutation de `videoguard.js`.
+- **M-0003** : audit 2 (agent neuf) **REFUSÉ** — 3 MAJEUR sur la justesse des risques :
+  `$to` en réalité ignoré par adblock-rust (`fb_network_builder.rs:260-264`), donc perte
+  de couverture et non faux positifs (erreur introduite par la correction) ; P1-6
+  `$removeparam` : exceptions `@@…$removeparam` rejetées par adblock-rust
+  (`network.rs:850-851`) → réécriture d'URL là où uBO s'abstient ; analyse de sécurité
+  incohérente : listes en cache non authentifiées déjà chargées avant déverrouillage
+  avec la permission TRUSTED. Mesures et outillage confirmés. **Deux refus successifs →
+  arrêt et consultation du propriétaire (charte §5).** Recommandation du Directeur :
+  le Directeur corrige lui-même ces trois points (précis et vérifiables), puis troisième
+  audit par un agent neuf.
+- **Constat de sécurité à prioriser** (M-0003 audit 2, M3) : intégrité des listes
+  Shield en cache (texte clair, permission TRUSTED pour 5 listes, chargées avant
+  déverrouillage).
+- **M-0002** livrée (Opus) : 4 bugs reproduits avec cause ; audit lancé.
+- **M-0006** lancée (Architecte Opus) ; **M-0005** en cours.
+
 ## 2026-11-05 — Reprise après la limite hebdomadaire ; M-0003 et M-0004
 - Limite **hebdomadaire** atteinte le 2026-11-04 au soir (M-0002, M-0003, audit M-0004
   interrompus), levée le 2026-11-05 à 8:00 ; reprise par SendMessage.

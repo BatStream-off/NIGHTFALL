@@ -2,7 +2,7 @@
 
 - **Rôle** : Analyste
 - **Modèle** : opus (tentative 2) — raison : montée de niveau après audit REFUSÉ (tentative 1 : sonnet)
-- **Statut** : EN COURS
+- **Statut** : ACCEPTÉE
 - **Branche** : agent/M-0004-audit-videoguard-v2 (tentative 1 : agent/M-0004-audit-videoguard, 72740e4)
 - **Copie isolée (worktree)** : oui
 - **Dépend de** : rien (phase d'audit de la refonte, aucune fusion)
