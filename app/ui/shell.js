@@ -13,6 +13,9 @@ let tabs = [];
 let activeTab = null;
 let popupOpen = null;      // top view: name of the popup currently shown
 let popupOpenedAt = 0;
+// Popup view: instance number given by the core, so that a late close
+// request from this popup never closes the one opened after it.
+const POPUP_N = Number(params.get('n') || 0);
 const MAC = /Mac|iPhone|iPad/i.test(navigator.platform || '');
 let warning = null;
 
@@ -35,8 +38,8 @@ async function init() {
   if (!st.ok) { msg('Erreur interne : ' + (st.error || '')); show('lock', true); return; }
   document.body.classList.toggle('vertical', !!st.verticalTabs);
   document.body.classList.toggle('no-home', st.showHome === false);
-  if (MODE === 'side') { show('side', st.unlocked); return; }
-  if (MODE === 'popup') { if (st.unlocked) openPopupView(); else api('popup.close'); return; }
+  if (MODE === 'side') { show('side', st.unlocked); if (st.unlocked) api('tabs'); return; }
+  if (MODE === 'popup') { if (st.unlocked) openPopupView(); else closeSelf(); return; }
   if (!st.unlocked) {
     if (st.splash && WIN === 1 && !sessionStorage.getItem('nfSplash')) {
       sessionStorage.setItem('nfSplash', '1');
@@ -194,6 +197,24 @@ function openTabMenu(t, e) {
   api('popup.open', { panel, anchor: { x: e.clientX, y: e.clientY - 6, width: 0, height: 0 }, width: 290, height: 360, alignLeft: true, toggle: false });
 }
 
+// Close button of a tab (horizontal and vertical strips). The press must not
+// activate the tab, and the strip may be rebuilt between the press and the
+// release (events from the core): the press is remembered by tab id and the
+// release on that tab's close button closes it.
+let closePress = null;
+function closeButton(t, title) {
+  return el('button', { class: 't-close', title, 'aria-label': 'Fermer l\'onglet',
+    onmousedown: (e) => {
+      e.stopPropagation();
+      if (e.button === 1) { e.preventDefault(); api('tab.close', { id: t.id }); }
+      else if (e.button === 0) { e.preventDefault(); closePress = t.id; }
+    },
+    onmouseup: (e) => { if (e.button === 0 && closePress === t.id) { closePress = null; api('tab.close', { id: t.id }); } },
+    // Keyboard (Enter / Space on the focused button): no mouse press.
+    onclick: (e) => { e.stopPropagation(); if (e.detail === 0) api('tab.close', { id: t.id }); } }, svgIcon('close'));
+}
+document.addEventListener('mouseup', () => { closePress = null; });
+
 function renderTabs() {
   const strip = $('#tabs');
   strip.textContent = '';
@@ -202,13 +223,14 @@ function renderTabs() {
       class: 'tab' + (t.active ? ' active' : '') + (t.pinned ? ' pinned' : '') + (t.loading ? ' loading' : '') + (t.discarded ? ' discarded' : '') + (t.warning ? ' warning' : '') + (t.audible || t.muted ? ' sound' : ''),
       title: t.title + (t.discarded ? ' (en veille)' : '') + (t.audible && !t.muted ? ' — lecture du son' : '') + (t.muted ? ' — son coupé' : ''),
       draggable: 'true',
+      'data-id': t.id,
     },
       el('span', { class: 't-bg' }),
       el('span', { class: 't-edge' }),
       tabIcon(t),
       el('span', { class: 't-title', text: t.title || 'Nouvel onglet' }),
       tabSound(t),
-      el('button', { class: 't-close', title: 'Fermer l\'onglet (' + shortcut('W') + ')', 'aria-label': 'Fermer l\'onglet', onclick: (e) => { e.stopPropagation(); api('tab.close', { id: t.id }); } }, svgIcon('close')),
+      closeButton(t, 'Fermer l\'onglet (' + shortcut('W') + ')'),
     );
     node.addEventListener('mousedown', (e) => {
       if (e.button === 1) { e.preventDefault(); api('tab.close', { id: t.id }); }
@@ -274,11 +296,11 @@ function renderSide() {
   const box = $('#side-tabs');
   box.textContent = '';
   for (const t of tabs) {
-    const node = el('div', { class: 'vtab' + (t.active ? ' active' : '') + (t.loading ? ' loading' : ''), title: t.url },
+    const node = el('div', { class: 'vtab' + (t.active ? ' active' : '') + (t.loading ? ' loading' : ''), title: t.url, 'data-id': t.id },
       tabIcon(t),
       el('span', { class: 't-title', text: (t.pinned ? '📌 ' : '') + (t.title || 'Nouvel onglet') }),
       tabSound(t),
-      el('button', { class: 't-close', title: 'Fermer l\'onglet', 'aria-label': 'Fermer l\'onglet', onclick: (e) => { e.stopPropagation(); api('tab.close', { id: t.id }); } }, svgIcon('close')),
+      closeButton(t, 'Fermer l\'onglet'),
     );
     node.addEventListener('click', () => api('tab.activate', { id: t.id }));
     node.addEventListener('mousedown', (e) => { if (e.button === 1) { e.preventDefault(); api('tab.close', { id: t.id }); } });
@@ -366,6 +388,9 @@ function askPermission(ev) {
 const POPUP_SIZE = { menu: [340, 640], shield: [320, 330], passwords: [340, 380], zoom: [270, 60], find: [400, 50], tabmenu: [290, 360] };
 const POPUP_BUTTON = { menu: '#b-menu', shield: '#b-shield', passwords: '#b-key', zoom: '#b-zoom' };
 let pressedOnOpen = null;
+// Last popup closed by the core: on macOS the popup's own close (it lost the
+// focus to this view) can be handled before the button's mousedown.
+let lastClosed = { name: null, at: 0 };
 
 function setPressed() {
   for (const [name, sel] of Object.entries(POPUP_BUTTON)) $(sel).classList.toggle('pressed', popupOpen === name);
@@ -373,9 +398,10 @@ function setPressed() {
 
 function closePopup() {
   if (!popupOpen) return;
+  const name = popupOpen;
   popupOpen = null;
   setPressed();
-  api('popup.close');
+  api('popup.close', { panel: name });
 }
 
 function togglePopup(name) {
@@ -393,7 +419,11 @@ function togglePopup(name) {
 }
 
 for (const [name, sel] of Object.entries(POPUP_BUTTON)) {
-  $(sel).addEventListener('mousedown', (e) => { if (e.button === 0) pressedOnOpen = popupOpen === name ? name : null; });
+  $(sel).addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const justClosed = lastClosed.name === name && Date.now() - lastClosed.at < 400;
+    pressedOnOpen = popupOpen === name || justClosed ? name : null;
+  });
   $(sel).addEventListener('click', () => togglePopup(name));
 }
 
@@ -409,7 +439,12 @@ const FULLSCREEN_KEY = MAC ? '⌃⌘F' : 'F11';
 // Run an action from the popup, then close it (the action goes first: the
 // popup view is destroyed on close).
 async function act(fn) {
-  try { await fn(); } finally { api('popup.close'); }
+  try { await fn(); } finally { closeSelf(); }
+}
+
+// Close this popup only (never the one that replaced it).
+function closeSelf() {
+  api('popup.close', { panel: popupName(), n: POPUP_N || undefined });
 }
 
 function fitPopup() {
@@ -445,8 +480,8 @@ async function openPopupView() {
   new ResizeObserver(() => fitPopup()).observe(inner);
   // The find bar stays open while the page is used (as in Chrome); the
   // suggestions never take the focus (closed by the address field).
-  if (kind !== 'find' && kind !== 'suggest') window.addEventListener('blur', () => { if (Date.now() - loadedAt > 300) api('popup.close'); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') api(kind === 'find' ? 'find.close' : 'popup.close'); });
+  if (kind !== 'find' && kind !== 'suggest') window.addEventListener('blur', () => { if (Date.now() - loadedAt > 300) closeSelf(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (kind === 'find') api('find.close'); else closeSelf(); } });
   api('tabs'); // up-to-date counters (blocked items) for this window
 }
 
@@ -650,7 +685,7 @@ async function keyPanel(p) {
           el('button', { class: 'gen', type: 'button', title: 'Générer un mot de passe robuste', onclick: async () => { const g = await api('vault.generate', {}); if (g.ok) { pass.value = g.password; pass.type = 'text'; } } },
             svgIcon('generate'), 'Générer')),
         el('div', { class: 'row' }, el('button', { class: 'primary', text: 'Enregistrer', onclick: async () => {
-          if (check(await api('vault.saveForPage', { username: user.value, password: pass.value }), 'Identifiant enregistré (chiffré)')) api('popup.close');
+          if (check(await api('vault.saveForPage', { username: user.value, password: pass.value }), 'Identifiant enregistré (chiffré)')) closeSelf();
         } }))));
   }
   p.append(el('div', { class: 'm-sep' }),
@@ -676,7 +711,7 @@ function closeSuggest() {
   if (!sugg.open) return;
   sugg.open = false;
   if (popupOpen === 'suggest') popupOpen = null;
-  api('popup.close');
+  api('popup.close', { panel: 'suggest' });
 }
 
 function showSuggest() {
@@ -816,7 +851,7 @@ window.nfEvent = (ev) => {
       break;
     case 'locked':
     case 'lockdown':
-      if (MODE === 'popup') { api('popup.close'); break; }
+      if (MODE === 'popup') { closeSelf(); break; }
       closePopup();
       if (MODE === 'top') showLock();
       else show('side', false);
@@ -836,6 +871,7 @@ window.nfEvent = (ev) => {
     case 'popup_closed':
       // Ignore a late notice for a popup replaced by the one just opened.
       if (MODE === 'top' && ev.panel === 'suggest') sugg.open = false;
+      if (MODE === 'top' && ev.panel) lastClosed = { name: ev.panel, at: Date.now() };
       if (MODE === 'top' && (!ev.panel || ev.panel === popupOpen) && (ev.panel || Date.now() - popupOpenedAt > 250)) { popupOpen = null; setPressed(); if (activeTab) $('#b-zoom').hidden = (Number(activeTab.zoom) || 100) === 100; }
       break;
     case 'permission':

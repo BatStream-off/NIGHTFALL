@@ -131,7 +131,7 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         }
         "find.close" => {
             on_ui(move || {
-                windows::popup_close(w);
+                windows::popup_close_if(w, Some("find"), None);
                 windows::focus_active_tab(w);
             });
             ok()
@@ -244,7 +244,13 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             ok()
         }
         "popup.close" => {
-            on_ui(move || windows::popup_close(w));
+            // A popup names itself (panel and instance number): a late
+            // request never closes the popup opened after it.
+            let panel = body.get("panel").and_then(Value::as_str).map(str::to_string);
+            let serial = body.get("n").and_then(Value::as_u64).map(|n| n as u32);
+            on_ui(move || {
+                windows::popup_close_if(w, panel.as_deref(), serial);
+            });
             ok()
         }
         "permission.answer" => {
