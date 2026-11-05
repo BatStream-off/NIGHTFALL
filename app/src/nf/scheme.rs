@@ -128,6 +128,16 @@ wrap_scheme_handler_factory! {
                 return json_response(&result);
             }
 
+            if path == "theme.css" {
+                // Colours of the chosen theme (default while locked: the
+                // settings holding the choice are still encrypted).
+                let css = {
+                    let c = state::core();
+                    let t = if c.is_unlocked() { super::theme::active_theme(&c.settings.theme) } else { super::theme::Theme::default() };
+                    super::theme::css(&t)
+                };
+                return respond(200, "text/css", css.into_bytes(), false);
+            }
             match assets::get(path) {
                 Some((bytes, mime)) => respond(200, mime, bytes.to_vec(), mime.starts_with("text/html")),
                 None => respond(404, "text/plain", b"introuvable".to_vec(), false),

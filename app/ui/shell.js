@@ -899,6 +899,9 @@ window.nfEvent = (ev) => {
     case 'focus_address':
       if (MODE === 'top') { const a = $('#address'); a.focus(); a.select(); }
       break;
+    case 'theme':
+      nfReloadTheme();
+      break;
     case 'page_info':
       if (MODE === 'top') refreshPageInfo();
       break;

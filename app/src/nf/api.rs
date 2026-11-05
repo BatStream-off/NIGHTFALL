@@ -299,6 +299,17 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         // ---- settings
         "settings.get" => settings_get(),
         "settings.set" => settings_set(body),
+        "theme.get" => theme_get(),
+        "theme.set" => theme_set(body),
+        "theme.save" => theme_save(body),
+        "theme.delete" => theme_delete(body),
+        "theme.preview" => {
+            let t: super::theme::Theme = serde_json::from_value(body.get("theme").cloned().unwrap_or(Value::Null)).unwrap_or_default();
+            match super::theme::validate(&t) {
+                Ok(()) => json!({ "ok": true, "css": super::theme::css(&t) }),
+                Err(e) => err(e),
+            }
+        }
         "settings.reset" => settings_reset(),
         "browsing.clear" => super::browsing_data::clear(body),
         "downloads.chooseFolder" => {
@@ -1037,6 +1048,8 @@ fn settings_set(body: &Value) -> Value {
                 s.site_permissions = old.site_permissions.clone();
                 s.permission_resets = old.permission_resets.clone();
                 s.download_dir = old.download_dir.clone();
+                // Themes change only through the theme.* commands.
+                s.theme = old.theme.clone();
                 s.sanitize();
                 c.settings = s;
             }
@@ -1082,6 +1095,90 @@ fn open_proxy_settings() -> Value {
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let r: std::io::Result<std::process::Child> = Err(std::io::Error::other("non disponible"));
     r.map(|_| ok()).unwrap_or_else(|e| err(format!("impossible d'ouvrir les réglages du système : {e}")))
+}
+
+fn theme_get() -> Value {
+    let c = core();
+    json!({
+        "ok": true,
+        "active": super::theme::active_theme(&c.settings.theme).id,
+        "presets": super::theme::presets(),
+        "custom": super::theme::custom_themes(&c.settings.theme),
+    })
+}
+
+/// Saved, then every interface view and internal page reloads its colours.
+fn theme_changed() {
+    core().save_settings();
+    on_ui(|| {
+        windows::push_event_all(&json!({ "type": "theme" }));
+        windows::exec_in_internal_tabs("window.nfReloadTheme && window.nfReloadTheme();");
+    });
+}
+
+fn theme_set(body: &Value) -> Value {
+    let id = s(body, "id").to_string();
+    {
+        let mut c = core();
+        let known = super::theme::presets().into_iter().chain(super::theme::custom_themes(&c.settings.theme)).any(|t| t.id == id);
+        if !known {
+            return err("thème inconnu");
+        }
+        c.settings.theme.active = id;
+    }
+    theme_changed();
+    ok()
+}
+
+/// Create (no id or an unknown one) or update a custom theme, then use it.
+fn theme_save(body: &Value) -> Value {
+    let mut t: super::theme::Theme = match serde_json::from_value(body.get("theme").cloned().unwrap_or(Value::Null)) {
+        Ok(t) => t,
+        Err(e) => return err(e),
+    };
+    t.name = t.name.trim().to_string();
+    if let Err(e) = super::theme::validate(&t) {
+        return err(e);
+    }
+    let id = {
+        let mut c = core();
+        let existing = super::theme::custom_themes(&c.settings.theme);
+        if existing.len() >= 30 && !existing.iter().any(|e| e.id == t.id) {
+            return err("30 thèmes personnels au plus");
+        }
+        if !t.id.starts_with("custom-") || !existing.iter().any(|e| e.id == t.id) {
+            t.id = format!("custom-{}", nf_core::unix_now());
+            while existing.iter().any(|e| e.id == t.id) {
+                t.id.push('x');
+            }
+        }
+        let value = serde_json::to_value(&t).unwrap_or(Value::Null);
+        let list = &mut c.settings.theme.custom;
+        match list.iter().position(|v| v.get("id").and_then(Value::as_str) == Some(t.id.as_str())) {
+            Some(i) => list[i] = value,
+            None => list.push(value),
+        }
+        c.settings.theme.active = t.id.clone();
+        t.id.clone()
+    };
+    theme_changed();
+    json!({ "ok": true, "id": id })
+}
+
+fn theme_delete(body: &Value) -> Value {
+    let id = s(body, "id").to_string();
+    if !id.starts_with("custom-") {
+        return err("les thèmes intégrés ne peuvent pas être supprimés");
+    }
+    {
+        let mut c = core();
+        c.settings.theme.custom.retain(|v| v.get("id").and_then(Value::as_str) != Some(id.as_str()));
+        if c.settings.theme.active == id {
+            c.settings.theme.active = super::theme::presets()[0].id.clone();
+        }
+    }
+    theme_changed();
+    ok()
 }
 
 fn shield_set(body: &Value) -> Value {

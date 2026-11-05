@@ -1642,6 +1642,19 @@ pub fn push_event_all(event: &serde_json::Value) {
     }
 }
 
+/// Run JavaScript in every tab showing an internal page (UI thread).
+pub fn exec_in_internal_tabs(code: &str) {
+    let targets: Vec<(u32, u32)> = windows_mut(|w| {
+        w.iter()
+            .flat_map(|c| c.tabs.iter().filter(|t| t.url.starts_with("nightfall://app/")).map(move |t| (c.id, t.id)))
+            .collect()
+    })
+    .unwrap_or_default();
+    for (w, t) in targets {
+        exec_in_tab(w, t, code);
+    }
+}
+
 pub fn push_tabs(window_id: u32) {
     if windows_busy() {
         super::ui_thread::on_ui_delayed(0, move || push_tabs(window_id));

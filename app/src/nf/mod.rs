@@ -25,6 +25,7 @@ pub mod state;
 pub mod timers;
 pub mod titlebar;
 pub mod ui_thread;
+pub mod theme;
 pub mod updater;
 pub mod windows;
 

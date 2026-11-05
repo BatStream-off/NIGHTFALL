@@ -59,7 +59,30 @@ def settings_cmd(cmd, req):
         UPDATE.update({"lastCheck": 1767003600}); return {"ok": True}
     if cmd == 'update.install':
         return {"ok": True}
+    if cmd == 'theme.get':
+        return {"ok": True, "active": THEMES["active"], "presets": PRESETS, "custom": THEMES["custom"]}
+    if cmd == 'theme.set':
+        THEMES["active"] = req.get('id', 'crepuscule'); return {"ok": True}
+    if cmd == 'theme.preview':
+        t = req.get('theme') or {}
+        css = ':root:root{' + ''.join('--c-%s:%s;' % (k, t.get(f)) for k, f in (('bg', 'bg'), ('surface', 'surface'), ('raised', 'surface'), ('text', 'text'), ('accent', 'accent'), ('accent-2', 'accent2'))) + '}'
+        return {"ok": True, "css": css}
+    if cmd == 'theme.save':
+        t = dict(req.get('theme') or {}); t['id'] = t.get('id') or 'custom-1'
+        THEMES["custom"] = [c for c in THEMES["custom"] if c['id'] != t['id']] + [t]; THEMES["active"] = t['id']
+        return {"ok": True, "id": t['id']}
+    if cmd == 'theme.delete':
+        THEMES["custom"] = [c for c in THEMES["custom"] if c['id'] != req.get('id')]; return {"ok": True}
     return None
+
+PRESETS = [dict(zip(("id", "name", "bg", "surface", "text", "accent", "accent2"), p)) for p in (
+    ("crepuscule", "Crépuscule", "#05070c", "#0e121d", "#eef2fb", "#2967ff", "#5ad2e8"),
+    ("minuit", "Minuit", "#000000", "#0a0a0f", "#f2f2f7", "#3867ff", "#7aa2ff"),
+    ("aurore", "Aurore", "#061210", "#0c1b18", "#e9f7f2", "#0a7355", "#3fe0b0"),
+    ("braise", "Braise", "#110807", "#1b0f0d", "#fbeee9", "#c4472a", "#ff9a5c"),
+    ("brume", "Brume", "#0b0d12", "#151922", "#e6e9f0", "#4f5f9e", "#9fb0e8"),
+    ("aube", "Aube (clair)", "#f6f7fb", "#ffffff", "#141824", "#2253e0", "#0b7a99"))]
+THEMES = {"active": "crepuscule", "custom": [{"id": "custom-1", "name": "Mon thème", "bg": "#0a0612", "surface": "#140d22", "text": "#f1ebff", "accent": "#7a4dff", "accent2": "#c9a6ff"}]}
 
 class H(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):

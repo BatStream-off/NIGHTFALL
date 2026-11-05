@@ -245,6 +245,105 @@ function sStartup() {
     pagesBox)];
 }
 
+// ---- Themes: presets and the user's own themes, with a live preview.
+const THEME_FIELDS = [
+  ['bg', 'Fond', 'Pages et bande d\'onglets'],
+  ['surface', 'Surfaces', 'Barre d\'outils, menus et panneaux'],
+  ['text', 'Texte', 'Texte principal (les textes secondaires en sont dérivés)'],
+  ['accent', 'Accent', 'Boutons principaux, sélection'],
+  ['accent2', 'Second accent', 'Onglet actif, focus, ligne d\'horizon'],
+];
+
+function themeGroup() {
+  const box = el('div', { class: 'themes' });
+  const editor = el('div', { class: 'theme-editor', hidden: true });
+  let data = null;
+
+  function preview(css) {
+    let st = document.getElementById('nf-preview');
+    if (!css) { if (st) st.remove(); return; }
+    if (!st) { st = el('style', { id: 'nf-preview' }); document.head.append(st); }
+    st.textContent = css;
+  }
+
+  function swatches(t) {
+    return el('span', { class: 'th-sw' }, ...['bg', 'surface', 'accent', 'accent2', 'text'].map((k) => el('i', { style: 'background:' + t[k] })));
+  }
+
+  async function load() {
+    data = await api('theme.get');
+    if (!data || !data.ok) { box.replaceChildren(el('p', { class: 'muted', text: 'Thèmes indisponibles.' })); return; }
+    const all = data.presets.concat(data.custom);
+    box.replaceChildren(...all.map((t) => {
+      const custom = t.id.startsWith('custom-');
+      const card = el('div', { class: 'th-card' + (t.id === data.active ? ' on' : '') },
+        el('button', { type: 'button', class: 'th-pick', 'aria-pressed': String(t.id === data.active), onclick: async () => {
+          const r = await api('theme.set', { id: t.id });
+          if (check(r, 'Thème « ' + t.name + ' » appliqué')) load();
+        } }, el('span', { class: 'th-prev', style: 'background:' + t.bg },
+          el('span', { class: 'th-bar', style: 'background:' + t.surface }, el('span', { class: 'th-tab', style: 'background:' + t.surface + ';border-top-color:' + t.accent2 })),
+          el('span', { class: 'th-line', style: 'background:' + t.text }), el('span', { class: 'th-btn', style: 'background:' + t.accent })),
+          el('span', { class: 'th-name', text: t.name + (custom ? '' : '') })),
+        el('div', { class: 'th-acts' },
+          el('button', { type: 'button', class: 'ghost small', text: 'Dupliquer', onclick: () => edit({ ...t, id: '', name: (t.name + ' (copie)').slice(0, 40) }) }),
+          custom ? el('button', { type: 'button', class: 'ghost small', text: 'Modifier', onclick: () => edit({ ...t }) }) : null,
+          custom ? el('button', { type: 'button', class: 'ghost small danger', text: 'Supprimer', onclick: async () => {
+            if (!confirm('Supprimer le thème « ' + t.name + ' » ?')) return;
+            if (check(await api('theme.delete', { id: t.id }), 'Thème supprimé')) load();
+          } }) : null));
+      return card;
+    }), el('button', { type: 'button', class: 'th-new', onclick: () => {
+      const base = all.find((t) => t.id === data.active) || all[0];
+      edit({ ...base, id: '', name: 'Mon thème' });
+    } }, el('span', { text: '+' }), el('span', { text: 'Créer un thème' })));
+  }
+
+  function edit(t) {
+    const err = el('p', { class: 'th-err', hidden: true });
+    const name = el('input', { value: t.name, maxlength: '40', 'aria-label': 'Nom du thème' });
+    const inputs = {};
+    const fields = THEME_FIELDS.map(([k, label, desc]) => {
+      const input = el('input', { type: 'color', value: t[k], 'aria-label': label });
+      inputs[k] = input;
+      input.addEventListener('input', refresh);
+      return el('label', { class: 'th-field' }, input, el('span', {}, el('b', { text: label }), el('small', { text: desc })));
+    });
+    function current() {
+      const o = { id: t.id, name: name.value };
+      for (const [k] of THEME_FIELDS) o[k] = inputs[k].value;
+      return o;
+    }
+    let seq = 0;
+    async function refresh() {
+      const n = ++seq;
+      const r = await api('theme.preview', { theme: current() });
+      if (n !== seq) return;
+      if (r && r.ok) { preview(r.css); err.hidden = true; } else { err.textContent = (r && r.error) || 'Thème invalide'; err.hidden = false; }
+    }
+    name.addEventListener('input', refresh);
+    editor.replaceChildren(
+      el('h3', { text: t.id ? 'Modifier le thème' : 'Nouveau thème' }),
+      el('p', { class: 'muted small', text: 'L\'aperçu s\'applique à cette page. Les couleurs illisibles (contraste insuffisant) sont refusées.' }),
+      el('label', { class: 'th-namefield' }, el('span', { text: 'Nom' }), name),
+      el('div', { class: 'th-fields' }, fields),
+      err,
+      el('div', { class: 'row' },
+        el('button', { type: 'button', class: 'primary', text: 'Enregistrer et appliquer', onclick: async () => {
+          const r = await api('theme.save', { theme: current() });
+          if (!r || !r.ok) { err.textContent = (r && r.error) || 'Enregistrement impossible'; err.hidden = false; return; }
+          preview(null); editor.hidden = true; note('Thème enregistré et appliqué'); load();
+        } }),
+        el('button', { type: 'button', class: 'ghost', text: 'Annuler', onclick: () => { preview(null); editor.hidden = true; } })));
+    editor.hidden = false;
+    refresh();
+    editor.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  load();
+  return group('Thème',
+    row({ label: 'Thème de NIGHTFALL', desc: 'Couleurs de la barre d\'onglets, des menus, des panneaux et des pages NIGHTFALL. Cliquez pour appliquer.', stack: true, below: el('div', {}, box, editor), keywords: 'theme couleurs personnaliser sombre clair accent editeur' }));
+}
+
 function sAppearance() {
   const walls = el('div', { class: 'walls' });
   const current = WALLS.some(([id]) => id === S.wallpaper) ? S.wallpaper : WALLS[0][0];
@@ -257,6 +356,7 @@ function sAppearance() {
     walls.append(b);
   }
   return [
+    themeGroup(),
     group('Page Nouvel onglet',
       row({ label: 'Fond d\'écran', desc: 'Image de fond de la page Nouvel onglet.', stack: true, below: walls, keywords: 'theme image arriere-plan' }),
       row({ label: 'Raccourcis, statistiques et horloge', desc: 'Se règlent sur la page Nouvel onglet (bouton engrenage).', onclick: () => openSection('newtab'), keywords: 'personnaliser' })),
