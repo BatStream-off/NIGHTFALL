@@ -29,7 +29,7 @@ et questions pour le propriétaire · Annexe : fichiers.
 
 | Mesure | Valeurs distinctes relevées | Cible proposée |
 |---|---|---|
-| Tailles de police | **19** (10, 11,5, 12, 12,5, 13, 13,5, 14, 14,5, 15, 17, 18, 19, 20, 22, 24, 26, 28, 40 px) | 8 (11, 12, 13, 14, 16, 20, 28, 40) |
+| Tailles de police | **18** (10, 11,5, 12, 12,5, 13, 13,5, 14, 14,5, 15, 17, 18, 19, 20, 22, 24, 26, 28, 40 px) | 8 (11, 12, 13, 14, 16, 20, 28, 40) |
 | Rayons d'arrondi | **16** (3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 27, 99 px, 50 %) + coins biseautés (`clip-path`) | 5 + pilule (4, 6, 8, 12, 16) |
 | Hauteurs de boutons | **11** (20, 22, 28, 30, 32, 34, 38, 40, 44, 50, 106 px) | 5 (24, 28, 32, 36, 40) |
 | Hauteurs de champs | **8** (18, 22, 32, 34, 38, 40, 48, 54 px) | mêmes 5 hauteurs |
@@ -95,7 +95,7 @@ Chakra Petch seulement pour la marque, les titres de page (28) et les chiffres m
 avant (compteurs Shield, horloge, statistiques). Interface 13 px, pages 14 px,
 secondaire 12 px, étiquettes 11 px capitales espacées.
 
-**Icônes.** Jeu original de 56 icônes (`maquettes/icons.js`) dérivé du jeu actuel :
+**Icônes.** Jeu original de 52 icônes (`maquettes/icons.js`) dérivé du jeu actuel :
 grille 24, trait 1,6 px à 16 px (20 px dans les pages), extrémités arrondies,
 remplissage seulement pour un état actif. Nouveaux : boutons de fenêtre, panneau
 latéral, palette, thème, vidéo (VideoGuard), cookie, caméra, corbeille, plus.
@@ -149,11 +149,14 @@ latéral, palette, thème, vidéo (VideoGuard), cookie, caméra, corbeille, plus
   alimenté par la propriété CSS `app-region: drag / no-drag` des pages.
 - `ImplWindow::minimize / maximize / restore / is_maximized / is_fullscreen / is_active`,
   `ImplWindowDelegate::on_window_bounds_changed / on_window_activation_changed`.
-- Côté CEF (window_view.cc, miroir consulté) : cadre sans bordure Windows =
-  `remove_standard_frame`, bordure de redimensionnement de 4 px et coins de 16 px,
-  test de la zone déplaçable **avant** les vues enfants → une vue superposée (menu)
-  posée sur une zone déplaçable ne recevrait pas ses clics : le prototype la retire
-  de la zone (région `draggable: 0` ajoutée en dernier).
+- Côté CEF : seule une **ancienne** version de `window_view.cc` a pu être consultée
+  (miroir third-party-mirror.googlesource.com, révision 1187115c, non CEF 156) :
+  cadre sans bordure Windows = `remove_standard_frame`, bordure de redimensionnement
+  de 4 px et coins de 16 px, test de la zone déplaçable **avant** les vues enfants.
+  Si c'est toujours le cas en CEF 156, une vue superposée (menu) posée sur une zone
+  déplaçable ne recevrait pas ses clics ; le prototype retire donc le menu de la zone
+  (région `draggable: 0` ajoutée en dernier). **Non vérifié en CEF 156** : ni le
+  comportement d'origine, ni l'effet de la correction (voir 3.4).
 
 ### 3.3 Prototype (branche, `app/src/nf/titlebar.rs` + `shell.*`)
 - `NfWindowDelegate::is_frameless` = vrai sous Windows et macOS ; `titlebar_height`
@@ -176,7 +179,8 @@ latéral, palette, thème, vidéo (VideoGuard), cookie, caméra, corbeille, plus
   déplaçable trouvés ; sous Windows, réponses **réelles** de la procédure de fenêtre
   à `WM_NCHITTEST` (HTCAPTION sur la bande, HTCLIENT sur un onglet et dans la page,
   HTLEFT au bord gauche, HTBOTTOMRIGHT au coin) ; agrandir puis restaurer par
-  l'API ; région du menu ouvert soustraite.
+  l'API ; une région de plus est donnée à la fenêtre quand le menu est ouvert
+  (seul le nombre de régions est vérifié, pas le clic sur un menu posé sur la bande).
 - CI : souris réelle (`ci/titlebar_win.ps1`, SendInput/mouse_event) sur la fenêtre
   verrouillée sous Windows : hit-test, glisser pour déplacer, redimensionner par le
   bord droit, double-clic = agrandir / restaurer, boutons Agrandir / Restaurer /
@@ -206,12 +210,21 @@ NFTITLEBAR OK   bouton Agrandir / bouton Restaurer / bouton Réduire / restaurat
 Auto-test (fenêtre déverrouillée, onglets) :
 `"hitTest":{"drag":2,"noDrag":1,"content":1,"leftEdge":10,"bottomRight":17}`, puis
 agrandie (`"maximized":true`, bords = HTCLIENT comme attendu), restaurée, et avec le
-menu ouvert 72 régions au lieu de 71 (la région soustraite du menu).
+menu ouvert 72 régions au lieu de 71 : la région du menu est bien ajoutée, mais
+aucun clic dans un menu posé sur la bande d'onglets n'a été testé.
 Captures : `captures/ci/windows-demarrage-verrouillage.png`,
 `windows-agrandie-double-clic.png` (agrandie : boutons entièrement visibles, le
 débordement de 8 px habituel de Windows est compensé par Chromium),
 `windows-apres-tests-souris.png`, `windows-fin-autotest.png` (onglets dans la barre de
 titre, boutons de fenêtre à droite, menu ouvert).
+
+**Run suivant 42025158585 (commit `d681812`, documentation seulement, même code)** :
+Windows vert ; **macOS rouge** : `SELFTEST FAIL: effacement des données des sites
+(DevTools Storage.clearDataForOrigin)`, étape antérieure à l'étape barre de titre et
+qui ne touche aucun fichier modifié par le prototype ; le même code était vert au run
+précédent. L'audit le classe comme échec intermittent préexistant ; je ne l'ai pas
+vérifié moi-même sur `develop`. Dans ce run, le test souris macOS est resté OK
+(déplacement, double-clic).
 
 **macOS (runner GitHub, 1024 × 768)** — événements souris synthétiques CoreGraphics
 acceptés par le runner :
@@ -228,13 +241,38 @@ des onglets, aucune barre de titre système).
 
 ### 3.5 Conclusion
 
-| Plateforme | Verdict | Réserves |
-|---|---|---|
-| **macOS** | **fiable** | Aucune constatée : déplacement, double-clic (zoom), redimensionnement système, feux natifs, plein écran, coins et ombre conservés. Non testé en CI : écrans multiples, Stage Manager (à vérifier à la main). |
-| **Windows** | **fiable avec réserves** | 1) Le menu **Snap Layouts** de Windows 11 au survol du bouton Agrandir n'existe pas avec des boutons dessinés (Q1) ; Snap par glisser, double-clic, Win+flèches et redimensionnement par les bords fonctionnent (HTCAPTION / HTLEFT… vérifiés). 2) Ombre et coins arrondis de Windows 11 non vérifiables en CI (runner Windows Server 2025, coins carrés par défaut) : à contrôler à la main sur Windows 11 avant intégration. 3) Bordure de redimensionnement de 4 px (valeur CEF), un peu plus fine que celle du système. |
+| Plateforme | Verdict |
+|---|---|
+| **macOS** | **fiable avec réserves** : seuls le déplacement et le double-clic sont testés, avec des événements synthétiques, et ce test n'est **pas bloquant** (`ci.yml`, `… \|\| echo "… non concluant"`). |
+| **Windows** | **fiable avec réserves** : déplacement, redimensionnement par le bord droit, double-clic, boutons et réponses `WM_NCHITTEST` testés à la souris réelle ; le reste est déduit ou non testé (tableau ci-dessous). |
 
-Aucune plateforme n'est « non fiable » : la barre de titre intégrée peut être
-réalisée (mission B).
+Aucune plateforme n'est « non fiable » à ce stade. Mais une partie des
+comportements ci-dessous reste à prouver dans la mission B avant toute intégration.
+
+| Comportement | Windows | macOS |
+|---|---|---|
+| Déplacer en glissant la bande | **testé** (souris réelle, bloquant) | **testé** (événements synthétiques, non bloquant) |
+| Double-clic : agrandir / restaurer (zoom) | **testé** | **testé** (zoom seulement, non bloquant) |
+| Redimensionner par un bord | **testé** (bord droit ; bord gauche et coin : hit-test seulement) | non testé (bords système) |
+| Boutons Réduire / Agrandir / Restaurer | **testés** (boutons dessinés) | non testé (feux natifs, visibles sur la capture) |
+| Fermer par le bouton | hit-test seulement (non cliqué : fermerait le test) | non testé |
+| Snap par glisser vers un bord, Win+flèches | **non testé** (déduit de HTCAPTION) | sans objet |
+| Menu Snap Layouts (survol d'Agrandir, Windows 11) | **absent** (Q1) | sans objet |
+| Menu système Alt+Espace, clic droit sur la bande | non testé | sans objet |
+| Ombre, coins arrondis | non testé (runner Windows Server 2025) | constatés sur capture |
+| Agrandie : contenu non rogné | constaté sur capture (1024 × 768) | constaté sur capture |
+| Onglets verticaux (bande = barre d'outils + en-tête latéral) | non testé | non testé |
+| Fenêtre privée | non testé | non testé |
+| Plein écran fenêtre (F-027) et page (F-028) : bande masquée, pas de zone fantôme | non testé | non testé |
+| Taille minimale 640 × 420 (F-001) | non testé | non testé |
+| DPI ≠ 100 % (125 %, 150 %, 200 %) | non testé (CI à 100 %) | non testé (CI sans Retina) |
+| Écrans multiples, déplacement entre écrans de DPI différents | non testé | non testé |
+| Windows 10 | non testé | sans objet |
+| Clic dans un menu ouvert au-dessus de la bande | non testé (seul le nombre de régions est vérifié) | non testé |
+| `app-region: drag` dans une page web sans effet sur la fenêtre | non testé (le code n'accepte que les vues top et side) | non testé |
+| Écran de verrouillage : déplacement et boutons | **testé** (c'est l'écran des tests souris) | **testé** (déplacement, zoom) |
+
+Tous les cas « non testé » deviennent des critères de la mission B (section 6).
 
 ---
 
@@ -245,7 +283,8 @@ réalisée (mission B).
   actif = surface surélevée + filet + indicateur horizon 22 × 2 px ; survol = fond
   `--c-hover` ; aucun séparateur vertical.
 - Rétrécissement : 216 → 84 px (icône + ✕ au survol) → 40 px (icône seule, ✕ sur
-  l'actif) ; épinglés 40 px (comportement F-017 conservé, seuils inchangés en logique).
+  l'actif) : comportement F-017 conservé, seuils inchangés en logique ; épinglés 40 px
+  fixes (F-012).
 - États conservés : chargement (anneau), son / son coupé (F-013, F-014), déchargé
   (F-113, titre estompé), planté (F-030), privé, glisser-déposer (F-016 : l'onglet
   soulevé + trait d'insertion 2 px).
@@ -254,7 +293,8 @@ réalisée (mission B).
 
 ### 4.2 Menus (`captures/maquettes/menus.png`)
 - Menu principal regroupé en 6 blocs courts (Créer · Zoom · Bibliothèque · Outils ·
-  Réglages · Sécurité) avec libellés d'un ou deux mots ; sous-menu « Plus d'outils »
+  Réglages · Sécurité) avec libellés d'un ou deux mots ; « Plein écran » (F-027) reste
+  une entrée du menu et un bouton de la ligne Zoom ; sous-menu « Plus d'outils »
   pour Imprimer, Enregistrer la page, Accueil, Outils de développement, Security
   Center, À propos. **Aucune entrée de F-063/F-064 ne disparaît** (Redémarrer pour
   mettre à jour reste en tête quand une mise à jour est prête).
@@ -263,12 +303,15 @@ réalisée (mission B).
 
 ### 4.3 Contrainte CEF des vues superposées (importante pour le design)
 Les menus sont des BrowserViews superposées (`add_overlay_view`). CEF n'accepte pour
-un navigateur fenêtré qu'un fond **opaque** (`BrowserSettings.background_color` :
-« fully transparent for a windowed browser → CefSettings.background_color is used »).
-Conséquences : pas de coins arrondis transparents ni d'ombre portée hors du
-rectangle. Les maquettes dessinent donc les menus en **rectangles nets avec filet de
-1 px** (les éléments intérieurs gardent leur rayon de 6 px). Les captures CI actuelles
-confirment des coins carrés. Alternative (à évaluer plus tard, pas prioritaire) :
+un navigateur fenêtré qu'un fond **opaque** : `_cef_browser_settings_t::background_color`
+(`sys/src/bindings/x86_64_pc_windows_msvc.rs:18261`) renvoie, pour un alpha nul, à
+`CefSettings.background_color`, dont la documentation (`:18080`) dit : « If the alpha
+component is fully transparent for a windowed browser then the default value of
+opaque white be used ». Conséquence probable (non testée en vraie grandeur) : pas de
+coins arrondis transparents ni d'ombre portée hors du rectangle. Les maquettes dessinent donc les menus en **rectangles nets avec filet de
+1 px** (les éléments intérieurs gardent leur rayon de 6 px). Sur les captures CI, les coins du
+menu actuel (rayon CSS 12 px) ne laissent pas voir la page : le coin prend la couleur
+de fond de la vue. Alternative (à évaluer plus tard, pas prioritaire) :
 menus natifs `Window::show_menu` (perte du style) ou fenêtre fille transparente
 (non prévue par CEF Views).
 
@@ -317,18 +360,38 @@ pub struct Theme {              // nf-core (testable sans CEF)
 }
 ```
 Le fond actuel `wallpaper` (F-090) reste la source pour le Nouvel onglet quand le
-thème ne fixe pas de fond : compatibilité ascendante complète.
+thème ne fixe pas de fond.
+
+**Compatibilité (point bloquant).** Aujourd'hui, si la lecture de `Settings` échoue,
+`api.rs` (ouverture des magasins, `st.setting::<state::Settings>("app")`, vers la
+ligne 766) garde silencieusement **tous** les réglages par défaut, et la sauvegarde
+suivante écrase les réglages de l'utilisateur. Un thème mal formé ne doit donc
+jamais faire échouer la lecture de `Settings` :
+- `Theme` et `NewTabBackground` portent `#[serde(default)]` **au niveau de la
+  structure** (chaque champ absent prend sa valeur par défaut) ;
+- `NewTabBackground` n'est **pas** une énumération serde stricte : c'est une
+  structure `{ kind: String, wallpaper: String, colors: Vec<String> }` ; un `kind`
+  inconnu (thème créé par une version plus récente) se replie sur le fond
+  `wallpaper` actuel ; même règle pour `base` (inconnu → `dark`) ;
+- `custom_themes` est lu par un désérialiseur dédié (`deserialize_with`) qui lit une
+  liste de `serde_json::Value` et convertit **chaque** élément séparément : un thème
+  invalide est ignoré (et journalisé), les autres sont gardés, jamais d'échec global ;
+- champs inconnus ignorés (pas de `deny_unknown_fields`) ; `theme` qui désigne un
+  thème absent → thème par défaut à l'affichage, sans réécrire la valeur ;
+- `reduce_motion` et `density` : valeur inconnue → `system` / `normal`.
 
 ### 5.2 Génération et sécurité
 - `nf_core::theme` : validation stricte (couleurs `#rgb`, `#rrggbb`, `#rrggbbaa`
   seulement, clés dans une liste blanche, nom ≤ 40 caractères, ≤ 50 thèmes),
-  dérivation (survol, filets, texte 2 et 3 en oklab), contrôle de contraste WCAG
-  (texte/fond ≥ 4,5, texte/accent ≥ 3 ; refus ou correction proposée) et
+  dérivation (survol, filets, texte 2 et 3 en oklab), contrôle de contraste (5.6) et
   `to_css(&Theme) -> String` qui n'émet que `:root{--c-…:#…}`. Aucune chaîne libre
   de l'utilisateur n'atteint le CSS : pas d'injection, pas d'`url()`.
 - `scheme.rs` sert `nightfall://app/theme.css` (MIME `text/css` nu) généré depuis le
   thème actif (+ `?preview=1` pour l'aperçu), en-tête `Cache-Control: no-store`. La CSP
-  actuelle (`style-src 'self'`) l'autorise sans changement.
+  réelle (`scheme.rs:18`) est `style-src 'self' 'unsafe-inline'` : `theme.css` est
+  autorisé par `'self'` sans changement. `'unsafe-inline'` existe déjà pour les
+  attributs `style=` des pages ; il ne protège donc pas d'une injection CSS, d'où la
+  règle « aucune chaîne libre de l'utilisateur dans le CSS » ci-dessus.
 - Chaque page interne et `shell.html` ajoutent `<link rel="stylesheet" href="theme.css">`
   après `nf.css` (à déclarer dans `assets.rs` comme ressource dynamique).
 
@@ -364,13 +427,68 @@ thème ne fixe pas de fond : compatibilité ascendante complète.
   validé comme ci-dessus).
 
 ### 5.5 Éditeur (`editeur-themes.png`)
-Colonne gauche : onglets Couleurs / Header / Menus / Fond ; 5 couleurs de base, puis
+Colonne gauche : rubriques Couleurs / Header / Onglets / Menus / Panneaux / Fond ;
+5 couleurs de base, puis
 « Avancé (dérivé automatiquement) » pour chaque jeton de composant ; sélecteur de
 couleur (teinte/saturation, hexadécimal, pipette) avec indicateur de contraste.
 Droite : aperçu (Fenêtre / Page interne / Menus) où un clic sur un élément sélectionne
 sa couleur. Pied : Annuler, Dupliquer, Appliquer.
 
 ---
+
+### 5.6 Contraste (règle du moteur, appliquée aux maquettes)
+- **Tout texte** ≥ 4,5:1 sur les 4 surfaces (`bg`, `surface`, `raised`, `overlay`) :
+  `text`, `text-2` et `text-3` dérivés, `accent-2` (employé pour des liens et compteurs),
+  couleurs d'état, et texte sur l'accent.
+- **Indicateurs non textuels** (accent des interrupteurs, anneau de focus, indicateur
+  d'onglet) ≥ 3:1 sur `bg`, `surface`, `raised`.
+- `--c-on-accent` est **calculé** par le moteur : blanc ou encre (`#0b0e16`), celui qui
+  dépasse 4,5 ; si aucun ne l'atteint, l'éditeur propose l'accent assombri ou éclairci
+  le plus proche qui y parvient (le thème n'est pas enregistrable autrement).
+- La première version de ce dossier ne respectait pas ces seuils (relevé de l'audit,
+  confirmé : blanc sur l'accent 3,70 ; Aurore 2,53 ; Minuit 3,09 ; Brume 3,24 ; `text-3`
+  ≈ 3,1 à 3,6, Aube 2,71 ; `accent-2` d'Aube 2,91 ; l'éditeur affichait « AA 6,1:1 »
+  pour un ratio réel de 4,43). Jetons et préréglages corrigés (`maquettes/ds.css`,
+  `maquettes/themes.css`) : accent Crépuscule `#2967ff`, Minuit `#3867ff`, texte sur
+  accent automatique (encre pour Aurore, Braise, Brume), `text-3` relevé partout,
+  couleurs d'état d'Aube assombries. Vérification reproductible :
+  `python3 outils/contraste.py maquettes` (code de sortie 0) :
+
+```
+crepuscule  OK  text 14.15 ; text-2 5.28 ; text-3 4.64 ; accent-2 8.93 ; danger 5.37 ; warn 8.78 ; ok 8.35 ; on-accent/accent 4.69 ; accent (indicateur) 3.71
+minuit      OK  text 15.17 ; text-2 5.11 ; text-3 4.63 ; accent-2 10.16 ; danger 5.74 ; warn 9.38 ; ok 8.92 ; on-accent/accent 4.61 ; accent (indicateur) 4.02
+aube        OK  text 14.69 ; text-2 5.10 ; text-3 4.71 ; accent-2 4.85 ; danger 5.19 ; warn 5.05 ; ok 5.32 ; on-accent/accent 5.23 ; accent (indicateur) 4.62
+aurore      OK  text 12.44 ; text-2 5.27 ; text-3 4.65 ; accent-2 10.02 ; danger 4.68 ; warn 7.64 ; ok 7.27 ; on-accent/accent 7.63 ; accent (indicateur) 6.61
+braise      OK  text 13.99 ; text-2 5.85 ; text-3 4.61 ; accent-2 9.86 ; danger 5.39 ; warn 8.81 ; ok 8.38 ; on-accent/accent 6.47 ; accent (indicateur) 6.09
+brume       OK  text 11.66 ; text-2 5.03 ; text-3 4.65 ; accent-2 9.55 ; danger 4.66 ; warn 7.61 ; ok 7.24 ; on-accent/accent 5.96 ; accent (indicateur) 4.86
+```
+  Conséquence assumée : `text-3` est désormais proche de `text-2` (la hiérarchie
+  passe par la taille et la graisse, pas par un gris illisible).
+
+### 5.7 Ce que les thèmes ne couvrent pas (éléments natifs)
+Rendus par le système ou par Chromium hors de nos pages, ils ne suivent pas le thème
+(au mieux `color-scheme` clair/sombre) : feux macOS et ombre de fenêtre ; menus
+contextuels natifs des pages (clic droit, `NfContextMenu`) ; listes déroulantes
+`<select>` ouvertes, sélecteurs de date et de couleur ; boîtes de dialogue
+JavaScript (`alert`, `prompt`, `confirm`), d'impression, d'enregistrement et de
+choix de fichier ; info-bulles `title` ; fenêtre des outils de développement ;
+barre des tâches, Alt+Tab, Dock ; contenu des pages web. Les dialogues natifs des
+pages internes seront remplacés (mission G).
+
+### 5.8 Accessibilité (critères pour A à G)
+- `@media (forced-colors: active)` (contraste élevé de Windows) : couleurs système
+  (`Canvas`, `CanvasText`, `Highlight`, `ButtonText`), bordures visibles sur onglets,
+  menus et boutons de fenêtre ; vérifié par capture Playwright avec
+  `forcedColors: 'active'`.
+- Clavier : tout est atteignable (onglets, barre d'outils, menus, boutons de fenêtre
+  dessinés), focus toujours visible (anneau ≥ 3:1), F6 / Ctrl+L / Échap conservés,
+  ordre de tabulation testé.
+- Lecteur d'écran : rôles `tablist` / `tab` (`aria-selected`), `toolbar`, `menu` /
+  `menuitem`, `switch` (`aria-checked`), libellés `aria-label` sur toutes les icônes.
+  Les vues superposées CEF étant des documents séparés, vérifier avec NVDA et
+  VoiceOver (vérification manuelle).
+- Mouvement : `reduce_motion` (système / activé / désactivé) et
+  `prefers-reduced-motion`.
 
 ## 6. Découpage en missions d'exécution
 
@@ -387,6 +505,35 @@ complète verte (auto-test `SELFTEST OK`, captures) et `preserve.py` sans perte.
 | F | **Éditeur et galerie de thèmes** (Sonnet) | `app/ui/settings.*` (section Apparence), nouvelle page `themes.html/js` (déclarée dans `assets.rs`) | E, et l'organisation des Paramètres de M-0006 | galerie, préréglages, créer / modifier / dupliquer / supprimer, aperçu local et en direct, import / export, contraste ; tests Playwright de l'éditeur | F-090 à F-095 restent dans « Apparence » ; aucun réglage existant déplacé hors de la section sans renvoi. |
 | G | **Pages internes au gabarit commun** (Sonnet, après M-0006) | `newtab.*`, `history.*`, `bookmarks.*`, `downloads.*`, `passwords.*`, `extensions.*`, `about.*`, `insecure.*` | A, E | gabarit 4.6 ; dialogues natifs `prompt/confirm` remplacés par des dialogues de la page ; Nouvel onglet 3.1 | F-073 à F-083, F-198 : mêmes actions, mêmes commandes d'API. |
 
+**Critères complémentaires (après audit)**
+- **A** : jetons conformes à 5.6 (contrôle automatique type `outils/contraste.py`
+  sur `nf.css`) ; jetons de densité (`compact` / `normal` / `comfortable`) et règle CSS
+  du mouvement réduit ; critères d'accessibilité 5.8 (forced-colors, focus).
+- **B** :
+  - le test souris macOS devient **bloquant** (le job échoue si le déplacement ou le
+    double-clic échoue ; un refus d'événements synthétiques par le runner doit être
+    détecté et signalé à part, pas confondu avec un succès) ;
+  - nouveaux tests automatiques : clic dans un menu ouvert posé sur la bande
+    (le menu reçoit le clic), page web avec `app-region: drag` (la fenêtre ne bouge
+    pas), onglets verticaux et fenêtre privée (hit-test et déplacement), plein écran
+    F-027 et F-028 (aucune zone déplaçable, boutons masqués), taille minimale
+    640 × 420 (F-001), Fermer cliqué en fin de test ;
+  - vérifications **manuelles** consignées (captures) : Windows 11 (Snap par glisser,
+    Win+flèches, ombre, coins, Alt+Espace), Windows 10, DPI 125 / 150 / 200 %, deux
+    écrans de DPI différents, macOS Retina et deux écrans ;
+  - corrections du prototype : hauteur de barre de titre par fenêtre (pas
+    globale), limitation de fréquence de `push_state` pendant un redimensionnement,
+    code mort retiré.
+- **E** : en plus des tests prévus, tests de désérialisation : thème partiel (champs
+  manquants), `kind` / `base` inconnus (repli), liste avec un thème invalide parmi des
+  valides (seul l'invalide est ignoré), réglages écrits par une version plus récente
+  (champs inconnus) : dans tous les cas `Settings` se charge et aucun autre réglage
+  n'est perdu ; champs `reduce_motion` et `density` (avec A pour le CSS et F pour
+  l'interface).
+- **F** : rubriques Couleurs, Header, **Onglets**, Menus, **Panneaux**, Fond ;
+  indicateur de contraste qui affiche le ratio réellement calculé ; réglages
+  « Densité » et « Animations ».
+
 Parallélisme : A seule d'abord (fichiers communs) ; puis B et C touchent tous deux
 `shell.*` → **séquencer B puis C** ou désigner B comme intégrateur. E et C sont
 indépendantes. M-0006 (Paramètres, Security Center) doit fixer l'organisation des
@@ -400,11 +547,12 @@ Paramètres avant F et G.
 |---|---|---|
 | Windows 11 : le menu de disposition **Snap Layouts** (survol du bouton Agrandir) n'apparaît pas avec des boutons dessinés en HTML (il faut répondre `HTMAXBUTTON` à `WM_NCHITTEST`, ce que CEF ne permet pas de déclarer). Snap par glisser vers les bords et Win+flèches restent disponibles (zone = HTCAPTION). | moyenne (confort) | Assumer, ou sous-classer la fenêtre native (`SetWindowSubclass`) pour répondre HTMAXBUTTON sur la zone du bouton : faisable mais code Win32 délicat ; à décider (Q1). |
 | Ombre et coins arrondis Windows 11 d’une fenêtre sans cadre | à vérifier à la main | Non vérifiable en CI (runner Windows Server 2025) ; voir 3.5. |
-| Menu ouvert au-dessus d'une zone déplaçable | maîtrisé | Région soustraite (prototype, vérifié par l'auto-test). |
-| macOS : double-clic sur la bande | maîtrisé | Vérifié en CI (zoom) avec des événements synthétiques. |
+| Menu ouvert au-dessus d'une zone déplaçable | moyenne (non vérifiée) | Région soustraite par le prototype ; seul le nombre de régions est vérifié ; test de clic exigé en B. |
+| macOS : double-clic sur la bande | faible | Vérifié en CI (zoom) par événements synthétiques, test non bloquant (rendu bloquant en B). |
+| Comportements déduits ou non testés (3.5) | moyenne | Critères de la mission B (tests automatiques et manuels). |
+| Contraste des thèmes personnalisés | faible | Règle 5.6 bloquante dans l'éditeur. |
 | Vues superposées opaques (pas de coins transparents ni d'ombre) | faible | Design en rectangles à filet (4.3). |
 | Thème de l'écran de verrouillage | décision | Q3. |
-| Lisibilité des thèmes personnalisés | faible | Contrôle de contraste bloquant dans l'éditeur. |
 
 Questions :
 - **Q1** : accepter l'absence du menu Snap Layouts au survol du bouton Agrandir sous

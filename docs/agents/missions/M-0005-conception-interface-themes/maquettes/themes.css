@@ -2,10 +2,10 @@
    couleurs ★ de ds.css (+ éventuellement des jetons de composants) ;
    tout le reste est dérivé. Le moteur réel génère ce même CSS depuis le
    JSON du thème (voir resultats.md, « Moteur de thèmes »). */
-[data-theme="minuit"] { --c-bg: #000000; --c-surface: #0a0a0c; --c-raised: #131317; --c-overlay: #1c1c22; --c-text: #f2f2f5; --c-text-2: #8c8c99; --c-text-3: #5a5a66; --c-accent: #6e8bff; --c-accent-2: #b9c6ff; }
-[data-theme="aube"] { color-scheme: light; --c-bg: #eef1f6; --c-surface: #f8f9fc; --c-raised: #ffffff; --c-overlay: #e6eaf2; --c-text: #141824; --c-text-2: #59617a; --c-text-3: #8c93a8; --c-accent: #3361e8; --c-accent-2: #0b9bb5; --c-on-accent: #fff; --p-dusk: #8b6cff; }
-[data-theme="aurore"] { --c-bg: #050b0d; --c-surface: #0a1417; --c-raised: #102026; --c-overlay: #183039; --c-text: #e8f6f4; --c-text-2: #86a6a6; --c-text-3: #587474; --c-accent: #18b892; --c-accent-2: #7cf0d0; --p-dusk: #8a63ff; }
-[data-theme="braise"] { --c-bg: #0c0806; --c-surface: #15100c; --c-raised: #1e1711; --c-overlay: #2a2018; --c-text: #f7efe6; --c-text-2: #ab9a88; --c-text-3: #74665a; --c-accent: #e8793a; --c-accent-2: #ffc06b; --p-dusk: #d9466b; --c-on-accent: #1b0f06; }
-[data-theme="brume"] { --c-bg: #121314; --c-surface: #1a1b1d; --c-raised: #222326; --c-overlay: #2c2d31; --c-text: #ececee; --c-text-2: #9b9ca3; --c-text-3: #6b6c73; --c-accent: #8a8f9c; --c-accent-2: #d4d7de; --p-dusk: #8a8f9c; }
+[data-theme="minuit"] { --c-bg: #000000; --c-surface: #0a0a0c; --c-raised: #131317; --c-overlay: #1c1c22; --c-text: #f2f2f5; --c-text-2: #8c8c99; --c-text-3: #848497; --c-accent: #3867ff; --c-on-accent: #ffffff; --c-accent-2: #b9c6ff; }
+[data-theme="aube"] { color-scheme: light; --c-bg: #eef1f6; --c-surface: #f8f9fc; --c-raised: #ffffff; --c-overlay: #e6eaf2; --c-text: #141824; --c-text-2: #59617a; --c-text-3: #5f6680; --c-accent: #3361e8; --c-accent-2: #0b6f7e; --c-on-accent: #ffffff; --p-dusk: #8b6cff; --c-danger: #c4000d; --c-warn: #8a5709; --c-ok: #176c48; }
+[data-theme="aurore"] { --c-bg: #050b0d; --c-surface: #0a1417; --c-raised: #102026; --c-overlay: #183039; --c-text: #e8f6f4; --c-text-2: #86a6a6; --c-text-3: #7b9c9c; --c-accent: #18b892; --c-on-accent: #0b0e16; --c-accent-2: #7cf0d0; --p-dusk: #8a63ff; }
+[data-theme="braise"] { --c-bg: #0c0806; --c-surface: #15100c; --c-raised: #1e1711; --c-overlay: #2a2018; --c-text: #f7efe6; --c-text-2: #ab9a88; --c-text-3: #968874; --c-accent: #e8793a; --c-accent-2: #ffc06b; --p-dusk: #d9466b; --c-on-accent: #1b0f06; }
+[data-theme="brume"] { --c-bg: #121314; --c-surface: #1a1b1d; --c-raised: #222326; --c-overlay: #2c2d31; --c-text: #ececee; --c-text-2: #9b9ca3; --c-text-3: #95969a; --c-accent: #8a8f9c; --c-on-accent: #0b0e16; --c-accent-2: #d4d7de; --p-dusk: #8a8f9c; }
 /* Fenêtre privée : même structure, teinte violette sur le header seulement. */
 [data-theme="prive"] { --header-bg: #0d0818; --toolbar-bg: #130d22; --tab-active-bg: #1d1433; --c-accent-2: #b79cff; --tab-indicator: linear-gradient(90deg, #b79cff, #7a5cff); --omnibox-bg: #090512; }

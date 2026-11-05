@@ -6,8 +6,9 @@
 //! these regions through `CefDragHandler::OnDraggableRegionsChanged` in the
 //! view's own coordinates. They are translated here into window coordinates
 //! and handed to `CefWindow::SetDraggableRegions`, which makes the window
-//! answer "caption" to the system there (move, Windows Snap by dragging,
-//! double-click to maximise on Windows).
+//! answer "caption" (HTCAPTION) to the system there. Verified in CI: move
+//! by dragging, double-click to maximise / restore (Windows) and zoom
+//! (macOS). Windows Snap is only expected from HTCAPTION: not tested.
 //!
 //! - Windows: the minimise / maximise / close buttons are drawn by the
 //!   interface (`win.*` commands); the resize borders are provided by CEF's
@@ -15,9 +16,14 @@
 //! - macOS: the system "traffic lights" stay (`with_standard_window_buttons`)
 //!   and are centred in the tab strip with `get_titlebar_height`.
 //!
-//! An open dropdown (overlay view) is excluded from the draggable area:
-//! CEF tests the draggable region before the views, so a menu drawn over the
-//! tab strip would otherwise not receive its clicks.
+//! An open dropdown (overlay view) is excluded from the draggable area: in
+//! the (old) CEF window_view.cc that was read, the draggable region is tested
+//! before the views, so a menu over the tab strip would lose its clicks. Not
+//! verified for CEF 156; the self test only checks that the region is added.
+//!
+//! Prototype limits (to fix in the execution mission): one titlebar height
+//! for all windows, `push_state` not rate-limited during a resize, `log`
+//! unused.
 
 use super::state;
 use super::ui_thread::on_ui_delayed;
@@ -31,7 +37,8 @@ use std::sync::atomic::{AtomicI32, Ordering};
 pub const FRAMELESS: bool = cfg!(any(target_os = "windows", target_os = "macos"));
 
 /// Height of the band holding the macOS traffic lights (tab strip, or the
-/// side bar header with vertical tabs), in DIP.
+/// side bar header with vertical tabs), in DIP. Global (all windows), and
+/// 40 until the first `apply_mode` sets the real value (38 or 52).
 static TITLEBAR_HEIGHT: AtomicI32 = AtomicI32::new(40);
 
 pub fn set_titlebar_height(h: i32) {

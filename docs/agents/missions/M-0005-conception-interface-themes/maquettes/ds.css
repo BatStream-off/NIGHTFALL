@@ -4,7 +4,10 @@
    2. sémantiques (--c-*, --t-*, --s-*, --r-*, --d-*, --e-*) : le sens (surface, texte, accent…) ;
    3. composants  (--header-*, --tab-*, --menu-*, --panel-*) : ce qu'un thème peut surcharger.
    Un thème ne fournit que quelques couleurs de base ; le reste est dérivé
-   avec color-mix() (Chromium ≥ 111, CEF 156 : disponible). */
+   avec color-mix() (Chromium ≥ 111, CEF 156 : disponible).
+   Contraste (WCAG 2.2, vérifié par outils/contraste.py) : tout texte, y compris
+   text-2, text-3 et le texte sur l'accent, ≥ 4,5:1 sur bg, surface, raised et overlay ;
+   indicateurs non textuels (accent, anneau de focus, interrupteur actif) ≥ 3:1. */
 
 @font-face { font-family: "Chakra Petch"; src: url(../../../../../app/ui/fonts/chakra-petch-SemiBold.woff) format("woff"); font-weight: 600; }
 @font-face { font-family: "Chakra Petch"; src: url(../../../../../app/ui/fonts/chakra-petch-Medium.woff) format("woff"); font-weight: 500; }
@@ -13,8 +16,8 @@
   /* ---- 1. Primitives : « Crépuscule » (thème par défaut) */
   --p-ink-0: #05070c;  --p-ink-1: #090c14;  --p-ink-2: #0e121d;  --p-ink-3: #141a28;
   --p-ink-4: #1b2233;  --p-ink-5: #252e43;  --p-ink-6: #34405a;
-  --p-moon-0: #eef2fb; --p-moon-1: #c5cde0; --p-moon-2: #8a95ad; --p-moon-3: #5d6880;
-  --p-arc: #5ad2e8;    --p-hex: #4a7dff;    --p-dusk: #8b6cff;
+  --p-moon-0: #eef2fb; --p-moon-1: #c5cde0; --p-moon-2: #8a95ad; --p-moon-3: #808ba3;
+  --p-arc: #5ad2e8;    --p-hex: #2967ff;    --p-dusk: #8b6cff;
   --p-red: #ff5f6d;    --p-amber: #f5b553; --p-green: #45d39c;
 
   /* ---- 2. Sémantiques : couleurs (seules celles marquées ★ sont choisies par un thème) */
@@ -26,10 +29,10 @@
   --c-line-strong: color-mix(in oklab, var(--c-text) 16%, transparent);
   --c-text: var(--p-moon-0);              /* ★ texte principal */
   --c-text-2: var(--p-moon-2);            /*   texte secondaire */
-  --c-text-3: var(--p-moon-3);            /*   désactivé, indications */
+  --c-text-3: var(--p-moon-3);            /*   indications ; ≥ 4,5 sur toutes les surfaces (règle du moteur) */
   --c-accent: var(--p-hex);               /* ★ accent (actions principales, sélection) */
   --c-accent-2: var(--p-arc);             /* ★ second accent (focus, actif, ligne d'horizon) */
-  --c-on-accent: #ffffff;
+  --c-on-accent: #ffffff;                 /*   calculé par le moteur : blanc ou encre, celui qui donne ≥ 4,5 */
   --c-accent-soft: color-mix(in oklab, var(--c-accent) 16%, transparent);
   --c-horizon: linear-gradient(90deg, var(--c-accent-2), var(--c-accent) 55%, var(--p-dusk));
   --c-hover: color-mix(in oklab, var(--c-text) 7%, transparent);

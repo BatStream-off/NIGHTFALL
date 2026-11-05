@@ -5,7 +5,7 @@
 .sh { display: flex; align-items: center; gap: 8px; padding: 14px 12px 12px 16px; border-bottom: 1px solid var(--c-line); }
 .sh .nm { flex: 1; } .sh .nm b { display: block; font: 600 15px var(--f-ui); } .sh .nm span { color: var(--c-text-2); font-size: 12px; }
 .tabs2 { display: flex; gap: 2px; margin: 10px 12px 4px; padding: 3px; background: var(--c-bg); border-radius: 9px; }
-.tabs2 span { flex: 1; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--c-text-2); font-size: 12px; } .tabs2 span.on { background: var(--c-raised); color: var(--c-text); box-shadow: 0 0 0 1px var(--c-line); }
+.tabs2 span { flex: 1; height: 26px; font-size: 11.5px; display: grid; place-items: center; border-radius: 6px; color: var(--c-text-2); font-size: 12px; } .tabs2 span.on { background: var(--c-raised); color: var(--c-text); box-shadow: 0 0 0 1px var(--c-line); }
 .list { flex: 1; overflow: hidden; padding: 4px 8px; }
 .grp { margin: 12px 8px 6px; color: var(--c-text-3); font: 600 11px/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; }
 .cr { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px; border-radius: 8px; }
@@ -36,16 +36,16 @@
 </style></head><body data-theme-root>
 <div class="ed"><div class="side">
  <div class="sh"><span class="ib">${I}</span><div class="nm"><b>Mon thème</b><span>Basé sur Crépuscule · modifié</span></div><span class="ib"><i data-i="more"></i></span></div>
- <div class="tabs2"><span class="on">Couleurs</span><span>Header</span><span>Menus</span><span>Fond</span></div>
+ <div class="tabs2"><span class="on">Couleurs</span><span>Header</span><span>Onglets</span><span>Menus</span><span>Panneaux</span><span>Fond</span></div>
  <div class="list">
   <div class="grp">Base</div>
   <div class="cr"><span class="sw2" style="background:#05070c"></span><span class="t">Fond</span><span class="hex">#05070C</span></div>
   <div class="cr"><span class="sw2" style="background:#0e121d"></span><span class="t">Surfaces</span><span class="hex">#0E121D</span></div>
   <div class="cr"><span class="sw2" style="background:#eef2fb"></span><span class="t">Texte</span><span class="hex">#EEF2FB</span></div>
-  <div class="cr on"><span class="sw2" style="background:#3d6bff"></span><span class="t">Accent</span><span class="hex">#3D6BFF</span></div>
+  <div class="cr on"><span class="sw2" style="background:#2967ff"></span><span class="t">Accent</span><span class="hex">#2967FF</span></div>
   <div class="picker"><div class="sv"><i></i></div><div class="hue"><i></i></div>
-   <div class="prow"><span class="field">#3D6BFF</span><span class="btn sm quiet"><i data-i="eye" data-size="sm"></i></span></div>
-   <div class="contrast"><span class="chip ok">AA 6,1:1</span>texte blanc sur l'accent</div></div>
+   <div class="prow"><span class="field">#2967FF</span><span class="btn sm quiet"><i data-i="eye" data-size="sm"></i></span></div>
+   <div class="contrast"><span class="chip ok">4,69:1</span>texte blanc sur l’accent (≥ 4,5 requis)</div></div>
   <div class="cr"><span class="sw2" style="background:#5ad2e8"></span><span class="t">Second accent</span><span class="hex">#5AD2E8</span></div>
   <div class="grp">Avancé (dérivé automatiquement)</div>
   <div class="cr"><span class="sw2" style="background:#141a28"></span><span class="t">Onglet actif</span><span class="hex" style="color:var(--c-text-3)">auto</span></div>
@@ -54,7 +54,7 @@
  <div class="foot"><span class="btn quiet">Annuler</span><span class="btn" style="margin-left:auto"><i data-i="copy" data-size="sm"></i>Dupliquer</span><span class="btn primary">Appliquer</span></div>
 </div>
 <div class="stage"><div class="bar"><b style="color:var(--c-text);font-weight:600">Aperçu</b><span class="seg"><span class="on">Fenêtre</span><span>Page interne</span><span>Menus</span></span><span style="margin-left:auto">Cliquez un élément de l'aperçu pour modifier sa couleur</span><span class="btn sm"><i data-i="eye" data-size="sm"></i>Essayer en direct</span></div>
- <div class="mini" style="--c-accent:#3d6bff">
+ <div class="mini" style="--c-accent:#2967ff">
   <div class="strip"><div class="tab"><span style="width:14px;height:14px;border-radius:4px;background:#1f6feb"></span>Le Monde</div><div class="tab on"><span style="width:14px;height:14px;border-radius:4px;background:#3d7a5c"></span>Wikipédia</div><div class="tab"><span style="width:14px;height:14px;border-radius:4px;background:#24292f"></span>GitHub</div></div>
   <div class="tb"><span class="ib"><i data-i="back"></i></span><span class="ib"><i data-i="reload"></i></span><div class="om">fr.wikipedia.org/wiki/Crépuscule</div><span class="ib"><i data-i="shieldok"></i></span><span class="ib"><i data-i="menu"></i></span></div>
   <div class="pg"><div class="menu"><div class="mi"><i data-i="newtab"></i>Nouvel onglet</div><div class="mi hover"><i data-i="history"></i>Historique</div><div class="mi"><i data-i="palette"></i>Apparence</div><div class="msep"></div><div class="mi"><i data-i="settings"></i>Paramètres</div></div>
