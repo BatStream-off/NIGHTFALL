@@ -57,6 +57,10 @@ jobs:
           sleep 1
           mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y > /dev/null && npm install --silent playwright@1 && npx playwright install --with-deps chromium > /dev/null
           cp "$GITHUB_WORKSPACE/ci/ui_render_test.js" . && node ui_render_test.js
+          # VideoGuard page script on a simulated YouTube player: skips, nested
+          # segments, "Revenir", speed after an ad, mute segments...
+          cp "$GITHUB_WORKSPACE/ci/videoguard_test.js" . && node videoguard_test.js "$GITHUB_WORKSPACE/crates/nf-videoguard/src/videoguard.js" | grep -v '^P\.dom_ids' > vg.out
+          diff -u "$GITHUB_WORKSPACE/ci/videoguard_expected.txt" vg.out
       - name: Lockfile
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
