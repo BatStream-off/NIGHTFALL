@@ -4,6 +4,21 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-05 — Décisions du propriétaire ; lot L0 lancé
+- **Validé** : plan (ordre L0 → L6) ; lancement de L0 ; le Directeur corrige lui-même M-0002 et
+  M-0003 (refusées deux fois) puis audit final ; protection de `main` (le proxy refuse ce réglage
+  au Directeur : instructions données au propriétaire) ; effacement de la copie Chromium des
+  autorisations mémorisées au verrouillage et à la fermeture ; uBlock Origin exécuté en CI comme
+  outil de mesure seulement.
+- **Non validé** : VideoGuard désactivé par défaut en navigation privée (comportement actuel conservé).
+- **Design** : le propriétaire veut voir les maquettes avant de décider ; 8 maquettes envoyées.
+- **M-0005** : corrections livrées (011d19d), second audit à faire. **M-0006** : audit 2 REFUSÉ
+  (2 MAJEUR : remise à zéro des autorisations ≠ comportement identique → réappliquer au
+  déverrouillage ; critères de la vue d'ensemble du Security Center absents et parallélisme
+  M-E3/M-E4/M-E5 faux) → deux refus : propriétaire à consulter.
+- **L0** : M-0007 (sécurité du verrouillage, réglages robustes, autorisations Chromium) et M-0008
+  (onglets, menus, Accueil), Exécuteurs Opus en parallèle ; M-0007 intègre en premier.
+
 ## 2026-11-05 — M-0004 ACCEPTÉE ; M-0003 arrêtée (règle 6) ; M-0002 livrée
 - **M-0004** : audit 2 (Opus, agent neuf) ACCEPTÉ, 5 MINEUR (§0 licence à aligner sur
   §9.3, clause §4 simplifiée, empreinte par la liste des catégories envoyées → paramètres
