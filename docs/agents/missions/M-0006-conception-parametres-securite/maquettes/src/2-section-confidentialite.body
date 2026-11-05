@@ -1,0 +1,15 @@
+<div class="search">Rechercher dans les paramètres</div>
+<div class="crumb">Paramètres</div><h1>Confidentialité</h1>
+<div class="box"><div class="row"><div class="t"><div class="lbl">Effacer les données de navigation</div><div class="desc">Historique, téléchargements, cookies, cache</div></div><span class="chev">›</span></div>
+<div class="row"><div class="t"><div class="lbl">Effacer à la fermeture</div><div class="desc">Rien n'est effacé automatiquement</div></div><span class="sel">Rien</span></div></div>
+<h2>Cookies et données des sites</h2>
+<div class="box"><div class="row"><div class="t"><div class="lbl">Cookies</div><div class="desc">Les cookies tiers permettent de vous suivre d'un site à l'autre.</div></div><span class="sel">Bloquer les cookies tiers</span></div>
+<div class="row"><div class="t"><div class="lbl">Données des sites</div><div class="desc">Voir et supprimer les cookies et le stockage de chaque site</div></div><span class="badge">48 sites</span><span class="chev">›</span></div>
+<div class="row"><div class="t"><div class="lbl">Exceptions de cookies</div><div class="desc">Autoriser, bloquer ou effacer à la fermeture, site par site : Autorisations des sites</div></div><span class="chev">›</span></div></div>
+<h2>Suivi</h2>
+<div class="box"><div class="row"><div class="t"><div class="lbl">Global Privacy Control</div><div class="desc">Demande aux sites de ne pas vendre ni partager vos données.</div></div><span class="sw on"></span></div>
+<div class="row"><div class="t"><div class="lbl">Protection de l'adresse IP (WebRTC)</div><div class="desc">Les sites ne voient pas votre adresse IP locale.</div></div><span class="sel">Interface publique seulement</span></div>
+<div class="row"><div class="t"><div class="lbl">Blocage des traqueurs</div><div class="desc">Assuré par NIGHTFALL Shield (EasyPrivacy, uBlock – Vie privée)</div></div><span class="badge ok">Actif</span><span class="chev">›</span></div></div>
+<h2>Préchargement</h2>
+<div class="box"><div class="row"><div class="t"><div class="lbl">Précharger les pages</div><div class="desc">Plus rapide, mais contacte des sites que vous n'ouvrirez peut-être pas. Désactivé par défaut.</div></div><span class="sw"></span></div></div>
+<p class="note">Un seul endroit par réglage : les cookies tiers ne se règlent qu'ici ; les exceptions par site, dans Autorisations des sites.</p>

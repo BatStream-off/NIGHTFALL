@@ -1,0 +1,6 @@
+<aside class="side"><div class="brand"><i></i>Paramètres</div><nav class="nav">
+<a class="sc %SC%" href="#"><b></b>Security Center</a><div class="sep"></div>
+<a class="%GEN%"><b></b>Général</a><a><b></b>Apparence et thèmes</a><a class="%CONF%"><b></b>Confidentialité</a><a class="%SEC%"><b></b>Sécurité</a>
+<a><b></b>NIGHTFALL Shield</a><a><b></b>VideoGuard</a><a class="%SITES%"><b></b>Autorisations des sites</a><a><b></b>Téléchargements</a>
+<a><b></b>Navigation</a><a><b></b>Moteurs de recherche</a><a><b></b>Performances</a><a><b></b>Accessibilité</a><a><b></b>Options avancées</a>
+<div class="sep"></div><a><b></b>À propos de NIGHTFALL</a></nav></aside>
