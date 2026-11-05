@@ -4,6 +4,30 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-05 — Reprise après la limite hebdomadaire ; M-0003 et M-0004
+- Limite **hebdomadaire** atteinte le 2026-11-04 au soir (M-0002, M-0003, audit M-0004
+  interrompus), levée le 2026-11-05 à 8:00 ; reprise par SendMessage.
+- **M-0004** : audit 1 REFUSÉ (4 MAJEUR) ; MAJEUR 1 vérifié par le Directeur
+  (`lock_now` ne touche ni VideoGuard ni les médias ; aucun `is_unlocked()` dans
+  `on_navigation`). Tentative 2 (Opus) livrée 7bf3f63 ; audit 2 lancé.
+- **Constat de sécurité ajouté aux priorités** : pendant le verrouillage, les onglets
+  masqués continuent de tourner (lecture vidéo et son, requêtes VideoGuard).
+- **M-0003** : audit REFUSÉ (1 MAJEUR : cache du moteur sérialisé présenté à tort comme
+  sûr ; 9 MINEUR) ; mesures confirmées. **Arbitrage** : le producteur était déjà Opus
+  (pas de modèle supérieur) ; les corrections, textuelles et précises, sont confiées
+  au même agent producteur, puis un **nouvel** Auditeur vérifiera.
+- **Décisions à soumettre au propriétaire** : exécution de uBlock Origin (GPL) cloné
+  en CI comme outil de mesure ; conservation des jobs « Audit Shield ».
+
+## 2026-11-04 — M-0001 ACCEPTÉE (tentative 2)
+- Analyste Opus ; audit 2 (Opus, agent neuf) : ACCEPTÉ, 9 MINEUR (P1–P9), à corriger
+  dans une mission ultérieure de mise à jour du registre.
+- **Processus** : #22 (`orga/refonte` → `main`) et #24 (`agent/M-0001-registre-v2` →
+  `main`) fusionnées depuis l'interface web avant audit (titre tronqué par GitHub,
+  10 s entre ouverture et fusion). Documents seulement. Le propriétaire a été prié de
+  ne plus fusionner et s'est vu proposer une protection de `main` (non activée sans
+  son accord). `develop` non resynchronisé : c'est une fusion (règle 9).
+
 ## 2026-11-04 — Refonte : phase d'audit lancée
 - **Demande** du propriétaire : `missions/DEMANDE-2026-11-04-refonte.md`. Nouvelles
   règles reportées dans la charte (§1, règles 9 à 12), dont : **aucune fusion sans son

@@ -2,7 +2,7 @@
 
 - **Rôle** : Analyste
 - **Modèle** : opus (tentative 2) — raison : montée de niveau après audit REFUSÉ de la tentative 1 (sonnet, choisi pour un inventaire étendu)
-- **Statut** : EN COURS
+- **Statut** : ACCEPTÉE
 - **Branche** : agent/M-0001-registre-v2 (tentative 1 : agent/M-0001-registre-fonctionnalites, commit 76ed70a)
 - **Copie isolée (worktree)** : oui
 - **Dépend de** : rien (la tentative 2 part de `origin/develop`, qui contient déjà la tentative 1)
