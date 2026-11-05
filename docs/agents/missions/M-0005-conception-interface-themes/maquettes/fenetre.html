@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>NIGHTFALL — maquette de fenêtre (M-0005)</title>
+<link rel="stylesheet" href="ds.css">
+<link rel="stylesheet" href="themes.css">
+<style>
+  /* ---------------------------------------------------- fenêtre */
+  body { background: #2a2d33; padding: 0; }
+  .win { position: relative; width: 1280px; height: 800px; overflow: hidden; background: var(--page-bg); display: flex; }
+  body.os-mac .win { border-radius: 10px; }
+  .col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  /* ---------------------------------------------------- header : bande d'onglets 40 px + barre d'outils 44 px */
+  .strip { height: 40px; display: flex; align-items: flex-end; background: var(--header-bg); padding: 0 0 0 8px; position: relative; }
+  body.os-mac .strip { padding-left: 80px; }
+  .tabs { display: flex; align-items: center; gap: 2px; height: 40px; min-width: 0; }
+  .tab { position: relative; display: flex; align-items: center; gap: 8px; width: 216px; height: 32px; padding: 0 6px 0 10px; border-radius: var(--r-md); color: var(--header-text); font-size: var(--t-12); transition: background var(--d-fast) var(--ease); }
+  .tab:hover, .tab.hover { background: var(--tab-hover); color: var(--c-text); }
+  .tab.active { background: var(--tab-active-bg); color: var(--tab-active-text); box-shadow: var(--e-1), 0 0 0 1px var(--c-line); }
+  .tab.active::after { content: ""; position: absolute; left: 50%; bottom: -1px; width: 22px; height: 2px; margin-left: -11px; border-radius: 2px; background: var(--tab-indicator); }
+  .tab .fav { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; font: 600 9px/1 var(--f-ui); color: #fff; flex: none; }
+  .tab .ttl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; -webkit-mask: linear-gradient(90deg, #000 calc(100% - 16px), transparent); }
+  .tab .x { width: 20px; height: 20px; border-radius: var(--r-sm); display: grid; place-items: center; color: var(--c-text-2); opacity: 0; }
+  .tab.active .x, .tab.hover .x { opacity: 1; }
+  .tab .x svg.i { width: 12px; height: 12px; stroke-width: 2; }
+  .tab .snd { color: var(--c-accent-2); display: grid; }
+  .tab .snd svg.i { width: 14px; height: 14px; }
+  .tab.pinned { width: 40px; padding: 0; justify-content: center; }
+  .tab.pinned .ttl, .tab.pinned .x { display: none; }
+  .tab .spin { width: 14px; height: 14px; border-radius: 50%; border: 1.6px solid var(--c-accent-2); border-right-color: transparent; }
+  .tsep { width: 1px; height: 16px; background: var(--c-line-strong); margin: 0 2px; }
+  .newtab { margin-left: 4px; }
+  .drag { flex: 1; height: 100%; }
+  .wc { display: flex; height: 40px; align-self: flex-start; }
+  .wc span { width: 46px; display: grid; place-items: center; color: var(--c-text-2); }
+  .wc span.hover { background: var(--c-hover); color: var(--c-text); }
+  .wc span.close.hover { background: #c42b3c; color: #fff; }
+  .wc svg.i { width: 16px; height: 16px; stroke-width: 1.2; }
+  .lights { position: absolute; left: 14px; top: 13px; display: flex; gap: 8px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.25); }
+  .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  body.inactive .lights i { background: #4a4d55; }
+  .privchip { align-self: center; margin-right: 6px; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border-radius: var(--r-pill); background: color-mix(in oklab, var(--c-private) 18%, transparent); color: #dccfff; font: 600 var(--t-12)/1 var(--f-ui); }
+  .privchip svg.i { width: 14px; height: 14px; }
+
+  .toolbar { height: 44px; display: flex; align-items: center; gap: 2px; padding: 0 8px; background: var(--toolbar-bg); border-bottom: 1px solid var(--c-line); }
+  .omni { flex: 1; display: flex; align-items: center; gap: 8px; height: var(--h-lg); margin: 0 8px; padding: 0 4px 0 6px; border-radius: 10px; background: var(--omnibox-bg); border: 1px solid transparent; }
+  .omni.focus { border-color: var(--c-accent-2); box-shadow: 0 0 0 3px color-mix(in oklab, var(--c-accent-2) 20%, transparent); }
+  .site { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: var(--r-sm); color: var(--c-text-2); font-size: var(--t-12); }
+  .site:hover, .site.hover { background: var(--c-hover); }
+  .url { flex: 1; font-size: var(--t-13); white-space: nowrap; overflow: hidden; color: var(--c-text-3); }
+  .url b { color: var(--c-text); font-weight: 400; }
+  .shield { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px 0 6px; border-radius: var(--r-sm); color: var(--c-accent-2); font: 600 var(--t-12)/1 var(--f-display); font-variant-numeric: tabular-nums; }
+  .shield.hover { background: var(--c-hover); }
+  .tsp { width: 1px; height: 20px; background: var(--c-line-strong); margin: 0 6px; }
+
+  /* ---------------------------------------------------- onglets verticaux */
+  .side { width: 248px; flex: none; display: flex; flex-direction: column; background: var(--header-bg); border-right: 1px solid var(--c-line); }
+  .side-head { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 14px; }
+  body.os-mac .side-head { padding-left: 84px; }
+  .side-head .brand { flex: 1; font: 600 var(--t-12)/1 var(--f-display); letter-spacing: .32em; color: var(--c-text-2); }
+  .vtabs { flex: 1; padding: 4px 8px; display: grid; gap: 2px; align-content: start; }
+  .vt { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 6px 0 10px; border-radius: var(--r-md); color: var(--header-text); font-size: var(--t-13); position: relative; }
+  .vt.active { background: var(--tab-active-bg); color: var(--c-text); box-shadow: var(--e-1), 0 0 0 1px var(--c-line); }
+  .vt.active::before { content: ""; position: absolute; left: -8px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--c-accent-2); }
+  .vt .fav { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; font: 600 9px/1 var(--f-ui); color: #fff; flex: none; }
+  .vt .ttl { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vgroup { margin: 10px 4px 4px; color: var(--c-text-3); font: 600 var(--t-11)/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; }
+  .pins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 4px 8px 6px; }
+  .pins span { height: 36px; border-radius: var(--r-md); background: var(--c-hover); display: grid; place-items: center; }
+  .side-foot { padding: 8px; border-top: 1px solid var(--c-line); display: flex; gap: 4px; }
+
+  /* ---------------------------------------------------- nouvel onglet */
+  .content { flex: 1; position: relative; overflow: hidden; background: var(--page-bg); }
+  .sky { position: absolute; inset: 0; background:
+      radial-gradient(60% 46% at 50% 100%, color-mix(in oklab, var(--c-accent) 55%, transparent), transparent 100%),
+      radial-gradient(34% 34% at 18% 100%, color-mix(in oklab, var(--c-accent-2) 40%, transparent), transparent 100%),
+      radial-gradient(38% 38% at 84% 100%, color-mix(in oklab, var(--p-dusk) 50%, transparent), transparent 100%),
+      linear-gradient(to top, color-mix(in oklab, var(--c-accent) 10%, var(--page-bg)), var(--page-bg) 60%); }
+  .sky::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(1px 1px at 12% 18%, #fff8, transparent), radial-gradient(1px 1px at 34% 9%, #fff6, transparent), radial-gradient(1px 1px at 58% 22%, #fff5, transparent), radial-gradient(1px 1px at 77% 12%, #fff7, transparent), radial-gradient(1px 1px at 88% 31%, #fff4, transparent), radial-gradient(1px 1px at 6% 40%, #fff4, transparent), radial-gradient(1px 1px at 47% 36%, #fff3, transparent); }
+  .horizon { position: absolute; left: 0; right: 0; bottom: 118px; height: 1.5px; background: var(--c-horizon); opacity: .9; box-shadow: 0 0 18px 1px color-mix(in oklab, var(--c-accent) 70%, transparent); }
+  .horizon::after { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 118px; background: linear-gradient(to bottom, color-mix(in oklab, var(--page-bg) 55%, transparent), var(--page-bg)); }
+  .nt { position: absolute; inset: 0; display: grid; justify-items: center; align-content: start; padding-top: 128px; gap: 22px; }
+  .clock { font: 500 64px/1 var(--f-display); letter-spacing: .02em; color: var(--c-text); }
+  .date { color: var(--c-text-2); font-size: var(--t-14); margin-top: -10px; }
+  .search { width: 600px; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-radius: 14px; background: color-mix(in oklab, var(--c-surface) 82%, transparent); border: 1px solid var(--c-line-strong); color: var(--c-text-3); font-size: var(--t-14); backdrop-filter: blur(12px); }
+  .search .eng { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-12); color: var(--c-text-2); }
+  .tiles { display: flex; gap: 14px; margin-top: 14px; }
+  .tile { width: 84px; display: grid; justify-items: center; gap: 8px; font-size: var(--t-12); color: var(--c-text-2); }
+  .tile span { width: 52px; height: 52px; border-radius: 14px; background: color-mix(in oklab, var(--c-raised) 80%, transparent); border: 1px solid var(--c-line); display: grid; place-items: center; }
+  .tile span i { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font: 600 12px/1 var(--f-ui); color: #fff; font-style: normal; }
+  .stats { position: absolute; left: 24px; bottom: 22px; display: flex; gap: 22px; align-items: baseline; padding: 12px 16px; border-radius: var(--r-lg); background: color-mix(in oklab, var(--c-surface) 70%, transparent); border: 1px solid var(--c-line); backdrop-filter: blur(10px); }
+  .stats b { font: 600 22px/1 var(--f-display); color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .stats span { color: var(--c-text-2); font-size: var(--t-12); margin-left: 6px; }
+  .custom { position: absolute; right: 20px; bottom: 22px; }
+  .page-dim { position: absolute; inset: 0; background: rgba(0,0,0,.0); }
+</style>
+</head>
+<body>
+<div class="win" id="win"></div>
+<script>
+const q = new URLSearchParams(location.search);
+const OS = q.get('os') || 'win', MODE = q.get('mode') || 'h', PRIV = q.get('private') === '1';
+document.body.classList.add('os-' + OS);
+if (q.get('theme')) document.documentElement.dataset.theme = q.get('theme');
+if (q.get('inactive')) document.body.classList.add('inactive');
+const I = (n, s) => `<i data-i="${n}" ${s ? `data-size="${s}"` : ''}></i>`;
+const TABS = [
+  ['pinned', '#e7462e', 'M', 'Messagerie'],
+  ['', '#1f6feb', 'L', 'Le Monde.fr — Actualités et infos'],
+  ['active', '#3d7a5c', 'W', 'Crépuscule — Wikipédia', 'snd'],
+  ['loading', '#24292f', 'G', 'GitHub · BatStream-off/NIGHTFALL'],
+  ['', '#5b4bd6', 'N', 'Nouvel onglet'],
+];
+const fav = (c, l) => `<span class="fav" style="background:${c}">${l}</span>`;
+const tab = ([cls, c, l, t, snd]) => `<div class="tab ${cls}">${cls === 'loading' ? '<span class="spin"></span>' : fav(c, l)}<span class="ttl">${t}</span>${snd ? `<span class="snd">${I('sound')}</span>` : ''}<span class="x">${I('close')}</span></div>`;
+const winctl = OS === 'win' ? `<div class="wc"><span>${I('winmin')}</span><span>${I('winmax')}</span><span class="close">${I('winclose')}</span></div>` : '';
+const toolbar = `<div class="toolbar">
+  <span class="ib">${I('back')}</span><span class="ib off">${I('fwd')}</span><span class="ib">${I('reload')}</span>
+  <div class="omni"><span class="site">${I('secure', 'sm')}</span><span class="url"><b>fr.wikipedia.org</b>/wiki/Crépuscule</span>
+    <span class="ib" style="width:28px;height:28px">${I('star')}</span>
+    <span class="shield">${I('shieldok')}3</span></div>
+  <span class="ib">${I('video')}</span><span class="ib">${I('download')}<span class="dot"></span></span><span class="ib">${I('key')}</span>
+  <span class="tsp"></span><span class="ib">${I('lock')}</span><span class="ib">${I('menu')}</span>${MODE === 'v' ? winctl.replace('height: 40px', '') : ''}
+</div>`;
+const newtab = `<div class="content"><div class="sky"></div><div class="horizon"></div>
+  <div class="nt"><div class="clock">21:47</div><div class="date">jeudi 5 novembre</div>
+  <div class="search">${I('search')}Rechercher ou saisir une adresse<span class="eng">${I('globe', 'sm')}DuckDuckGo</span></div>
+  <div class="tiles">${[['#ff0033', 'Y', 'YouTube'], ['#3d7a5c', 'W', 'Wikipédia'], ['#24292f', 'G', 'GitHub'], ['#1f6feb', 'L', 'Le Monde'], ['#ff6314', 'R', 'Reddit'], ['#7ebc6f', 'O', 'OpenStreetMap']].map(([c, l, t]) => `<div class="tile"><span><i style="background:${c}">${l}</i></span>${t}</div>`).join('')}<div class="tile"><span>${I('plus')}</span>Ajouter</div></div></div>
+  <div class="stats">${I('shieldok')}<div><b>735</b><span>bloqués</span></div><div><b>25,5</b><span>Mo épargnés</span></div><div><b>37 s</b><span>gagnées</span></div></div>
+  <div class="custom"><span class="btn quiet sm">${I('palette', 'sm')}Personnaliser</span></div></div>`;
+let html;
+if (MODE === 'v') {
+  html = `<div class="side"><div class="side-head">${OS === 'mac' ? '' : '<img src="../../../../../app/ui/emblem.png" width="18">'}<span class="brand">${OS === 'mac' ? '' : 'NIGHTFALL'}</span><span class="ib">${I('sidebar')}</span></div>
+    <div class="pins"><span>${fav('#e7462e', 'M')}</span><span>${fav('#0a66c2', 'C')}</span><span>${fav('#1db954', 'S')}</span><span>${fav('#5865f2', 'D')}</span></div>
+    <div class="vtabs"><div class="vgroup">Aujourd'hui</div>${TABS.slice(1).map(([c, col, l, t]) => `<div class="vt ${c}">${c === 'loading' ? '<span class="tab"><span class="spin"></span></span>'.replace('class="tab"', 'style="display:grid;width:16px"') : fav(col, l)}<span class="ttl">${t}</span></div>`).join('')}</div>
+    <div class="side-foot"><span class="btn quiet sm" style="flex:1;justify-content:flex-start">${I('plus', 'sm')}Nouvel onglet</span><span class="ib">${I('search')}</span></div></div>
+    <div class="col">${toolbar}${newtab}</div>`;
+} else {
+  html = `<div class="col"><div class="strip">${PRIV ? `<span class="privchip">${I('private', 'sm')}Privé</span>` : ''}<div class="tabs">${TABS.map(tab).join('')}<span class="ib newtab">${I('plus')}</span></div><div class="drag"></div>${winctl}</div>${toolbar}${newtab}</div>`;
+}
+document.getElementById('win').innerHTML = html + (OS === 'mac' ? '<div class="lights"><i></i><i></i><i></i></div>' : '');
+if (PRIV) document.documentElement.dataset.theme = 'prive';
+if (q.get('hover')) for (const s of q.get('hover').split(',')) document.querySelector(s)?.classList.add('hover');
+</script>
+<script src="icons.js"></script>
+</body>
+</html>

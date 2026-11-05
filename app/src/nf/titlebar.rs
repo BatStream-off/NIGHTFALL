@@ -241,7 +241,8 @@ pub fn report(window_id: u32) -> serde_json::Value {
 #[cfg(target_os = "windows")]
 fn hit_test(window: &Window, drag: Option<(i32, i32)>, nodrag: Option<(i32, i32)>) -> serde_json::Value {
     use windows_sys::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_NCHITTEST};
-    let hwnd = window.window_handle() as *mut core::ffi::c_void;
+    // cef-sys wraps the handle: HWND(*mut HWND__).
+    let hwnd = window.window_handle().0 as *mut core::ffi::c_void;
     let area = window.client_area_bounds_in_screen();
     let scale = window.display().map(|d| d.device_scale_factor()).unwrap_or(1.0);
     let test = |p: Option<(i32, i32)>| -> i64 {
