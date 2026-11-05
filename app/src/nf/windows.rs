@@ -1610,7 +1610,33 @@ pub fn push_tabs(window_id: u32) {
         return;
     }
     let st = tabs_state(window_id);
+    remember_active_url(window_id, active_url(window_id));
     push_event(window_id, &st);
+}
+
+/// Address of the active tab of each window, readable from any thread
+/// without waiting for the UI thread (the internal API runs on CEF's IO
+/// thread: waiting there blocked every network request, up to 2 s on macOS).
+/// Updated with every "tabs" event, i.e. on each activation and address change.
+static ACTIVE_URLS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<u32, String>>> = std::sync::OnceLock::new();
+
+fn remember_active_url(window_id: u32, url: Option<String>) {
+    let m = ACTIVE_URLS.get_or_init(Default::default);
+    if let Ok(mut m) = m.lock() {
+        match url {
+            Some(u) => {
+                m.insert(window_id, u);
+            }
+            None => {
+                m.remove(&window_id);
+            }
+        }
+    }
+}
+
+/// Last known address of the active tab (any thread).
+pub fn cached_active_url(window_id: u32) -> Option<String> {
+    ACTIVE_URLS.get()?.lock().ok()?.get(&window_id).cloned()
 }
 
 pub fn push_tabs_all() {
