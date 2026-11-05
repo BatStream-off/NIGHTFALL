@@ -591,6 +591,10 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
 // ---------------------------------------------------------------- helpers
 
 fn windows_active_url(w: u32) -> String {
+    // Cached by the UI thread: no wait on CEF's IO thread.
+    if let Some(u) = windows::cached_active_url(w) {
+        return u;
+    }
     let (tx, rx) = std::sync::mpsc::channel();
     on_ui(move || {
         let _ = tx.send(windows::active_url(w).unwrap_or_default());
@@ -789,8 +793,9 @@ fn open_stores(c: &mut Core, mk: nf_crypto::SecretKey) -> Result<(), String> {
             c.videoguard = v;
         }
         if let Some(sh) = state::load_setting::<nf_shield::ShieldConfig>(st, "shield") {
-            state::shield().set_config(sh.with_new_default_lists());
+            state::shield().set_config_later(sh.with_new_default_lists());
         }
+        rebuild_shield_in_background();
         if let Ok(Some(total)) = st.setting::<u64>("shield_total") {
             state::set_blocked_saved_total(total);
         }
@@ -1181,11 +1186,30 @@ fn theme_delete(body: &Value) -> Value {
     ok()
 }
 
+/// Build Shield's engine off CEF's threads (80 to 140 ms, more with large
+/// lists), then save the settings (fingerprints recorded at the first build).
+pub fn rebuild_shield_in_background() {
+    background(
+        || {
+            let sh = state::shield();
+            sh.rebuild();
+            sh.integrity_errors()
+        },
+        |refused| {
+            for e in &refused {
+                state::log(&format!("Shield : {e}"));
+            }
+            core().save_settings();
+        },
+    );
+}
+
 fn shield_set(body: &Value) -> Value {
     match serde_json::from_value::<nf_shield::ShieldConfig>(body.get("config").cloned().unwrap_or(Value::Null)) {
         Ok(cfg) => {
-            state::shield().set_config(cfg);
+            state::shield().set_config_later(cfg);
             core().save_settings();
+            rebuild_shield_in_background();
             ok()
         }
         Err(e) => err(e),

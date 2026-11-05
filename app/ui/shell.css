@@ -6,11 +6,11 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 /* ---------- Splash (0.85 s, the one orchestrated moment) ---------- */
 #splash { position: fixed; inset: 0; background: var(--night); display: grid; place-items: center; z-index: 50; }
-.splash-stage { display: grid; justify-items: center; gap: 22px; animation: nf-out .4s ease-in 1.4s forwards; }
-.splash-emblem { position: relative; width: 128px; height: 128px; -webkit-mask: url(emblem.png) center / contain no-repeat; mask: url(emblem.png) center / contain no-repeat; opacity: 0; transform: scale(.9); animation: nf-in .6s cubic-bezier(.2, .7, .2, 1) .15s forwards; overflow: hidden; }
+.splash-stage { display: grid; justify-items: center; gap: 22px; animation: nf-out .2s ease-in .65s forwards; }
+.splash-emblem { position: relative; width: 128px; height: 128px; -webkit-mask: url(emblem.png) center / contain no-repeat; mask: url(emblem.png) center / contain no-repeat; opacity: 0; transform: scale(.9); animation: nf-in .35s cubic-bezier(.2, .7, .2, 1) .05s forwards; overflow: hidden; }
 .splash-emblem img { width: 100%; height: 100%; }
-.sheen { position: absolute; top: -20%; left: -70%; width: 45%; height: 140%; background: linear-gradient(100deg, transparent, rgba(140, 230, 255, .6), transparent); transform: skewX(-18deg); animation: nf-sheen .55s ease-in-out .7s forwards; }
-.splash-name { font: 600 30px/1 var(--display); letter-spacing: .42em; padding-left: .42em; color: var(--moon); opacity: 0; animation: nf-fade .45s ease-out .85s forwards; }
+.sheen { position: absolute; top: -20%; left: -70%; width: 45%; height: 140%; background: linear-gradient(100deg, transparent, rgba(140, 230, 255, .6), transparent); transform: skewX(-18deg); animation: nf-sheen .35s ease-in-out .3s forwards; }
+.splash-name { font: 600 30px/1 var(--display); letter-spacing: .42em; padding-left: .42em; color: var(--moon); opacity: 0; animation: nf-fade .3s ease-out .35s forwards; }
 @keyframes nf-in { to { opacity: 1; transform: scale(1); } }
 @keyframes nf-sheen { to { left: 140%; } }
 @keyframes nf-fade { to { opacity: 1; } }

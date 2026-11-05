@@ -363,7 +363,7 @@ function sAppearance() {
     group('Barre d\'outils et onglets',
       toggle('Afficher le bouton Accueil', 'Bouton de la barre d\'outils qui ouvre la page Nouvel onglet.', () => S.show_home_button, (v) => { S.show_home_button = v; }, { keywords: 'maison home' }),
       toggle('Onglets verticaux', 'Affiche les onglets dans une barre latérale à gauche.', () => S.vertical_tabs, (v) => { S.vertical_tabs = v; }, { keywords: 'barre laterale' }),
-      toggle('Animation de démarrage', 'Joue l\'animation NIGHTFALL au lancement (1,8 s).', () => P.splash_enabled, (v) => { P.splash_enabled = v; }, { keywords: 'splash' })),
+      toggle('Animation de démarrage', 'Joue l\'animation NIGHTFALL au lancement (moins d\'une seconde).', () => P.splash_enabled, (v) => { P.splash_enabled = v; }, { keywords: 'splash' })),
     group('Pages web',
       row({ label: 'Taille de la police', desc: 'Taille du texte des pages qui ne fixent pas la leur.', prefs: ['webkit.webprefs.default_font_size', 'webkit.webprefs.default_fixed_font_size'], keywords: 'texte caracteres lisibilite',
         ctl: select(FONTS, S.font_size, async (v) => { S.font_size = Number(v); await save(); }) }),

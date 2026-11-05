@@ -81,7 +81,7 @@ function applyWinState(ev) {
 function splash() {
   return new Promise((resolve) => {
     show('splash', true);
-    setTimeout(() => { show('splash', false); resolve(); }, 1800);
+    setTimeout(() => { show('splash', false); resolve(); }, 850);
   });
 }
 

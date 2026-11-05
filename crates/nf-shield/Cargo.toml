@@ -12,6 +12,7 @@ base64.workspace = true
 psl.workspace = true
 url.workspace = true
 ureq.workspace = true
+sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
