@@ -779,8 +779,8 @@ fn chromium_prefs_categories(host: &str) -> (String, Vec<String>) {
     (name, out)
 }
 
-fn prefs_has_geolocation(host: &'static str) -> bool {
-    chromium_prefs_categories(host).1.iter().any(|c| c.starts_with("geolocation"))
+fn prefs_has_decision(host: &'static str) -> bool {
+    chromium_prefs_categories(host).1.iter().any(|c| c.starts_with("clipboard"))
 }
 
 fn step_lock_guard() {
@@ -821,7 +821,9 @@ fn step_lock_guard() {
 /// State of the test page: audio playing, VideoGuard present, video rate.
 const MEDIA_STATE: &str = "(function(){var a=document.getElementById('nf-a'),v=document.getElementById('nf-v');return {playing:!a.paused,time:a.currentTime,rate:v.playbackRate,videoMuted:v.muted,vg:!!window.__nightfallVideoGuardSuspend};})()";
 
-const PERM_QUERY: &str = "navigator.permissions.query({name:'geolocation'}).then(function(s){return s.state;})";
+// Clipboard rather than geolocation: geolocation also depends on the
+// operating system (denied on the macOS CI runner), the clipboard does not.
+const PERM_QUERY: &str = "navigator.permissions.query({name:'clipboard-read'}).then(function(s){return s.state;})";
 
 /// Answer of `navigator.permissions.query` before any decision.
 static PERM_INITIAL: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
@@ -843,7 +845,7 @@ fn step_lock_guard_permission() {
 fn step_lock_guard_remember() {
     {
         let mut c = core();
-        super::permissions::remember(&mut c.settings, PERM_ORIGIN, &["geolocation"], true, nf_core::unix_now());
+        super::permissions::remember(&mut c.settings, PERM_ORIGIN, &["clipboard"], true, nf_core::unix_now());
         c.save_settings();
     }
     // As at unlock: the remembered decision is given to Chromium.
@@ -854,7 +856,7 @@ fn step_lock_guard_remember() {
             return fail(&format!("autorisation mémorisée non appliquée par Chromium : {r}"));
         }
         // Chromium writes its preferences about 10 s after a change.
-        poll("décision écrite par Chromium dans Preferences".into(), 60, || prefs_has_geolocation(PERM_HOST), || {
+        poll("décision écrite par Chromium dans Preferences".into(), 60, || prefs_has_decision(PERM_HOST), || {
             let (file, cats) = chromium_prefs_categories(PERM_HOST);
             state::log(&format!("selftest: Preferences ({file}) avant verrouillage, catégories pour {PERM_HOST} : {cats:?}"));
             step_lock_guard_lock();
@@ -940,7 +942,7 @@ fn step_lock_guard_check_shortcuts() {
                     if r != initial {
                         return fail(&format!("autorisation mémorisée encore connue de Chromium pendant le verrouillage : {r}"));
                     }
-                    poll("décision retirée du fichier Preferences".into(), 60, || !prefs_has_geolocation(PERM_HOST), || {
+                    poll("décision retirée du fichier Preferences".into(), 60, || !prefs_has_decision(PERM_HOST), || {
                         let (file, cats) = chromium_prefs_categories(PERM_HOST);
                         state::log(&format!("selftest: Preferences ({file}) pendant le verrouillage, catégories pour {PERM_HOST} : {cats:?}"));
                         step_lock_guard_unlock();
@@ -1055,7 +1057,7 @@ fn step_lock_guard_cleanup() {
         c.settings.site_permissions.retain(|p| p.origin != PERM_ORIGIN);
         c.save_settings();
     }
-    super::permissions::reset_chromium(PERM_ORIGIN, "geolocation");
+    super::permissions::reset_chromium(PERM_ORIGIN, "clipboard");
     windows::activate_tab(1, MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst));
     on_ui_delayed(1000, step_final_menu);
 }
