@@ -274,6 +274,9 @@ wrap_life_span_handler! {
                 blocked_map().remove(&id);
                 super::browsing::forget_browser(id);
                 super::https_first::done(id);
+                if let ClientKind::Ui { .. } = *self.kind {
+                    windows::forget_popup_browser(id);
+                }
                 // Not closed by NIGHTFALL: the page closed itself
                 // (window.close() at the end of a login popup).
                 if let ClientKind::Tab { window_id, tab_id, .. } = *self.kind {
@@ -285,6 +288,21 @@ wrap_life_span_handler! {
         }
 
         fn do_close(&self, browser: Option<&mut Browser>) -> i32 {
+            // Dropdown popups (overlay views): answering 0 would let CEF
+            // send the close to the view's widget, or to the NIGHTFALL
+            // window. Their browser is destroyed with their view instead
+            // (windows::destroy_popup); a close that does not come from
+            // NIGHTFALL closes the popup the same way.
+            if let (ClientKind::Ui { window_id, .. }, Some(b)) = (&*self.kind, browser.as_deref()) {
+                let id = b.identifier();
+                if windows::is_popup_browser(id) {
+                    if !windows::is_closing(id) {
+                        let window_id = *window_id;
+                        super::ui_thread::on_ui_delayed(0, move || windows::popup_close_browser(window_id, id));
+                    }
+                    return 1;
+                }
+            }
             // With Alloy and Views, letting CEF handle a page's own
             // window.close() (end of a login popup) closes the whole
             // NIGHTFALL window. Only the tab is removed.

@@ -485,6 +485,22 @@ pub fn take_internal_for_tab(tab_id: u32) -> bool {
     false
 }
 
+/// Drop every pending authorisation of a tab (tab closed, or its browser
+/// could not be created): none may be consumed later by another browser.
+pub fn forget_internal_for_tab(tab_id: u32) {
+    let m = INTERNAL_TABS.get_or_init(|| Mutex::new(Vec::new()));
+    if let Ok(mut v) = m.lock() {
+        v.retain(|t| *t != tab_id);
+    }
+}
+
+/// Diagnostic (CI self test): pending authorisations for a tab.
+#[cfg(feature = "selftest")]
+pub fn internal_pending_for_tab(tab_id: u32) -> usize {
+    let m = INTERNAL_TABS.get_or_init(|| Mutex::new(Vec::new()));
+    m.lock().map(|v| v.iter().filter(|t| **t == tab_id).count()).unwrap_or(0)
+}
+
 static LOG_FILE: OnceLock<std::path::PathBuf> = OnceLock::new();
 
 /// Set the log file (inside the profile) once the profile is known.

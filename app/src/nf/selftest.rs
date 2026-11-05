@@ -9,7 +9,7 @@ use super::api::{self, Caller};
 use super::state::{self, core, BrowserKind};
 use super::ui_thread::on_ui_delayed;
 use super::windows;
-use cef::{ImplBrowser, ImplBrowserHost, ImplFrame, ImplValue};
+use cef::{ImplBrowser, ImplBrowserHost, ImplBrowserView, ImplFrame, ImplValue, ImplView};
 use serde_json::{json, Value};
 
 const PIN: &str = "739204";
@@ -398,6 +398,11 @@ pub fn console_result(msg: &str) {
             *c = Some(msg.to_string());
         }
     }
+    if let Some(json) = msg.strip_prefix("m8-rect ") {
+        if let Ok(mut r) = RECT.lock() {
+            *r = serde_json::from_str(json).ok();
+        }
+    }
     if msg.starts_with("copy-check") {
         if let Ok(mut c) = COPY_CHECK.lock() {
             *c = Some(msg.to_string());
@@ -586,7 +591,386 @@ fn step_copy() {
         on_ui_delayed(1500, || {
             let r = COPY_CHECK.lock().ok().and_then(|c| c.clone()).unwrap_or_else(|| "pas de réponse".into());
             state::log(&format!("selftest: presse-papiers : {r}"));
-            step_final_menu();
+            step_home();
+        });
+    });
+}
+
+// ------------------------------------- real clicks in the interface (M-0008)
+//
+// The interface views receive real mouse events through the DevTools
+// protocol (`Input.dispatchMouseEvent`, press and release sent separately),
+// processed by Chromium like hardware events: the bugs that depend on the
+// order of events (tab strip rebuilt between press and release, a popup's
+// late close) only show up this way.
+
+static RECT: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+static DT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(950_000);
+static UI_BASE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ANCHOR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static TARGET: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static RACE_OK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+const TRIALS: u32 = 5;
+const MENU_CYCLES: u32 = 20;
+
+/// Interface view of window 1: top bar or vertical tab strip.
+fn ui_browser(side: bool) -> Option<cef::Browser> {
+    windows::with_window(1, |c| if side { c.side.browser() } else { c.top.browser() }).flatten()
+}
+
+fn ui_js(side: bool, code: &str) {
+    if let Some(f) = ui_browser(side).and_then(|b| b.main_frame()) {
+        f.execute_java_script(Some(&cef::CefString::from(code)), Some(&cef::CefString::from("nightfall://selftest")), 0);
+    }
+}
+
+fn mouse(side: bool, kind: &str, x: f64, y: f64) {
+    let (button, buttons) = match kind {
+        "mousePressed" => ("left", 1),
+        "mouseReleased" => ("left", 0),
+        _ => ("none", 0),
+    };
+    let clicks = if kind == "mouseMoved" { 0 } else { 1 };
+    let msg = json!({ "id": DT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed), "method": "Input.dispatchMouseEvent",
+        "params": { "type": kind, "x": x, "y": y, "button": button, "buttons": buttons, "clickCount": clicks } }).to_string();
+    if let Some(h) = ui_browser(side).and_then(|b| b.host()) {
+        h.send_dev_tools_message(Some(msg.as_bytes()));
+    }
+}
+
+/// Poll `cond` every 200 ms up to `tries` times, then `next(met)`.
+fn poll<C, N>(tries: u32, cond: C, next: N)
+where
+    C: Fn() -> bool + Send + 'static,
+    N: FnOnce(bool) + Send + 'static,
+{
+    on_ui_delayed(200, move || {
+        if cond() {
+            next(true);
+        } else if tries == 0 {
+            next(false);
+        } else {
+            poll(tries - 1, cond, next);
+        }
+    });
+}
+
+/// Centre of the element matching `sel` in an interface view.
+fn with_rect<N: FnOnce(f64, f64) + Send + 'static>(side: bool, sel: String, next: N) {
+    if let Ok(mut r) = RECT.lock() {
+        *r = None;
+    }
+    let sel_js = serde_json::to_string(&sel).unwrap_or_else(|_| "\"\"".into());
+    ui_js(side, &format!("(function(){{var e=document.querySelector({sel_js});var o={{ok:false}};if(e){{var r=e.getBoundingClientRect();o={{ok:r.width>0&&r.height>0,x:r.left+r.width/2,y:r.top+r.height/2}};}}console.log('m8-rect '+JSON.stringify(o));}})();"));
+    poll(25, || RECT.lock().map(|r| r.is_some()).unwrap_or(false), move |_| {
+        let r = RECT.lock().ok().and_then(|r| r.clone()).unwrap_or(Value::Null);
+        if r["ok"].as_bool() != Some(true) {
+            return fail(&format!("élément introuvable ou invisible dans l'interface : {sel} ({r})"));
+        }
+        next(r["x"].as_f64().unwrap_or(0.0), r["y"].as_f64().unwrap_or(0.0));
+    });
+}
+
+/// Real left click: move, press, `during` (between press and release), release.
+fn real_click<D, N>(side: bool, x: f64, y: f64, during: D, next: N)
+where
+    D: FnOnce() + Send + 'static,
+    N: FnOnce() + Send + 'static,
+{
+    mouse(side, "mouseMoved", x, y);
+    mouse(side, "mousePressed", x, y);
+    on_ui_delayed(60, move || {
+        during();
+        on_ui_delayed(90, move || {
+            mouse(side, "mouseReleased", x, y);
+            next();
+        });
+    });
+}
+
+// ---- Accueil from a web page
+
+fn step_home() {
+    step("bouton Accueil depuis une page web (clic réel)");
+    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    if windows::active_tab_id(1) != Some(main) || !active_tab_url_starts("https://example.com") {
+        return fail(&format!("Accueil : l'onglet actif n'est pas la page web attendue ; onglets = {}", windows::tabs_state(1)));
+    }
+    with_rect(false, "#b-home".into(), |x, y| {
+        real_click(false, x, y, || {}, || {
+            poll(75, || active_tab_loaded("nightfall://app/newtab"), |ok| {
+                let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+                if !ok {
+                    return fail(&format!("Accueil depuis une page web : page Nouvel onglet non affichée ; onglets = {}", windows::tabs_state(1)));
+                }
+                if windows::active_tab_id(1) != Some(main) {
+                    return fail("Accueil : la page Nouvel onglet ne s'est pas ouverte dans l'onglet actif");
+                }
+                let pending = state::internal_pending_for_tab(main);
+                let flag = windows::tab_browser(1, main).and_then(|b| state::browser_info(b.identifier())).map(|i| i.allow_internal_nav);
+                state::log(&format!("selftest: Accueil depuis https://example.com : Nouvel onglet affiché dans le même onglet ; autorisations en attente pour l'onglet = {pending} ; autorisation du navigateur restante = {flag:?}"));
+                if pending != 0 || flag != Some(false) {
+                    return fail("Accueil : une autorisation de page interne est restée en attente");
+                }
+                let _ = call("navigate", json!({ "input": "https://example.com/" }));
+                wait_for("retour sur https://example.com après Accueil", 60, || active_tab_loaded("https://example.com"), || {
+                    // A web page still cannot open an internal page by itself.
+                    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+                    windows::exec_in_tab(1, main, "location.href = 'nightfall://app/settings.html';");
+                    on_ui_delayed(2000, || {
+                        if !active_tab_url_starts("https://example.com") {
+                            return fail(&format!("une page web a ouvert une page interne après Accueil ; onglets = {}", windows::tabs_state(1)));
+                        }
+                        state::log("selftest: après Accueil, une page web ne peut toujours pas ouvrir nightfall:// (refusé)");
+                        step_close_buttons();
+                    });
+                });
+            });
+        });
+    });
+}
+
+// ---- tab close button (horizontal and vertical strips)
+
+fn step_close_buttons() {
+    step("croix des onglets : clics réels (barre horizontale)");
+    // Leftover tabs of the previous steps: only the main tab stays.
+    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    let others: Vec<u32> = windows::with_window(1, |c| c.tabs.iter().map(|t| t.id).filter(|id| *id != main).collect()).unwrap_or_default();
+    for id in others {
+        windows::close_tab(1, id);
+    }
+    on_ui_delayed(800, || {
+        close_trial(false, false, 0, Box::new(|| close_trial(false, true, 0, Box::new(step_vertical_on))));
+    });
+}
+
+fn step_vertical_on() {
+    step("croix des onglets : clics réels (onglets verticaux)");
+    let mut s = core().settings.clone();
+    s.vertical_tabs = true;
+    if !expect_ok("onglets verticaux activés", &call("settings.set", json!({ "settings": s }))) {
+        return;
+    }
+    // The interface views reload with the new layout.
+    on_ui_delayed(3000, || {
+        windows::push_tabs(1);
+        on_ui_delayed(800, || close_trial(true, false, 0, Box::new(|| close_trial(true, true, 0, Box::new(step_vertical_off)))));
+    });
+}
+
+fn step_vertical_off() {
+    let mut s = core().settings.clone();
+    s.vertical_tabs = false;
+    if !expect_ok("onglets verticaux désactivés", &call("settings.set", json!({ "settings": s }))) {
+        return;
+    }
+    on_ui_delayed(3000, || {
+        windows::push_tabs(1);
+        on_ui_delayed(800, step_menus);
+    });
+}
+
+/// One real click on the close button of a new tab: active (`background`
+/// false) or in the background. The strip is rebuilt between the press and
+/// the release (as a page load does).
+fn close_trial(side: bool, background: bool, i: u32, done: Box<dyn FnOnce() + Send>) {
+    if i == TRIALS {
+        done();
+        return;
+    }
+    let Some(anchor) = windows::active_tab_id(1) else { return fail("croix : aucun onglet actif") };
+    let before = tab_count();
+    let Some(target) = windows::add_tab(1, windows::NEW_TAB_URL, !background) else { return fail("croix : onglet de test non créé") };
+    ANCHOR.store(anchor, std::sync::atomic::Ordering::SeqCst);
+    TARGET.store(target, std::sync::atomic::Ordering::SeqCst);
+    let tab_sel = if side { format!(".vtab[data-id=\"{target}\"]") } else { format!("#tabs .tab[data-id=\"{target}\"]") };
+    on_ui_delayed(900, move || {
+        let close_sel = format!("{tab_sel} .t-close");
+        // Hover the tab first: narrow background tabs show their close
+        // button on hover only.
+        with_rect(side, tab_sel, move |tx, ty| {
+            mouse(side, "mouseMoved", tx, ty);
+            on_ui_delayed(200, move || {
+                with_rect(side, close_sel, move |x, y| {
+                    real_click(side, x, y, || windows::push_tabs(1), move || {
+                        on_ui_delayed(1200, move || {
+                            let target = TARGET.load(std::sync::atomic::Ordering::SeqCst);
+                            let anchor = ANCHOR.load(std::sync::atomic::Ordering::SeqCst);
+                            let closed = windows::tab_url(1, target).is_none();
+                            let active = windows::active_tab_id(1);
+                            let active_ok = if background { active == Some(anchor) } else { active.is_some() && active != Some(target) };
+                            let count_ok = tab_count() == before;
+                            state::log(&format!(
+                                "selftest: croix {} onglet {} essai {}/{TRIALS} : fermé={} onglet_actif_conservé={} onglets={} (attendu {before})",
+                                if side { "verticale" } else { "horizontale" },
+                                if background { "d'arrière-plan" } else { "actif" },
+                                i + 1,
+                                closed as u8,
+                                if background { (active == Some(anchor)) as u8 } else { 1 },
+                                tab_count()
+                            ));
+                            if !closed || !active_ok || !count_ok {
+                                return fail(&format!("croix de l'onglet : onglet {target} non fermé ou onglet actif changé ; onglets = {}", windows::tabs_state(1)));
+                            }
+                            close_trial(side, background, i + 1, done);
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+// ---- dropdown popups: no leak, DoClose, race
+
+fn popup_open_cmd(panel: &str) -> Value {
+    call("popup.open", json!({ "panel": panel, "anchor": { "x": 600, "y": 40, "width": 30, "height": 30 }, "width": 320, "height": 330 }))
+}
+
+fn step_menus() {
+    step("menus déroulants : 20 ouvertures-fermetures sans fuite");
+    windows::popup_close(1);
+    on_ui_delayed(1500, || {
+        UI_BASE.store(windows::ui_browsers_alive(), std::sync::atomic::Ordering::SeqCst);
+        TABS_BEFORE.store(tab_count(), std::sync::atomic::Ordering::SeqCst);
+        menu_cycle(0);
+    });
+}
+
+fn menu_cycle(i: u32) {
+    if i == MENU_CYCLES {
+        let base = UI_BASE.load(std::sync::atomic::Ordering::SeqCst);
+        poll(50, move || windows::ui_browsers_alive() == base, move |ok| {
+            let alive = windows::ui_browsers_alive();
+            let window = windows::window_ids().contains(&1);
+            let tabs = tab_count();
+            state::log(&format!("selftest: menus : {MENU_CYCLES} ouverts puis fermés ; navigateurs d'interface vivants avant={base} après={alive} ; fenêtre ouverte={} ; onglets avant={} après={tabs}", window as u8, TABS_BEFORE.load(std::sync::atomic::Ordering::SeqCst)));
+            if !ok || !window || tabs != TABS_BEFORE.load(std::sync::atomic::Ordering::SeqCst) {
+                return fail(&format!("menus déroulants : navigateurs non libérés ({base} avant, {alive} après) ou fenêtre/onglets touchés"));
+            }
+            step_doclose();
+        });
+        return;
+    }
+    let panel = if i % 2 == 0 { "menu" } else { "shield" };
+    if !expect_ok("ouverture d'un menu", &popup_open_cmd(panel)) {
+        return;
+    }
+    on_ui_delayed(500, move || {
+        if windows::popup_panel(1).as_deref() != Some(panel) {
+            return fail(&format!("menu {panel} non ouvert (cycle {})", i + 1));
+        }
+        // Both ways a popup closes: its own request, and NIGHTFALL itself.
+        if i % 4 < 2 {
+            let _ = call("popup.close", json!({ "panel": panel }));
+        } else {
+            windows::popup_close(1);
+        }
+        on_ui_delayed(150, move || menu_cycle(i + 1));
+    });
+}
+
+/// A close of a popup browser that NIGHTFALL did not start (as CEF would
+/// do it): `do_close` must keep the window and only close the popup.
+fn step_doclose() {
+    step("menu déroulant : fermeture demandée par CEF (DoClose)");
+    if !expect_ok("ouverture du menu", &popup_open_cmd("menu")) {
+        return;
+    }
+    on_ui_delayed(700, || {
+        let Some(h) = windows::with_window(1, |c| c.popup.as_ref().and_then(|p| p.view.browser())).flatten().and_then(|b| b.host()) else {
+            return fail("DoClose : navigateur du menu introuvable");
+        };
+        h.close_browser(1);
+        let base = UI_BASE.load(std::sync::atomic::Ordering::SeqCst);
+        poll(40, move || windows::popup_panel(1).is_none() && windows::ui_browsers_alive() == base, move |ok| {
+            let window = windows::window_ids().contains(&1);
+            let tabs = tab_count();
+            state::log(&format!("selftest: DoClose d'un menu : menu fermé={} navigateurs d'interface={} (attendu {base}) fenêtre ouverte={} onglets={tabs}", windows::popup_panel(1).is_none() as u8, windows::ui_browsers_alive(), window as u8));
+            if !ok || !window || tabs != TABS_BEFORE.load(std::sync::atomic::Ordering::SeqCst) {
+                return fail("DoClose d'un menu : fenêtre fermée, onglets perdus ou navigateur non libéré");
+            }
+            step_race();
+        });
+    });
+}
+
+fn step_race() {
+    step("menus déroulants : un menu puis un autre (clics réels)");
+    // Deterministic: the first menu's close request arrives after the
+    // second menu was opened (the macOS order).
+    windows::popup_close(1);
+    let _ = popup_open_cmd("menu");
+    let first = windows::with_window(1, |c| c.popup.as_ref().map(|p| p.serial)).flatten().unwrap_or(0);
+    let _ = popup_open_cmd("shield");
+    let _ = call("popup.close", json!({ "panel": "menu", "n": first }));
+    let _ = call("popup.close", json!({ "panel": "menu" }));
+    let kept = windows::popup_panel(1);
+    state::log(&format!("selftest: fermeture tardive du premier menu (n={first}) : menu affiché = {kept:?}"));
+    if kept.as_deref() != Some("shield") {
+        return fail("une fermeture tardive du premier menu a fermé le second");
+    }
+    // Without a name: still closes the open popup (compatibility).
+    let _ = call("popup.close", json!({}));
+    if windows::popup_panel(1).is_some() {
+        return fail("popup.close sans nom n'a pas fermé le menu");
+    }
+    RACE_OK.store(0, std::sync::atomic::Ordering::SeqCst);
+    on_ui_delayed(800, || race_trial(0));
+}
+
+/// Real clicks: menu button, then (keyboard focus moved to the toolbar, as
+/// a native click does) the Shield button: Shield must stay open.
+fn race_trial(i: u32) {
+    if i == TRIALS {
+        state::log(&format!("selftest: menu puis Shield : Shield resté ouvert {}/{TRIALS}", RACE_OK.load(std::sync::atomic::Ordering::SeqCst)));
+        return step_toggle();
+    }
+    windows::popup_close(1);
+    on_ui_delayed(500, move || {
+        with_rect(false, "#b-menu".into(), move |x, y| {
+            real_click(false, x, y, || {}, move || {
+                poll(25, || windows::popup_panel(1).as_deref() == Some("menu"), move |ok| {
+                    if !ok {
+                        return fail(&format!("clic réel sur le bouton Menu : menu non ouvert (essai {})", i + 1));
+                    }
+                    on_ui_delayed(700, move || {
+                        with_rect(false, "#b-shield".into(), move |x, y| {
+                            if let Some(top) = windows::with_window(1, |c| c.top.clone()) {
+                                top.request_focus();
+                            }
+                            real_click(false, x, y, || {}, move || {
+                                on_ui_delayed(1500, move || {
+                                    let panel = windows::popup_panel(1);
+                                    state::log(&format!("selftest: menu puis Shield essai {}/{TRIALS} : menu affiché = {panel:?}", i + 1));
+                                    if panel.as_deref() != Some("shield") {
+                                        return fail("menu puis Shield : le second menu ne reste pas ouvert");
+                                    }
+                                    RACE_OK.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                    race_trial(i + 1);
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+/// Informative: Shield open, second click on its button closes it.
+fn step_toggle() {
+    with_rect(false, "#b-shield".into(), |x, y| {
+        if let Some(top) = windows::with_window(1, |c| c.top.clone()) {
+            top.request_focus();
+        }
+        real_click(false, x, y, || {}, || {
+            on_ui_delayed(1500, || {
+                state::log(&format!("selftest: second clic sur Shield (informatif) : menu affiché = {:?}", windows::popup_panel(1)));
+                windows::popup_close(1);
+                on_ui_delayed(800, step_final_menu);
+            });
         });
     });
 }
