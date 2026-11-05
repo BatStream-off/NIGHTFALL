@@ -40,7 +40,10 @@ pub struct FilterList {
     pub trusted: bool,
 }
 
+/// Saved encrypted in the profile: a field missing from an older (or newer)
+/// saved copy takes its default value, the others are kept.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ShieldConfig {
     pub enabled: bool,
     pub block_popups: bool,
@@ -542,5 +545,29 @@ mod tests {
         let old = ShieldConfig { lists: default_lists().into_iter().take(3).collect(), ..Default::default() };
         let cfg = old.with_new_default_lists();
         assert!(cfg.lists.iter().any(|l| l.id == "ubo_filters" && l.trusted && l.enabled));
+    }
+
+    #[test]
+    fn old_saved_config_with_missing_fields_keeps_the_others() {
+        // Saved by 0.1.4 (complete at the time).
+        let json = r#"{"enabled":true,"block_popups":true,"lists":[{"id":"easylist","name":"EasyList","url":"https://easylist.to/easylist/easylist.txt","enabled":false}],"custom_filters":"x","allowlist":["a.fr"]}"#;
+        let cfg: ShieldConfig = serde_json::from_str(json).unwrap();
+        assert!(cfg.enabled && cfg.block_popups);
+        assert_eq!(cfg.custom_filters, "x");
+        assert_eq!(cfg.allowlist.iter().collect::<Vec<_>>(), ["a.fr"]);
+        assert_eq!(cfg.lists.len(), 1);
+        assert!(!cfg.lists[0].enabled && cfg.lists[0].updated.is_none() && !cfg.lists[0].trusted);
+        // Fields missing (older or newer copy): defaults for those only.
+        let json = r#"{"enabled":false,"custom_filters":"||ads.example^","allowlist":["b.fr"]}"#;
+        let cfg: ShieldConfig = serde_json::from_str(json).unwrap();
+        assert!(!cfg.enabled);
+        assert!(cfg.block_popups);
+        assert_eq!(cfg.custom_filters, "||ads.example^");
+        assert!(cfg.allowlist.contains("b.fr"));
+        assert_eq!(cfg.lists, default_lists());
+        // Unknown fields (written by a newer version) are ignored.
+        let cfg: ShieldConfig = serde_json::from_str(r#"{"enabled":false,"site_overrides":{}}"#).unwrap();
+        assert!(!cfg.enabled && cfg.block_popups);
+        assert_eq!(serde_json::from_str::<ShieldConfig>("{}").unwrap(), ShieldConfig::default());
     }
 }

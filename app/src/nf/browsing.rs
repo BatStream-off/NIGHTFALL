@@ -99,7 +99,7 @@ fn host_of(url: &str) -> Option<String> {
 }
 
 fn saved_zooms() -> HashMap<String, f64> {
-    core().storage().and_then(|s| s.setting::<HashMap<String, f64>>(ZOOM_KEY).ok().flatten()).unwrap_or_default()
+    core().storage().and_then(|s| super::state::load_setting::<HashMap<String, f64>>(s, ZOOM_KEY)).unwrap_or_default()
 }
 
 /// Remember the zoom of a site (normal windows only; the default zoom of

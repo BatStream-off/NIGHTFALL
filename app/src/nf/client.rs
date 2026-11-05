@@ -225,21 +225,39 @@ fn on_navigation(window_id: u32, tab_id: u32, private: bool, url: &str) {
         }
     }
     // VideoGuard: fetch SponsorBlock segments for YouTube videos.
-    if let Some(video) = nf_videoguard::video_id(url) {
-        let cfg = core().videoguard.clone();
-        if cfg.enabled {
-            background(
-                move || nf_videoguard::fetch_segments(&video, &cfg).map(|s| (video, s)),
-                move |res| match res {
-                    Ok((video, segments)) => {
-                        let script = nf_videoguard::injection_script(&video, &segments);
-                        windows::exec_in_tab(window_id, tab_id, &script);
-                    }
-                    Err(e) => state::log(&format!("VideoGuard: {e}")),
-                },
-            );
-        }
+    videoguard_on_navigation(window_id, tab_id, url);
+}
+
+/// VideoGuard: SponsorBlock segments of a YouTube video. Nothing is sent nor
+/// injected while NIGHTFALL is locked: the video is asked again at unlock if
+/// the tab still shows it (see lock_guard).
+pub fn videoguard_on_navigation(window_id: u32, tab_id: u32, url: &str) {
+    let Some(video) = nf_videoguard::video_id(url) else { return };
+    let cfg = core().videoguard.clone();
+    if !cfg.enabled {
+        return;
     }
+    if super::lock_guard::locked() {
+        super::lock_guard::defer_videoguard(window_id, tab_id, url);
+        return;
+    }
+    super::lock_guard::videoguard_fetch_started();
+    let page = url.to_string();
+    background(
+        move || nf_videoguard::fetch_segments(&video, &cfg).map(|s| (video, s)),
+        move |res| match res {
+            Ok((video, segments)) => {
+                // Locked while the request was running: not injected.
+                if super::lock_guard::locked() {
+                    super::lock_guard::defer_videoguard(window_id, tab_id, &page);
+                    return;
+                }
+                let script = nf_videoguard::injection_script(&video, &segments);
+                windows::exec_in_tab(window_id, tab_id, &script);
+            }
+            Err(e) => state::log(&format!("VideoGuard: {e}")),
+        },
+    );
 }
 
 // ---------------------------------------------------------------- life span
@@ -265,6 +283,10 @@ wrap_life_span_handler! {
                 browser.identifier(),
                 BrowserInfo { kind, url: browser_url(browser), allow_internal_nav: allow_internal },
             );
+            // Opened by a hidden page while NIGHTFALL is locked: muted.
+            if let ClientKind::Tab { .. } = *self.kind {
+                super::lock_guard::on_tab_created(browser);
+            }
         }
 
         fn on_before_close(&self, browser: Option<&mut Browser>) {
@@ -404,6 +426,8 @@ wrap_load_handler! {
         fn on_load_start(&self, _browser: Option<&mut Browser>, frame: Option<&mut Frame>, _transition_type: TransitionType) {
             let Some(frame) = frame else { return };
             if let ClientKind::Tab { .. } = *self.kind {
+                // NIGHTFALL locked: media of the new document stay paused.
+                super::lock_guard::on_load_start(frame);
                 let url = cef_to_string(&frame.url());
                 // Default page zoom (Paramètres > Apparence).
                 if frame.is_main() != 0 {
@@ -423,9 +447,10 @@ wrap_load_handler! {
                 if super::prefs::GPC.load(std::sync::atomic::Ordering::Relaxed) {
                     frame.execute_java_script(Some(&CefString::from(GPC_SCRIPT)), None, 0);
                 }
-                // VideoGuard on YouTube (main frame and embedded players).
+                // VideoGuard on YouTube (main frame and embedded players);
+                // not while locked (added again at unlock).
                 let vg = core().videoguard.clone();
-                if let Some(js) = nf_videoguard::page_script(&url, &vg) {
+                if let Some(js) = nf_videoguard::page_script(&url, &vg).filter(|_| !super::lock_guard::locked()) {
                     frame.execute_java_script(Some(&CefString::from(js.as_str())), None, 0);
                 }
                 // "Playing sound" indicator of the tab.

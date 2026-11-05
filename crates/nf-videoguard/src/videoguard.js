@@ -4,7 +4,7 @@
 // 2. Fast-forwards YouTube's own video ads that Shield did not block.
 (function () {
   if (window.__nightfallVideoGuard) return;
-  var state = { videoId: null, segments: [], skipped: {}, timer: null, opts: { skipVideoAds: true }, ad: null };
+  var state = { videoId: null, segments: [], skipped: {}, timer: null, opts: { skipVideoAds: true }, ad: null, suspended: false };
 
   function css() {
     if (document.getElementById('nf-vg-style')) return;
@@ -62,6 +62,7 @@
 
   // ---- SponsorBlock segments
   function onTime(video) {
+    if (state.suspended) return;
     if (!state.videoId || currentVideoId() !== state.videoId || state.ad) return;
     var t = video.currentTime;
     for (var i = 0; i < state.segments.length; i++) {
@@ -89,6 +90,7 @@
     return document.querySelector('#movie_player, .html5-video-player');
   }
   function checkAd() {
+    if (state.suspended) return;
     if (!state.opts.skipVideoAds) return;
     var p = player();
     var video = p && p.querySelector('video');
@@ -136,6 +138,12 @@
   window.__nightfallVideoGuardInit = function (opts) {
     state.opts = opts || state.opts;
     start();
+  };
+
+  // NIGHTFALL locked: the script does nothing (no skip, no notice, no ad
+  // fast-forward) until the browser core resumes it.
+  window.__nightfallVideoGuardSuspend = function (on) {
+    state.suspended = !!on;
   };
 
   // Segments for the current video (sent by the browser core).

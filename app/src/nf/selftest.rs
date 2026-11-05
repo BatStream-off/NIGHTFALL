@@ -9,7 +9,7 @@ use super::api::{self, Caller};
 use super::state::{self, core, BrowserKind};
 use super::ui_thread::on_ui_delayed;
 use super::windows;
-use cef::{ImplBrowser, ImplBrowserHost, ImplFrame, ImplValue};
+use cef::{ImplBrowser, ImplBrowserHost, ImplBrowserView, ImplFrame, ImplValue};
 use serde_json::{json, Value};
 
 const PIN: &str = "739204";
@@ -403,6 +403,14 @@ pub fn console_result(msg: &str) {
             *c = Some(msg.to_string());
         }
     }
+    if let Some(rest) = msg.strip_prefix("nfcheck-") {
+        if let Some((key, payload)) = rest.split_once(' ') {
+            if let Ok(mut c) = CHECKS.lock() {
+                c.retain(|(k, _)| k != key);
+                c.push((key.to_string(), payload.to_string()));
+            }
+        }
+    }
 }
 
 // ----------------------------------------------------- browser features
@@ -586,7 +594,7 @@ fn step_copy() {
         on_ui_delayed(1500, || {
             let r = COPY_CHECK.lock().ok().and_then(|c| c.clone()).unwrap_or_else(|| "pas de réponse".into());
             state::log(&format!("selftest: presse-papiers : {r}"));
-            step_final_menu();
+            step_lock_guard();
         });
     });
 }
@@ -609,4 +617,445 @@ fn step_final_menu() {
         state::log("SELFTEST OK");
         finish();
     });
+}
+
+// ------------------------------------------- nothing acts while locked
+
+/// Results of `js_check` (key, JSON), filled by `console_result`.
+static CHECKS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+/// Tab playing the test media.
+static MEDIA_TAB: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static DT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(6000);
+/// State seen before the shortcuts sent while locked.
+static BEFORE: std::sync::Mutex<Option<Snapshot>> = std::sync::Mutex::new(None);
+/// Index in lock_guard::SHORTCUTS where the current batch starts.
+static SHORTCUTS_MARK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static VG_FETCHES_BEFORE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Origin and kind of the remembered permission used by the test.
+const PERM_ORIGIN: &str = "https://example.com";
+const PERM_HOST: &str = "example.com";
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Snapshot {
+    tabs: usize,
+    windows: usize,
+    active: Option<u32>,
+    zoom: f64,
+    fullscreen: bool,
+}
+
+fn snapshot() -> Snapshot {
+    Snapshot { tabs: tab_count(), windows: windows::window_ids().len(), active: windows::active_tab_id(1), zoom: active_zoom(), fullscreen: windows::fullscreen_report(1).2 }
+}
+
+/// Poll `cond` every 500 ms up to `tries` times, then run `next` or fail.
+fn poll<C, N>(what: String, tries: u32, cond: C, next: N)
+where
+    C: Fn() -> bool + Send + 'static,
+    N: FnOnce() + Send + 'static,
+{
+    on_ui_delayed(500, move || {
+        if cond() {
+            next();
+        } else if tries == 0 {
+            fail(&format!("délai dépassé : {what}"));
+        } else {
+            poll(what, tries - 1, cond, next);
+        }
+    });
+}
+
+/// DevTools protocol message to a browser (in process, no debugging port).
+fn devtools(b: Option<cef::Browser>, method: &str, params: Value) {
+    if let Some(h) = b.and_then(|b| b.host()) {
+        let msg = json!({ "id": DT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed), "method": method, "params": params }).to_string();
+        h.send_dev_tools_message(Some(msg.as_bytes()));
+    }
+}
+
+/// Script run with a user gesture (play(), as after a click).
+fn eval_with_gesture(tab: u32, expression: &str) {
+    devtools(windows::tab_browser(1, tab), "Runtime.evaluate", json!({ "expression": expression, "userGesture": true, "awaitPromise": false }));
+}
+
+/// Evaluate `expr` (a value or a promise) in a tab's page and hand the
+/// result (JSON) to `next`.
+fn js_check(tab: u32, key: &'static str, expr: &str, next: impl FnOnce(Value) + Send + 'static) {
+    if let Ok(mut c) = CHECKS.lock() {
+        c.retain(|(k, _)| k != key);
+    }
+    let js = format!(
+        "Promise.resolve().then(function(){{ return ({expr}); }}).then(function(r){{ console.log('nfcheck-{key} ' + JSON.stringify(r)); }}, function(e){{ console.log('nfcheck-{key} ' + JSON.stringify({{ error: String(e) }})); }});"
+    );
+    match windows::tab_browser(1, tab).and_then(|b| b.main_frame()) {
+        Some(f) => f.execute_java_script(Some(&cef::CefString::from(js.as_str())), Some(&cef::CefString::from("nightfall://selftest")), 0),
+        None => return fail(&format!("contrôle {key} : onglet {tab} introuvable")),
+    }
+    let found = move || CHECKS.lock().map(|c| c.iter().any(|(k, _)| k == key)).unwrap_or(false);
+    poll(format!("réponse de la page au contrôle {key}"), 20, found, move || {
+        let raw = CHECKS.lock().ok().and_then(|c| c.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())).unwrap_or_default();
+        state::log(&format!("selftest: contrôle {key} : {raw}"));
+        next(serde_json::from_str(&raw).unwrap_or(Value::Null));
+    });
+}
+
+const K_P: u32 = 1; // Ctrl (Windows) / Cmd (macOS)
+const K_SH: u32 = 2;
+const K_ALT: u32 = 4;
+const K_CTRL: u32 = 8;
+
+/// Key press sent to the top interface view of window 1 (the lock screen
+/// while locked), by the DevTools protocol: it goes through
+/// `on_pre_key_event` like a key typed by the user.
+fn key(code: i32, mods: u32) {
+    let mac = cfg!(target_os = "macos");
+    let mut m = 0;
+    if mods & K_P != 0 {
+        m |= if mac { 4 } else { 2 };
+    }
+    if mods & K_SH != 0 {
+        m |= 8;
+    }
+    if mods & K_ALT != 0 {
+        m |= 1;
+    }
+    if mods & K_CTRL != 0 {
+        m |= 2;
+    }
+    let top = windows::with_window(1, |c| c.top.browser()).flatten();
+    for t in ["rawKeyDown", "keyUp"] {
+        devtools(top.clone(), "Input.dispatchKeyEvent", json!({ "type": t, "modifiers": m, "windowsVirtualKeyCode": code, "nativeVirtualKeyCode": code }));
+    }
+}
+
+/// (action expected, key code, modifiers)
+fn lock_shortcuts() -> Vec<(&'static str, i32, u32)> {
+    let mac = cfg!(target_os = "macos");
+    vec![
+        ("tab.new", 0x54, K_P),
+        ("tab.close", 0x57, K_P),
+        ("tab.reopen", 0x54, K_P | K_SH),
+        ("window.new", 0x4E, K_P),
+        ("zoom.in", 0xBB, K_P),
+        ("window.fullscreen", if mac { 0x46 } else { 0x7A }, if mac { K_P | K_CTRL } else { 0 }),
+        ("print", 0x50, K_P),
+        ("devtools", if mac { 0x49 } else { 0x7B }, if mac { K_P | K_ALT } else { 0 }),
+        ("view.source", 0x55, K_P),
+        ("page.history", if mac { 0x59 } else { 0x48 }, K_P),
+    ]
+}
+
+fn mark_shortcuts() {
+    let n = super::lock_guard::SHORTCUTS.lock().map(|s| s.len()).unwrap_or(0);
+    SHORTCUTS_MARK.store(n, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn shortcuts_since_mark() -> Vec<(String, bool)> {
+    let from = SHORTCUTS_MARK.load(std::sync::atomic::Ordering::SeqCst);
+    super::lock_guard::SHORTCUTS.lock().map(|s| s.iter().skip(from).cloned().collect()).unwrap_or_default()
+}
+
+fn shortcut_done(action: &'static str) -> impl Fn() -> bool + Send + 'static {
+    move || shortcuts_since_mark().iter().any(|(a, ok)| a == action && *ok)
+}
+
+/// Content setting categories of Chromium's `Preferences` file that hold
+/// an exception for `host`.
+fn chromium_prefs_categories(host: &str) -> (String, Vec<String>) {
+    let base = core().paths.chromium_profile();
+    let file = [base.join("Default").join("Preferences"), base.join("Preferences")].into_iter().find(|p| p.exists());
+    let Some(file) = file else { return ("(fichier Preferences absent)".into(), Vec::new()) };
+    let name = file.display().to_string();
+    let v: Value = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+    let mut out = Vec::new();
+    if let Some(ex) = v["profile"]["content_settings"]["exceptions"].as_object() {
+        for (cat, entries) in ex {
+            if entries.as_object().map(|o| o.keys().any(|k| k.contains(host))).unwrap_or(false) {
+                out.push(cat.clone());
+            }
+        }
+    }
+    (name, out)
+}
+
+fn prefs_has_geolocation(host: &'static str) -> bool {
+    chromium_prefs_categories(host).1.iter().any(|c| c.starts_with("geolocation"))
+}
+
+fn step_lock_guard() {
+    step("verrouillage : page qui joue un média");
+    let page = "data:text/html,<title>nf-media</title><body>media</body>";
+    let Some(tab) = windows::add_tab(1, page, true) else { return fail("onglet média non ouvert") };
+    MEDIA_TAB.store(tab, std::sync::atomic::Ordering::SeqCst);
+    wait_for("chargement de la page média", 30, || active_tab_loaded("data:text/html"), || {
+        let tab = MEDIA_TAB.load(std::sync::atomic::Ordering::SeqCst);
+        // A 2 s looping tone (WAV made in the page), a video element inside
+        // a YouTube-like player for VideoGuard's video ad fast-forward.
+        let setup = "(function(){var sr=8000,n=sr*2,b=new ArrayBuffer(44+n*2),d=new DataView(b);\
+            function w(o,s){for(var i=0;i<s.length;i++)d.setUint8(o+i,s.charCodeAt(i));}\
+            w(0,'RIFF');d.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,1,true);\
+            d.setUint32(24,sr,true);d.setUint32(28,sr*2,true);d.setUint16(32,2,true);d.setUint16(34,16,true);w(36,'data');d.setUint32(40,n*2,true);\
+            for(var i=0;i<n;i++)d.setInt16(44+i*2,Math.round(Math.sin(i*2*Math.PI*440/sr)*6000),true);\
+            var a=document.createElement('audio');a.id='nf-a';a.loop=true;a.src=URL.createObjectURL(new Blob([b],{type:'audio/wav'}));document.body.appendChild(a);\
+            var p=document.createElement('div');p.id='movie_player';p.className='html5-video-player';var v=document.createElement('video');v.id='nf-v';p.appendChild(v);document.body.appendChild(p);\
+            return 1;})()";
+        js_check(tab, "media-setup", setup, move |_| {
+            eval_with_gesture(tab, "document.getElementById('nf-a').play()");
+            // VideoGuard's page script, as on YouTube.
+            if let Some(js) = nf_videoguard::page_script("https://www.youtube.com/", &nf_videoguard::VideoGuardConfig::default()) {
+                windows::exec_in_tab(1, tab, &js);
+            }
+            on_ui_delayed(1500, move || {
+                js_check(tab, "media-before", MEDIA_STATE, move |r| {
+                    if r["playing"] != true || r["vg"] != true {
+                        return fail(&format!("média de test non lancé avant le verrouillage : {r}"));
+                    }
+                    step_lock_guard_permission();
+                });
+            });
+        });
+    });
+}
+
+/// State of the test page: audio playing, VideoGuard present, video rate.
+const MEDIA_STATE: &str = "(function(){var a=document.getElementById('nf-a'),v=document.getElementById('nf-v');return {playing:!a.paused,time:a.currentTime,rate:v.playbackRate,videoMuted:v.muted,vg:!!window.__nightfallVideoGuardSuspend};})()";
+
+const PERM_QUERY: &str = "navigator.permissions.query({name:'geolocation'}).then(function(s){return s.state;})";
+
+/// Answer of `navigator.permissions.query` before any decision.
+static PERM_INITIAL: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+
+fn step_lock_guard_permission() {
+    step("verrouillage : décision d'autorisation mémorisée");
+    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    js_check(main, "perm-initial", PERM_QUERY, |r| {
+        if r == "granted" {
+            return fail(&format!("autorisation déjà accordée avant le test : {r}"));
+        }
+        if let Ok(mut p) = PERM_INITIAL.lock() {
+            *p = Some(r);
+        }
+        step_lock_guard_remember();
+    });
+}
+
+fn step_lock_guard_remember() {
+    {
+        let mut c = core();
+        super::permissions::remember(&mut c.settings, PERM_ORIGIN, &["geolocation"], true, nf_core::unix_now());
+        c.save_settings();
+    }
+    // As at unlock: the remembered decision is given to Chromium.
+    super::permissions::reapply_remembered();
+    let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    js_check(main, "perm-unlocked", PERM_QUERY, |r| {
+        if r != "granted" {
+            return fail(&format!("autorisation mémorisée non appliquée par Chromium : {r}"));
+        }
+        // Chromium writes its preferences about 10 s after a change.
+        poll("décision écrite par Chromium dans Preferences".into(), 60, || prefs_has_geolocation(PERM_HOST), || {
+            let (file, cats) = chromium_prefs_categories(PERM_HOST);
+            state::log(&format!("selftest: Preferences ({file}) avant verrouillage, catégories pour {PERM_HOST} : {cats:?}"));
+            step_lock_guard_lock();
+        });
+    });
+}
+
+fn step_lock_guard_lock() {
+    step("verrouillage : raccourcis, médias, VideoGuard, autorisations");
+    if let Ok(mut b) = BEFORE.lock() {
+        *b = Some(snapshot());
+    }
+    VG_FETCHES_BEFORE.store(super::lock_guard::VG_FETCHES.load(std::sync::atomic::Ordering::SeqCst), std::sync::atomic::Ordering::SeqCst);
+    api::lock_now();
+    let locked = || {
+        let keys_forgotten = {
+            let c = core();
+            !c.is_unlocked() && c.unlocked.is_none()
+        };
+        keys_forgotten && !super::lock_guard::is_locking()
+    };
+    poll("verrouillage complet".into(), 20, locked, || {
+        on_ui_delayed(1000, || {
+            mark_shortcuts();
+            for (_, code, mods) in lock_shortcuts() {
+                key(code, mods);
+            }
+            on_ui_delayed(2500, step_lock_guard_check_shortcuts);
+        });
+    });
+}
+
+fn step_lock_guard_check_shortcuts() {
+    let seen = shortcuts_since_mark();
+    state::log(&format!("selftest: raccourcis reçus pendant le verrouillage : {seen:?}"));
+    for (action, _, _) in lock_shortcuts() {
+        if !seen.iter().any(|(a, ok)| a == action && !*ok) {
+            return fail(&format!("raccourci {action} : non reçu par NIGHTFALL pendant le verrouillage (test sans valeur)"));
+        }
+    }
+    if seen.iter().any(|(_, ok)| *ok) {
+        return fail(&format!("raccourci exécuté pendant le verrouillage : {seen:?}"));
+    }
+    let before = BEFORE.lock().ok().and_then(|b| *b);
+    let after = snapshot();
+    state::log(&format!("selftest: état avant {before:?} / après {after:?}"));
+    if before != Some(after) {
+        return fail(&format!("état changé pendant le verrouillage : avant {before:?}, après {after:?}"));
+    }
+    state::log("selftest: raccourcis sans effet pendant le verrouillage ok");
+    let tab = MEDIA_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    if !windows::tab_muted(1, tab) {
+        return fail("onglet média non coupé pendant le verrouillage");
+    }
+    js_check(tab, "media-locked", MEDIA_STATE, move |r| {
+        if r["playing"] != false {
+            return fail(&format!("média toujours en lecture pendant le verrouillage : {r}"));
+        }
+        // The page tries to play again (as after a click), and a video ad
+        // shows in the player: nothing must happen.
+        eval_with_gesture(tab, "document.getElementById('nf-a').play()");
+        windows::exec_in_tab(1, tab, "document.getElementById('movie_player').classList.add('ad-showing');");
+        // VideoGuard asked for a YouTube video in a hidden tab.
+        super::client::videoguard_on_navigation(1, tab, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        on_ui_delayed(2000, move || {
+            js_check(tab, "media-locked-later", MEDIA_STATE, move |r| {
+                if r["playing"] != false {
+                    return fail(&format!("média relancé pendant le verrouillage : {r}"));
+                }
+                if r["rate"] != 1.0 || r["videoMuted"] != false {
+                    return fail(&format!("VideoGuard a agi pendant le verrouillage : {r}"));
+                }
+                let fetches = super::lock_guard::VG_FETCHES.load(std::sync::atomic::Ordering::SeqCst);
+                let deferred = super::lock_guard::VG_DEFERRED.load(std::sync::atomic::Ordering::SeqCst);
+                state::log(&format!("selftest: VideoGuard pendant le verrouillage : requêtes {fetches} (avant {}), reportées {deferred}", VG_FETCHES_BEFORE.load(std::sync::atomic::Ordering::SeqCst)));
+                if fetches != VG_FETCHES_BEFORE.load(std::sync::atomic::Ordering::SeqCst) || deferred == 0 {
+                    return fail("VideoGuard : requête envoyée (ou non vue) pendant le verrouillage");
+                }
+                state::log("selftest: son coupé, médias en pause, VideoGuard inactif pendant le verrouillage ok");
+                let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+                js_check(main, "perm-locked", PERM_QUERY, |r| {
+                    let initial = PERM_INITIAL.lock().ok().and_then(|p| p.clone()).unwrap_or(Value::Null);
+                    if r != initial {
+                        return fail(&format!("autorisation mémorisée encore connue de Chromium pendant le verrouillage : {r}"));
+                    }
+                    poll("décision retirée du fichier Preferences".into(), 60, || !prefs_has_geolocation(PERM_HOST), || {
+                        let (file, cats) = chromium_prefs_categories(PERM_HOST);
+                        state::log(&format!("selftest: Preferences ({file}) pendant le verrouillage, catégories pour {PERM_HOST} : {cats:?}"));
+                        step_lock_guard_unlock();
+                    });
+                });
+            });
+        });
+    });
+}
+
+fn step_lock_guard_unlock() {
+    step("déverrouillage : son rétabli, médias en pause, autorisation rendue");
+    if !expect_ok("déverrouillage", &call("unlock", json!({ "pin": PIN }))) {
+        return;
+    }
+    let tab = MEDIA_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    poll("son rétabli après le déverrouillage".into(), 20, move || !windows::tab_muted(1, tab), move || {
+        on_ui_delayed(1500, move || {
+            js_check(tab, "media-unlocked", MEDIA_STATE, move |r| {
+                if r["playing"] != false {
+                    return fail(&format!("média relancé au déverrouillage : {r}"));
+                }
+                // VideoGuard acts again (the ad shown in the player).
+                if r["rate"] != 16.0 {
+                    return fail(&format!("VideoGuard non repris après le déverrouillage : {r}"));
+                }
+                windows::exec_in_tab(1, tab, "document.getElementById('movie_player').classList.remove('ad-showing');");
+                let main = MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst);
+                js_check(main, "perm-after", PERM_QUERY, |r| {
+                    if r != "granted" {
+                        return fail(&format!("autorisation mémorisée non rendue à Chromium au déverrouillage : {r}"));
+                    }
+                    state::log("selftest: déverrouillage : son rétabli, média en pause, VideoGuard repris, autorisation rendue ok");
+                    step_unlocked_shortcuts();
+                });
+            });
+        });
+    });
+}
+
+fn step_unlocked_shortcuts() {
+    step("raccourcis après le déverrouillage");
+    let before = snapshot();
+    mark_shortcuts();
+    key(0x54, K_P);
+    let n = before.tabs;
+    poll("Ctrl/Cmd+T déverrouillé".into(), 20, move || tab_count() == n + 1, move || {
+        key(0x57, K_P);
+        poll("Ctrl/Cmd+W déverrouillé".into(), 20, move || tab_count() == n, move || {
+            windows::activate_tab(1, MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst));
+            key(0xBB, K_P);
+            poll("Ctrl/Cmd+= déverrouillé".into(), 20, || active_zoom() > 0.1, || {
+                key(0x30, K_P);
+                poll("Ctrl/Cmd+0 déverrouillé".into(), 20, || active_zoom().abs() < 0.01 && !saved_zoom_for_example(), || {
+                    let w = windows::window_ids().len();
+                    key(0x4E, K_P);
+                    poll("Ctrl/Cmd+N déverrouillé".into(), 20, move || windows::window_ids().len() == w + 1, move || {
+                        on_ui_delayed(1500, move || {
+                            for id in windows::window_ids() {
+                                if id != 1 {
+                                    windows::close_window(id);
+                                }
+                            }
+                            poll("fermeture de la fenêtre ouverte par Ctrl/Cmd+N".into(), 20, move || windows::window_ids().len() == w, step_unlocked_fullscreen);
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+fn fullscreen_key() {
+    if cfg!(target_os = "macos") {
+        key(0x46, K_P | K_CTRL);
+    } else {
+        key(0x7A, 0);
+    }
+}
+
+fn step_unlocked_fullscreen() {
+    fullscreen_key();
+    poll("plein écran par raccourci déverrouillé".into(), 20, || windows::fullscreen_report(1).2, || {
+        on_ui_delayed(1000, || {
+            fullscreen_key();
+            poll("sortie du plein écran par raccourci".into(), 20, || !windows::fullscreen_report(1).2, || {
+                // Developer tools are off by default: the shortcut reaches
+                // NIGHTFALL, which opens nothing. Printing is not sent here
+                // (it would open the system print dialog).
+                key(if cfg!(target_os = "macos") { 0x49 } else { 0x7B }, if cfg!(target_os = "macos") { K_P | K_ALT } else { 0 });
+                poll("raccourci des outils de développement reçu".into(), 10, shortcut_done("devtools"), || {
+                    let seen = shortcuts_since_mark();
+                    state::log(&format!("selftest: raccourcis après le déverrouillage : {seen:?}"));
+                    for a in ["tab.new", "tab.close", "zoom.in", "zoom.reset", "window.new", "window.fullscreen", "devtools"] {
+                        if !seen.iter().any(|(x, ok)| x == a && *ok) {
+                            return fail(&format!("raccourci {a} non exécuté après le déverrouillage"));
+                        }
+                    }
+                    state::log("selftest: raccourcis actifs après le déverrouillage ok");
+                    step_lock_guard_cleanup();
+                });
+            });
+        });
+    });
+}
+
+fn step_lock_guard_cleanup() {
+    let tab = MEDIA_TAB.load(std::sync::atomic::Ordering::SeqCst);
+    windows::close_tab(1, tab);
+    {
+        let mut c = core();
+        c.settings.site_permissions.retain(|p| p.origin != PERM_ORIGIN);
+        c.save_settings();
+    }
+    super::permissions::reset_chromium(PERM_ORIGIN, "geolocation");
+    windows::activate_tab(1, MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst));
+    on_ui_delayed(1000, step_final_menu);
 }

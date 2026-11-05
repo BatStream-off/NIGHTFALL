@@ -64,7 +64,10 @@ impl Signal {
     }
 }
 
+/// Nested in the saved settings: a missing field takes its default value,
+/// the others are kept.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AutoPurgeRules {
     pub enabled: bool,
     /// Distinct critical signal families required before any purge (min 2).
@@ -153,5 +156,20 @@ mod tests {
         let mut r = armed();
         r.min_independent_critical = 1;
         assert!(matches!(r.evaluate(&[Signal::BinarySignatureInvalid]), Decision::Lockdown { .. }));
+    }
+
+    #[test]
+    fn saved_rules_with_missing_fields_keep_the_others() {
+        // Saved by 0.1.4 (complete at the time).
+        let r: AutoPurgeRules = serde_json::from_str(r#"{"enabled":true,"min_independent_critical":3,"categories":["passwords","browsing_data"]}"#).unwrap();
+        assert!(r.enabled);
+        assert_eq!(r.min_independent_critical, 3);
+        assert_eq!(r.categories, vec![PurgeCategory::Passwords, PurgeCategory::BrowsingData]);
+        // A field missing: its default only, the others kept.
+        let r: AutoPurgeRules = serde_json::from_str(r#"{"enabled":true,"categories":["passwords"]}"#).unwrap();
+        assert!(r.enabled);
+        assert_eq!(r.min_independent_critical, 2);
+        assert_eq!(r.categories, vec![PurgeCategory::Passwords]);
+        assert_eq!(serde_json::from_str::<AutoPurgeRules>("{}").unwrap(), AutoPurgeRules::default());
     }
 }

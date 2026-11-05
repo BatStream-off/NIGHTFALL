@@ -750,13 +750,15 @@ fn open_stores(c: &mut Core, mk: nf_crypto::SecretKey) -> Result<(), String> {
         }
     };
     if let Some(st) = &storage {
-        if let Ok(Some(s)) = st.setting::<state::Settings>("app") {
+        // A copy that cannot be read is logged and kept aside (never
+        // silently replaced by the defaults at the next save).
+        if let Some(s) = state::load_setting::<state::Settings>(st, "app") {
             c.settings = s;
         }
-        if let Ok(Some(v)) = st.setting::<nf_videoguard::VideoGuardConfig>("videoguard") {
+        if let Some(v) = state::load_setting::<nf_videoguard::VideoGuardConfig>(st, "videoguard") {
             c.videoguard = v;
         }
-        if let Ok(Some(sh)) = st.setting::<nf_shield::ShieldConfig>("shield") {
+        if let Some(sh) = state::load_setting::<nf_shield::ShieldConfig>(st, "shield") {
             state::shield().set_config(sh.with_new_default_lists());
         }
         if let Ok(Some(total)) = st.setting::<u64>("shield_total") {
@@ -783,9 +785,15 @@ fn after_unlock_ui() {
         // The user's settings are now known (encrypted database).
         super::prefs::apply_all();
         super::permissions::reset_temporary();
+        // Remembered decisions are given back to Chromium until the next lock.
+        super::permissions::reapply_remembered();
         session::restore_cookies();
         // Let the cookie store apply the restored cookies before pages load.
-        on_ui_delayed(250, move || windows::after_unlock(session));
+        on_ui_delayed(250, move || {
+            windows::after_unlock(session);
+            // Sound back (media stay paused), VideoGuard resumes.
+            super::lock_guard::on_unlock();
+        });
     });
     refresh_filter_lists_if_needed();
 }
@@ -814,17 +822,26 @@ pub fn refresh_filter_lists_if_needed() {
 
 /// Lock now: hide everything, seal cookies, then forget the keys.
 pub fn lock_now() {
-    if !core().is_unlocked() {
+    if !core().is_unlocked() || super::lock_guard::is_locking() {
         return;
     }
+    // From here nothing acts behind the lock screen (shortcuts, sound and
+    // media, VideoGuard), even before the keys are forgotten below.
+    super::lock_guard::begin_locking();
+    super::lock_guard::on_lock();
     // Permission answers given without "Mémoriser" end here.
     super::permissions::reset_temporary();
+    // Remembered decisions: Chromium's copy (origins in plain text in its
+    // profile) is removed until the next unlock.
+    super::permissions::forget_remembered_in_chromium();
     session::save_session_snapshot();
     core().save_settings();
     windows::on_locked();
     session::seal_cookies_then(|| {
         let mut c = core();
         c.unlocked = None; // keys are zeroized on drop
+        drop(c);
+        super::lock_guard::end_locking();
     });
 }
 
@@ -1173,6 +1190,15 @@ fn sync_run(body: &Value) -> Value {
 
 /// Keyboard shortcuts and toolbar actions (UI thread).
 pub fn shortcut(w: u32, action: &str) {
+    // Locked: no shortcut acts behind the lock screen (tabs, windows, zoom,
+    // printing...); Emergency Lockdown stays available. Typing the code is
+    // not affected (only shortcuts get here).
+    if action != "emergency.lockdown" && super::lock_guard::locked() {
+        super::lock_guard::shortcut_seen(action, false);
+        state::log(&format!("raccourci « {action} » ignoré : NIGHTFALL est verrouillé"));
+        return;
+    }
+    super::lock_guard::shortcut_seen(action, true);
     let browser = windows::active_browser(w);
     match action {
         "tab.new" => {

@@ -636,6 +636,11 @@ fn prepare_window_close(id: u32) {
     if is_last_window || !private {
         super::session::save_session_snapshot();
     }
+    if is_last_window {
+        // Chromium's copy of the remembered permission decisions does not
+        // outlive the session (given back at the next unlock).
+        super::permissions::forget_remembered_in_chromium();
+    }
     // Collect first, close after: closing calls back into NIGHTFALL.
     let hosts: Vec<BrowserHost> = with_window(id, |ctx| {
         let tabs = ctx.tabs.iter().filter_map(|t| t.view.as_ref().and_then(|v| v.browser()));

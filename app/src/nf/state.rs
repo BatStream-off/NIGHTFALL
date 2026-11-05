@@ -385,6 +385,37 @@ impl Core {
     }
 }
 
+/// Read a saved setting. A copy that cannot be read (damaged, or written by
+/// an incompatible version) is never silently replaced: it is logged and
+/// kept as is under `<key>.illisible` (or `<key>.illisible.<time>` when
+/// that key is taken) before the defaults are used, so the next save cannot
+/// lose it. The log names the key only, never the value.
+pub fn load_setting<T: serde::de::DeserializeOwned>(st: &Storage, key: &str) -> Option<T> {
+    let raw = match st.setting::<serde_json::Value>(key) {
+        Ok(Some(v)) => v,
+        Ok(None) => return None,
+        Err(_) => {
+            log(&format!("réglages : « {key} » illisible dans la base (valeurs par défaut utilisées)"));
+            return None;
+        }
+    };
+    match serde_json::from_value::<T>(raw.clone()) {
+        Ok(v) => Some(v),
+        Err(_) => {
+            let mut backup = format!("{key}.illisible");
+            if matches!(st.setting::<serde_json::Value>(&backup), Ok(Some(_))) {
+                backup = format!("{key}.illisible.{}", nf_core::unix_now());
+            }
+            let kept = st.set_setting(&backup, &raw).is_ok();
+            log(&format!(
+                "réglages : « {key} » ne peut pas être lu (valeurs par défaut utilisées) ; copie enregistrée {}",
+                if kept { format!("conservée sous « {backup} »") } else { "NON conservée (écriture impossible)".to_string() }
+            ));
+            None
+        }
+    }
+}
+
 /// Items blocked by Shield since the profile was created: the saved total
 /// from previous sessions plus this session's counter.
 static BLOCKED_BASE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -629,6 +660,67 @@ mod tests {
         s.secure_dns_custom = "http://doh.example/dns-query".into();
         s.sanitize();
         assert_eq!(s.doh_config().0, "automatic");
+    }
+
+    #[test]
+    fn nested_settings_with_missing_fields_load_without_loss() {
+        // Complete "app" copy as saved today: perf with its 3 fields,
+        // auto_purge with its 3 fields.
+        let mut s = Settings::default();
+        s.search_engine = "qwant".into();
+        s.perf.discard_after_minutes = 45;
+        s.perf.battery_saver = false;
+        s.auto_purge.enabled = true;
+        s.auto_purge.min_independent_critical = 3;
+        s.site_permissions.push(SitePermission { origin: "https://a.example".into(), kind: "camera".into(), allow: true, updated: 5 });
+        let full = serde_json::to_value(&s).unwrap();
+        assert_eq!(full["perf"].as_object().unwrap().len(), 3);
+        assert_eq!(full["auto_purge"].as_object().unwrap().len(), 3);
+        let back: Settings = serde_json::from_value(full.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&back).unwrap(), full);
+        // The same copy read by a version whose nested structures have more
+        // fields = a copy whose nested structures lack one: nothing else is
+        // lost (before, the whole of "app" fell back to the defaults).
+        let mut partial = full.clone();
+        partial["perf"].as_object_mut().unwrap().remove("discard_enabled");
+        partial["auto_purge"].as_object_mut().unwrap().remove("categories");
+        let back: Settings = serde_json::from_value(partial).unwrap();
+        assert_eq!(back.search_engine, "qwant");
+        assert_eq!((back.perf.discard_after_minutes, back.perf.battery_saver, back.perf.discard_enabled), (45, false, true));
+        assert_eq!((back.auto_purge.enabled, back.auto_purge.min_independent_critical), (true, 3));
+        assert_eq!(back.auto_purge.categories, AutoPurgeRules::default().categories);
+        assert_eq!(back.site_permissions, s.site_permissions);
+        // Unknown fields from a newer version are ignored.
+        let mut newer = full.clone();
+        newer["perf"]["new_field"] = serde_json::json!(1);
+        newer["auto_purge"]["new_field"] = serde_json::json!("x");
+        let back: Settings = serde_json::from_value(newer).unwrap();
+        assert_eq!(serde_json::to_value(&back).unwrap(), full);
+    }
+
+    #[test]
+    fn unreadable_saved_settings_are_kept_not_overwritten() {
+        let key = nf_crypto::SecretKey::from_bytes([7; 32]);
+        let st = Storage::open_in_memory(&key).unwrap();
+        assert!(load_setting::<Settings>(&st, "app").is_none());
+        st.set_setting("app", &Settings { search_engine: "brave".into(), ..Default::default() }).unwrap();
+        assert_eq!(load_setting::<Settings>(&st, "app").unwrap().search_engine, "brave");
+        // A copy of an incompatible shape: defaults used, raw copy kept.
+        let bad = serde_json::json!({ "search_engine": 42, "vertical_tabs": true });
+        st.set_setting("app", &bad).unwrap();
+        assert!(load_setting::<Settings>(&st, "app").is_none());
+        assert_eq!(st.setting::<serde_json::Value>("app.illisible").unwrap(), Some(bad.clone()));
+        // A second failure keeps the first copy and adds another one.
+        let bad2 = serde_json::json!({ "perf": "x" });
+        st.set_setting("app", &bad2).unwrap();
+        assert!(load_setting::<Settings>(&st, "app").is_none());
+        assert_eq!(st.setting::<serde_json::Value>("app.illisible").unwrap(), Some(bad));
+        // Same rule for the other saved structures.
+        st.set_setting("videoguard", &serde_json::json!({ "enabled": "oui" })).unwrap();
+        assert!(load_setting::<VideoGuardConfig>(&st, "videoguard").is_none());
+        assert!(st.setting::<serde_json::Value>("videoguard.illisible").unwrap().is_some());
+        st.set_setting("shield", &serde_json::json!({ "enabled": false })).unwrap();
+        assert!(!load_setting::<nf_shield::ShieldConfig>(&st, "shield").unwrap().enabled);
     }
 
     #[test]
