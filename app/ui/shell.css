@@ -4,7 +4,7 @@ html, body { height: 100%; overflow: hidden; user-select: none; }
 /* Icons: 24-unit grid drawn at 20 px, so 1.9 units = ~1.6 px strokes. */
 svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
-/* ---------- Splash (1.8 s, the one orchestrated moment) ---------- */
+/* ---------- Splash (0.85 s, the one orchestrated moment) ---------- */
 #splash { position: fixed; inset: 0; background: var(--night); display: grid; place-items: center; z-index: 50; }
 .splash-stage { display: grid; justify-items: center; gap: 22px; animation: nf-out .4s ease-in 1.4s forwards; }
 .splash-emblem { position: relative; width: 128px; height: 128px; -webkit-mask: url(emblem.png) center / contain no-repeat; mask: url(emblem.png) center / contain no-repeat; opacity: 0; transform: scale(.9); animation: nf-in .6s cubic-bezier(.2, .7, .2, 1) .15s forwards; overflow: hidden; }
@@ -49,7 +49,7 @@ button.link:hover { text-decoration: underline; background: none; }
 .rk { width: 100%; font: 500 17px/1.6 var(--mono); text-align: center; padding: 16px; border: 1px solid rgba(92, 214, 230, .45); border-radius: 8px; background: rgba(92, 214, 230, .05); user-select: text; word-spacing: .3em; color: #e9fbff; }
 
 /* ---------- Chrome (top bar): tab strip 38 px + toolbar 50 px ---------- */
-:root { --strip: var(--night); --bar: #0e1422; --icon: #c9d3ea; --hover: rgba(201, 211, 234, .09); --press: rgba(201, 211, 234, .14); }
+:root { --strip: var(--c-bg); --bar: var(--c-surface); --icon: var(--c-text); --hover: var(--c-hover); --press: color-mix(in oklab, var(--c-text) 12%, transparent); }
 #chrome { display: flex; flex-direction: column; height: 100%; background: var(--strip); }
 body.private #chrome { --tab-edge: linear-gradient(90deg, var(--private), #6b5cff); --strip: #0a0714; }
 
@@ -83,7 +83,7 @@ body.vertical #tabstrip { display: none; }
 .tab.pinned { width: 44px; flex: none; justify-content: center; padding: 0; }
 .tab.pinned .t-title, .tab.pinned .t-close { display: none; }
 .tab .t-icon { width: 16px; height: 16px; border-radius: 4px; background: var(--steel-2); flex: none; display: grid; place-items: center; font: 600 10px/1 var(--display); color: var(--moon); }
-.tab.active .t-icon { background: linear-gradient(135deg, #2457b8, #2a8aa6); color: #fff; }
+.tab.active .t-icon { background: linear-gradient(135deg, var(--c-accent), var(--c-accent-2)); color: var(--c-on-accent); }
 /* site icon (favicon) */
 .tab .t-fav, .vtab .t-fav { width: 16px; height: 16px; flex: none; border-radius: 3px; object-fit: contain; }
 .tab.pinned .t-fav { width: 18px; height: 18px; }
@@ -118,7 +118,7 @@ button.icon { width: 32px; height: 32px; padding: 0; flex: none; display: inline
 button.icon:hover { background: var(--hover); color: #fff; }
 button.icon:active, button.icon.pressed { background: var(--press); color: #fff; transform: none; }
 button.icon:disabled { opacity: .32; background: transparent; }
-button.icon.quiet { color: #8f9bb6; }
+button.icon.quiet { color: var(--c-text-2); }
 button.icon.on { color: var(--arc); }
 #b-star.on svg { fill: var(--arc); }
 
@@ -128,19 +128,19 @@ button.icon.on { color: var(--arc); }
   flex: 1; min-width: 120px; display: flex; align-items: center; gap: 6px; height: 36px; margin: 0 6px 0 2px; padding: 0 4px 0 5px;
   border-radius: 10px; background: var(--night); border: 1px solid transparent; transition: border-color .12s, box-shadow .12s, background .12s;
 }
-#omnibox:hover { background: #04060b; border-color: var(--steel); }
-#omnibox:focus-within { background: #04060b; border-color: transparent; box-shadow: var(--focus); }
+#omnibox:hover { background: var(--c-bg); border-color: var(--steel); }
+#omnibox:focus-within { background: var(--c-bg); border-color: transparent; box-shadow: var(--focus); }
 #address { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; padding: 0 0 0 2px; font-size: 14px; user-select: text; color: var(--moon); }
 #address:hover { border: 0; }
 #address:focus, #address:focus-visible { box-shadow: none; }
 #sec-icon { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--mist); flex: none; }
 #sec-icon:hover { background: var(--hover); }
 #sec-icon svg { width: 17px; height: 17px; }
-#sec-icon.secure { color: #aab6cf; }
+#sec-icon.secure { color: var(--c-text-2); }
 #sec-icon.insecure { color: var(--warn); }
 #sec-icon.internal { color: var(--arc); }
 /* Shield sits inside the omnibox, at its right end (like Brave) */
-#b-shield { height: 28px; padding: 0 8px 0 6px; gap: 5px; border: 0; border-radius: 7px; background: transparent; color: #8f9bb6; font: 600 12.5px/1 var(--display); flex: none; }
+#b-shield { height: 28px; padding: 0 8px 0 6px; gap: 5px; border: 0; border-radius: 7px; background: transparent; color: var(--c-text-2); font: 600 12.5px/1 var(--display); flex: none; }
 #b-shield svg { width: 19px; height: 19px; }
 #b-shield:hover { background: var(--hover); color: #fff; }
 #b-shield.pressed { background: var(--press); }
@@ -169,7 +169,7 @@ html.popup, html.popup body { background: transparent; }
 #popup .toast { left: 10px; right: 10px; bottom: 10px; max-width: none; box-shadow: none; }
 
 .m-item { display: flex; align-items: center; gap: 12px; width: calc(100% - 12px); height: 32px; margin: 0 6px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--moon); font: 400 13.5px/1.4 var(--ui); text-align: left; justify-content: flex-start; }
-.m-item svg { width: 18px; height: 18px; color: #aab6cf; }
+.m-item svg { width: 18px; height: 18px; color: var(--c-text-2); }
 .m-item:hover, .m-item:focus-visible { background: var(--hover); box-shadow: none; }
 .m-item:hover svg { color: #fff; }
 .m-item:active { transform: none; background: var(--press); }
@@ -200,7 +200,7 @@ html.popup, html.popup body { background: transparent; }
 .sh-toggle .t b { display: block; font-weight: 600; font-size: 13.5px; }
 .sh-toggle .t span { color: var(--mist); font-size: 12px; line-height: 1.4; display: block; margin-top: 2px; }
 .toggle { width: 40px; height: 22px; appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; border-radius: 99px; background: var(--steel-2); position: relative; cursor: pointer; flex: none; transition: background .15s; }
-.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #c3cde0; transition: transform .15s; }
+.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--c-text); transition: transform .15s; }
 .toggle:checked { background: var(--hex); }
 .toggle:checked::after { transform: translateX(18px); background: #fff; }
 .toggle:hover { border: 0; }
@@ -212,7 +212,7 @@ html.popup, html.popup body { background: transparent; }
 .pw-item:hover { background: var(--hover); }
 .pw-item .fav { width: 26px; height: 26px; font-size: 12px; background: linear-gradient(135deg, #2457b8, #2a8aa6); color: #fff; }
 .pw-item .u { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pw-item button.fill { height: 28px; padding: 0 12px; font-size: 12.5px; font-weight: 600; border: 0; border-radius: 7px; background: rgba(58, 119, 232, .2); color: #d4e2ff; }
+.pw-item button.fill { height: 28px; padding: 0 12px; font-size: 12.5px; font-weight: 600; border: 0; border-radius: 7px; background: rgba(58, 119, 232, .2); color: var(--c-text); }
 .pw-item button.fill:hover { background: var(--hex); color: #fff; }
 .pw-empty { margin: 0 12px; padding: 14px 12px; border-radius: 10px; background: var(--night); color: var(--mist); font-size: 12.5px; text-align: center; }
 .p-title { padding: 10px 16px 8px; font: 600 12px/1 var(--ui); color: var(--mist); text-transform: none; letter-spacing: .01em; }
@@ -267,7 +267,7 @@ html.popup, html.popup body { background: transparent; }
 /* Address bar suggestions */
 .p-suggest { padding: 6px 0 !important; }
 .s-item { display: flex; align-items: center; gap: 12px; height: 38px; margin: 0 6px; padding: 0 12px; border-radius: 8px; color: var(--moon); cursor: default; }
-.s-item svg { width: 17px; height: 17px; color: #aab6cf; }
+.s-item svg { width: 17px; height: 17px; color: var(--c-text-2); }
 .s-item:hover { background: var(--hover); }
 .s-item.sel { background: rgba(58, 119, 232, .22); }
 .s-item.sel svg { color: var(--arc); }

@@ -1,36 +1,61 @@
-/* NIGHTFALL design system.
-   Palette taken from the emblem: night ink, slate, steel, and the
-   cyan-to-blue edge of the hexagon (used sparingly: focus, active, primary).
-   Shape language: the hexagon's cut corners ("chamfer") on tabs, keys and
-   primary buttons. Display type: Chakra Petch (SIL OFL 1.1, fonts/). */
+/* NIGHTFALL design system « Crépuscule ».
+   Semantic tokens (--c-*, --s-*, --r-*, --h-*, --d-*) are the ones a theme
+   overrides (see the theme engine); the older names below map onto them so
+   every page follows a theme. Contrast (WCAG 2.2): all text ≥ 4.5:1 on bg,
+   surface and raised; indicators ≥ 3:1. Interface type is the system font;
+   Chakra Petch (SIL OFL 1.1, fonts/) is reserved for the brand and figures. */
 @font-face { font-family: "Chakra Petch"; src: url(fonts/chakra-petch-Medium.woff) format("woff"); font-weight: 500; font-display: swap; }
 @font-face { font-family: "Chakra Petch"; src: url(fonts/chakra-petch-SemiBold.woff) format("woff"); font-weight: 600; font-display: swap; }
 
 :root {
-  --night: #06080e;        /* page background */
-  --slate: #0c111d;        /* chrome surfaces */
-  --slate-2: #111828;      /* raised surfaces, inputs */
-  --steel: #1b2438;        /* lines */
-  --steel-2: #26324c;      /* hover, strong lines */
-  --moon: #dde6f6;         /* text */
-  --mist: #8290ab;         /* secondary text */
-  --arc: #5cd6e6;          /* emblem cyan */
-  --hex: #3a77e8;          /* emblem blue, primary actions */
-  --hex-2: #5a8ff0;
-  --edge: linear-gradient(90deg, var(--arc), var(--hex));
-  --danger: #ff5d6c;
-  --warn: #f2b45a;
-  --ok: #4cd4a0;
+  /* ---- Theme colours (★ = chosen by a theme, the rest is derived) */
+  --c-bg: #05070c;                                   /* ★ pages, tab strip */
+  --c-surface: #0e121d;                              /* ★ toolbar, menus, panels */
+  --c-raised: #141a28;                               /*   cards, active tab, fields */
+  --c-overlay: #1b2233;                              /*   strong hover */
+  --c-text: #eef2fb;                                 /* ★ text */
+  --c-text-2: #8a95ad;                               /*   secondary text */
+  --c-text-3: #808ba3;                               /*   hints */
+  --c-accent: #2967ff;                               /* ★ primary actions, selection */
+  --c-accent-hover: #4a80ff;
+  --c-accent-2: #5ad2e8;                             /* ★ focus, active, horizon line */
+  --c-on-accent: #ffffff;                            /*   text on the accent */
+  --c-line: color-mix(in oklab, var(--c-text) 9%, transparent);
+  --c-line-strong: color-mix(in oklab, var(--c-text) 16%, transparent);
+  --c-hover: color-mix(in oklab, var(--c-text) 7%, transparent);
+  --c-horizon: linear-gradient(90deg, var(--c-accent-2), var(--c-accent) 55%, #8b6cff);
+  /* ---- Spacing (4 px grid), radii, control heights, motion */
+  --s-1: 2px; --s-2: 4px; --s-3: 6px; --s-4: 8px; --s-5: 12px; --s-6: 16px; --s-7: 20px; --s-8: 24px; --s-9: 32px;
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-pill: 999px;
+  --h-sm: 28px; --h-md: 32px; --h-lg: 36px;
+  --d-fast: 140ms; --d-base: 220ms; --ease: cubic-bezier(.2, 0, 0, 1);
+
+  /* ---- Older names, mapped on the tokens above */
+  --night: var(--c-bg);
+  --slate: var(--c-surface);
+  --slate-2: var(--c-raised);
+  --steel: var(--c-line);
+  --steel-2: var(--c-line-strong);
+  --moon: var(--c-text);
+  --mist: var(--c-text-2);
+  --arc: var(--c-accent-2);
+  --hex: var(--c-accent);
+  --hex-2: var(--c-accent-hover);
+  --edge: var(--c-horizon);
+  --danger: #ff5f6d;
+  --warn: #f5b553;
+  --ok: #45d39c;
   --private: #a27cff;
   --cut: 7px;              /* chamfer size */
   --ui: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --display: "Chakra Petch", var(--ui);
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
-  --focus: 0 0 0 1px var(--arc), 0 0 0 4px rgba(92, 214, 230, .18);
+  --focus: 0 0 0 1px var(--c-accent-2), 0 0 0 4px color-mix(in oklab, var(--c-accent-2) 22%, transparent);
   /* legacy names used by older page scripts */
   --obsidian: var(--night); --obsidian-2: var(--slate-2); --graphite: var(--slate); --graphite-2: var(--slate-2);
   --graphite-3: var(--steel-2); --line: var(--steel); --text: var(--moon); --muted: var(--mist); --blue: var(--hex); --blue-2: var(--hex-2);
   color-scheme: dark;
+  accent-color: var(--c-accent);
 }
 
 * { box-sizing: border-box; }
@@ -38,12 +63,13 @@
 html, body { margin: 0; background: var(--night); color: var(--moon); font: 14px/1.5 var(--ui); -webkit-font-smoothing: antialiased; }
 a { color: var(--arc); text-decoration: none; }
 a:hover { text-decoration: underline; }
-::selection { background: rgba(58, 119, 232, .45); }
+::selection { background: color-mix(in oklab, var(--c-accent) 45%, transparent); }
 
-h1, h2, h3 { font-family: var(--display); font-weight: 600; color: var(--moon); letter-spacing: .01em; }
-h1 { font-size: 28px; line-height: 1.15; margin: 0; }
-h2 { font-size: 17px; margin: 0 0 12px; }
+h1, h2, h3 { font-family: var(--ui); font-weight: 600; color: var(--moon); letter-spacing: -.005em; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0; letter-spacing: -.015em; }
+h2 { font-size: 16px; margin: 0 0 12px; }
 h3 { font-size: 14px; margin: 0 0 6px; }
+.brand, .figure { font-family: var(--display); }
 p { margin: 0 0 10px; }
 .muted, p.muted { color: var(--mist); }
 .small { font-size: 12.5px; }
@@ -51,33 +77,34 @@ p { margin: 0 0 10px; }
 /* ---- Controls */
 button, .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  height: 34px; padding: 0 14px; border-radius: 8px;
+  height: var(--h-md); padding: 0 14px; border-radius: var(--r-md);
   background: var(--slate-2); color: var(--moon); border: 1px solid var(--steel);
   font: 500 13.5px/1 var(--ui); cursor: pointer;
-  transition: background .12s, border-color .12s, color .12s;
+  transition: background var(--d-fast) var(--ease), border-color var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
-button:hover { background: #162036; border-color: var(--steel-2); }
+button:hover { background: var(--c-overlay); border-color: var(--steel-2); }
 button:active { transform: translateY(.5px); }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: none; box-shadow: var(--focus); }
-button.primary {
-  background: var(--hex); border-color: transparent; color: #fff; font-weight: 600;
-  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
-  border-radius: 0;
-}
-button.primary:hover { background: var(--hex-2); }
-button.primary:focus-visible { clip-path: none; border-radius: 8px; }
+button.primary { background: var(--c-accent); border-color: transparent; color: var(--c-on-accent); font-weight: 600; }
+button.primary:hover { background: var(--c-accent-hover); }
 button.danger { color: #ffc9ce; border-color: rgba(255, 93, 108, .45); background: rgba(255, 93, 108, .08); }
 button.danger:hover { background: rgba(255, 93, 108, .16); border-color: var(--danger); }
 button.ghost { background: transparent; border-color: transparent; }
-button.ghost:hover { background: var(--slate-2); }
+button.ghost:hover { background: var(--c-hover); }
 button:disabled { opacity: .45; cursor: default; }
 
 input, select, textarea {
-  width: 100%; height: 38px; padding: 0 12px; border-radius: 8px;
+  width: 100%; height: var(--h-lg); padding: 0 12px; border-radius: var(--r-md);
   background: var(--slate-2); color: var(--moon); border: 1px solid var(--steel);
   font: 14px var(--ui);
 }
-input::placeholder, textarea::placeholder { color: #5d6a85; }
+input::placeholder, textarea::placeholder { color: var(--c-text-3); }
+/* Check boxes and radio buttons keep their own size (never stretched). */
+input[type=checkbox], input[type=radio] { width: 16px; height: 16px; padding: 0; flex: none; accent-color: var(--c-accent); }
+input[type=radio] { appearance: none; margin: 0; border-radius: 50%; border: 1.5px solid var(--c-line-strong); background: var(--c-bg); cursor: pointer; transition: border-color var(--d-fast) var(--ease), box-shadow var(--d-fast) var(--ease); }
+input[type=radio]:hover { border-color: var(--c-text-2); }
+input[type=radio]:checked { border-color: var(--c-accent); box-shadow: inset 0 0 0 3.5px var(--c-bg), inset 0 0 0 8px var(--c-accent); }
+input[type=checkbox] { cursor: pointer; }
 input:hover, select:hover, textarea:hover { border-color: var(--steel-2); }
 textarea { height: auto; min-height: 120px; padding: 10px 12px; font: 12.5px/1.5 var(--mono); }
 input[type=date] { width: auto; }
@@ -111,7 +138,7 @@ label { display: block; margin: 14px 0 6px; color: var(--mist); font-size: 13px;
 .switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; }
 .switch + .switch { border-top: 1px solid var(--steel); }
 .switch input[type=checkbox] { width: 40px; height: 22px; appearance: none; background: var(--steel-2); border-radius: 99px; position: relative; cursor: pointer; border: 0; padding: 0; flex: none; transition: background .15s; }
-.switch input[type=checkbox]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #c3cde0; transition: transform .15s; }
+.switch input[type=checkbox]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--c-text); transition: transform .15s; }
 .switch input[type=checkbox]:checked { background: var(--hex); }
 .switch input[type=checkbox]:checked::after { transform: translateX(18px); background: #fff; }
 
@@ -126,5 +153,5 @@ code, .mono { font-family: var(--mono); }
 /* Quiet scrollbars matching the night palette */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #1d2740; border: 2px solid transparent; background-clip: padding-box; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #2a3858; background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-overlay); border: 2px solid transparent; background-clip: padding-box; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-line-strong); background-clip: padding-box; border: 2px solid transparent; }
