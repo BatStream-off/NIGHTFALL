@@ -1,0 +1,14 @@
+/* Gabarit des pages internes (paramètres et pages NIGHTFALL). */
+body { background: var(--page-bg); }
+.shell { display: flex; width: 1280px; min-height: 900px; }
+.nav { width: 248px; flex: none; padding: 20px 12px; background: var(--c-surface); border-right: 1px solid var(--c-line); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; font: 600 16px var(--f-display); }
+.brand img { width: 24px; }
+.srch { margin: 0 2px 14px; height: 32px; font-size: 12px; }
+.ni { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: var(--r-md); color: var(--c-text-2); font-size: 13px; position: relative; }
+.ni.on { background: var(--c-raised); color: var(--c-text); box-shadow: 0 0 0 1px var(--c-line); }
+.ni.on::before { content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--c-accent-2); }
+.ngap { height: 1px; background: var(--c-line); margin: 10px 8px; }
+.main { flex: 1; padding: 36px 56px 60px; }
+.main .in { max-width: 760px; margin: 0 auto; }
+.lead { color: var(--c-text-2); margin: 6px 0 4px; font-size: 13px; }

@@ -1,0 +1,63 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Système de design</title>
+<link rel="stylesheet" href="ds.css"><style>
+body { padding: 32px 40px; width: 1280px; }
+h2.sec { margin-top: 26px; }
+.sw-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.tok { width: 132px; } .tok i { display: block; height: 52px; border-radius: 10px; box-shadow: inset 0 0 0 1px #ffffff1a; }
+.tok b { display: block; font: 500 12px var(--f-mono); margin-top: 6px; } .tok span { font: 400 11px var(--f-mono); color: var(--c-text-2); }
+.type div { display: flex; align-items: baseline; gap: 20px; padding: 6px 0; border-bottom: 1px solid var(--c-line); }
+.type code { width: 210px; font: 500 11.5px var(--f-mono); color: var(--c-text-2); flex: none; }
+.scale { display: flex; gap: 16px; align-items: flex-end; }
+.scale div { display: grid; justify-items: center; gap: 6px; font: 500 11px var(--f-mono); color: var(--c-text-2); }
+.scale i { display: block; background: var(--c-accent-soft); border: 1px solid var(--c-accent); }
+.icons { display: grid; grid-template-columns: repeat(14, 1fr); gap: 6px; }
+.icons div { height: 64px; display: grid; justify-items: center; align-content: center; gap: 6px; border-radius: 8px; background: var(--c-surface); font: 400 10px var(--f-mono); color: var(--c-text-3); }
+.icons svg.i { width: 20px; height: 20px; color: var(--c-text); }
+.comp { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.motion div { display: grid; grid-template-columns: 180px 120px 1fr; padding: 6px 0; border-bottom: 1px solid var(--c-line); font-size: 12px; }
+.motion code { font: 500 11.5px var(--f-mono); color: var(--c-text-2); }
+</style></head><body>
+<h1 class="page">NIGHTFALL — système de design</h1>
+<p style="color:var(--c-text-2);margin:6px 0 0">Identité « Crépuscule » : encre de nuit, une seule ligne d'horizon lumineuse (cyan → bleu → violet), l'hexagone de l'emblème réservé à la marque. Calme, net, précis.</p>
+<h2 class="sec">Couleurs — choisies par un thème (★) et dérivées</h2><div class="sw-row" id="cols"></div>
+<h2 class="sec">Ligne d'horizon (signature)</h2><div style="height:4px;border-radius:4px;background:var(--c-horizon);width:520px;box-shadow:0 0 18px color-mix(in oklab,var(--c-accent) 60%,transparent)"></div>
+<h2 class="sec">Typographie — système pour l'interface, Chakra Petch pour la marque et les chiffres</h2>
+<div class="type">
+ <div><code>display 40 / Chakra 600</code><span style="font:600 40px/1 var(--f-display)">735 bloqués</span></div>
+ <div><code>titre de page 28 / Chakra 600</code><span style="font:600 28px/1.1 var(--f-display)">Apparence</span></div>
+ <div><code>titre 16 / UI 600</code><span style="font:600 16px var(--f-ui)">NIGHTFALL Shield</span></div>
+ <div><code>corps page 14 / UI 400</code><span style="font-size:14px">Bloque les publicités et les traqueurs sur tous les sites.</span></div>
+ <div><code>interface 13 / UI 400–500</code><span style="font-size:13px">Nouvel onglet · Historique · Paramètres</span></div>
+ <div><code>secondaire 12 / UI 400</code><span style="font-size:12px;color:var(--c-text-2)">Désactiver si la page ne fonctionne pas</span></div>
+ <div><code>étiquette 11 / UI 600 +6 %</code><span style="font:600 11px var(--f-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--c-text-2)">Personnalisation rapide</span></div>
+</div>
+<h2 class="sec">Espacements (4) · rayons · hauteurs de contrôles</h2>
+<div class="comp" style="gap:48px"><div class="scale"></div><div class="scale" id="rad"></div><div class="scale" id="hts"></div></div>
+<h2 class="sec">Icônes — grille 24, trait 1,6 px à 16 px, 20 px dans les pages</h2><div class="icons" id="ico"></div>
+<h2 class="sec">Composants</h2>
+<div class="comp"><span class="btn primary">Appliquer</span><span class="btn">Dupliquer</span><span class="btn quiet">Annuler</span><span class="btn danger">Supprimer</span><span class="btn primary focus">Focus clavier</span><span class="btn sm">Petit</span><span class="btn lg primary">Grand</span>
+<span class="sw on"></span><span class="sw"></span><span class="cb on"></span><span class="cb"></span><span class="rd on"></span><span class="rd"></span>
+<span class="chip ok">actif</span><span class="chip warn">à vérifier</span><span class="chip danger">bloqué</span><span class="chip plain">MV3</span>
+<span class="field" style="width:240px"><i data-i="search"></i><span class="ph">Champ</span></span><span class="field focus" style="width:200px">Champ actif</span></div>
+<h2 class="sec">Mouvement</h2>
+<div class="motion">
+ <div><b>Survol, pression</b><code>80–140 ms</code><code>--ease ; couleur de fond uniquement, jamais de déplacement</code></div>
+ <div><b>Menu, panneau (entrée)</b><code>220 ms</code><code>--ease-out ; opacité 0→1 + translateY(-4px→0) depuis l'ancre, contenu de la vue seulement</code></div>
+ <div><b>Sortie</b><code>140 ms</code><code>--ease-in ; opacité seulement</code></div>
+ <div><b>Onglet ouvert / fermé</b><code>220 ms</code><code>largeur 0→216 px, puis fondu du titre ; fermeture : largeur → 0, les voisins glissent</code></div>
+ <div><b>Interrupteur</b><code>220 ms</code><code>--ease-out sur la pastille</code></div>
+ <div><b>Changement de thème</b><code>320 ms</code><code>fondu enchaîné des couleurs (transition sur les propriétés de couleur)</code></div>
+ <div><b>Réduire les animations</b><code>0 ms</code><code>prefers-reduced-motion ou réglage NIGHTFALL : toutes les durées à 0</code></div>
+</div>
+<script src="common.js"></script><script>
+const C = [['--c-bg', 'Fond ★'], ['--c-surface', 'Surface ★'], ['--c-raised', 'Surélevé'], ['--c-overlay', 'Superposé'], ['--c-text', 'Texte ★'], ['--c-text-2', 'Texte 2'], ['--c-text-3', 'Texte 3'], ['--c-accent', 'Accent ★'], ['--c-accent-2', 'Accent 2 ★'], ['--c-ok', 'Succès'], ['--c-warn', 'Attention'], ['--c-danger', 'Danger'], ['--c-private', 'Privé']];
+const cs = getComputedStyle(document.documentElement);
+document.getElementById('cols').innerHTML = C.map(([v, n]) => `<div class="tok"><i style="background:var(${v})"></i><b>${n}</b><span>${v} ${cs.getPropertyValue(v).trim().slice(0, 9)}</span></div>`).join('');
+document.querySelector('.scale').innerHTML = [2, 4, 6, 8, 12, 16, 20, 24, 32, 48].map((n) => `<div><i style="width:${n}px;height:${n}px"></i>${n}</div>`).join('');
+document.getElementById('rad').innerHTML = [['xs', 4], ['sm', 6], ['md', 8], ['lg', 12], ['xl', 16]].map(([k, n]) => `<div><i style="width:40px;height:40px;border-radius:${n}px"></i>${k} ${n}</div>`).join('');
+document.getElementById('hts').innerHTML = [24, 28, 32, 36, 40].map((n) => `<div><i style="width:56px;height:${n}px;border-radius:8px"></i>${n}</div>`).join('');
+
+</script><script>/* NF_ICONS defined by icons.js below; render icon grid after load */</script>
+<script src="icons.js"></script><script>
+document.getElementById('ico').innerHTML = Object.keys(NF_ICONS).map((k) => `<div><svg class="i"><use href="#i-${k}"/></svg>${k}</div>`).join('');
+</script></body></html>

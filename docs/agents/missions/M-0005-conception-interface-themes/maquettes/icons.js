@@ -51,6 +51,7 @@ const NF_ICONS = {
   cookie: '<path d="M19.6 12.6A7.8 7.8 0 1 1 11.4 4.4a3 3 0 0 0 3.6 3.6 3 3 0 0 0 4.6 4.6z"/><path d="M9 10h.01M8.5 14.5h.01M13 15.5h.01"/>',
   camera: '<rect x="3.8" y="7" width="12" height="10" rx="2.4"/><path d="m15.8 10.5 4.4-2.5v8l-4.4-2.5"/>',
   split: '<rect x="3.8" y="5" width="16.4" height="14" rx="2.6"/><path d="M12 5v14"/>',
+  reopen: '<path d="M5.5 12a6.5 6.5 0 1 0 2-4.7"/><path d="M5.2 4.3v3.9h3.9"/>',
   winmin: '<path d="M7 12h10"/>',
   winmax: '<rect x="7" y="7" width="10" height="10" rx="1.4"/>',
   winrestore: '<rect x="7" y="9" width="8" height="8" rx="1.2"/><path d="M9.5 9V8c0-.6.4-1 1-1h5.5c.6 0 1 .4 1 1v5.5c0 .6-.4 1-1 1H15"/>',

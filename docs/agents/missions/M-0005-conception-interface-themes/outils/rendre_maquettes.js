@@ -12,7 +12,7 @@ const SHOTS = [
   ['fenetre-theme-aube', 'fenetre.html?os=win&theme=aube', 1280, 800],
   ['fenetre-theme-braise', 'fenetre.html?os=mac&theme=braise', 1280, 800],
   ['header-detail-2x', 'fenetre.html?os=win', 1280, 84, 2],
-  ['onglets-etats', 'onglets.html', 1100, 520],
+  ['onglets-etats', 'onglets.html', 1440, 520],
   ['menus', 'menus.html', 1280, 760],
   ['panneaux', 'panneaux.html', 1280, 800],
   ['page-interne-apparence', 'page-apparence.html', 1280, 900],

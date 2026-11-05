@@ -1,0 +1,64 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Éditeur de thèmes</title>
+<link rel="stylesheet" href="ds.css"><link rel="stylesheet" href="themes.css"><link rel="stylesheet" href="page.css"><style>
+.ed { display: grid; grid-template-columns: 340px 1fr; height: 900px; width: 1280px; }
+.side { background: var(--c-surface); border-right: 1px solid var(--c-line); display: flex; flex-direction: column; }
+.sh { display: flex; align-items: center; gap: 8px; padding: 14px 12px 12px 16px; border-bottom: 1px solid var(--c-line); }
+.sh .nm { flex: 1; } .sh .nm b { display: block; font: 600 15px var(--f-ui); } .sh .nm span { color: var(--c-text-2); font-size: 12px; }
+.tabs2 { display: flex; gap: 2px; margin: 10px 12px 4px; padding: 3px; background: var(--c-bg); border-radius: 9px; }
+.tabs2 span { flex: 1; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--c-text-2); font-size: 12px; } .tabs2 span.on { background: var(--c-raised); color: var(--c-text); box-shadow: 0 0 0 1px var(--c-line); }
+.list { flex: 1; overflow: hidden; padding: 4px 8px; }
+.grp { margin: 12px 8px 6px; color: var(--c-text-3); font: 600 11px/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; }
+.cr { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px; border-radius: 8px; }
+.cr.on { background: var(--c-raised); box-shadow: 0 0 0 1px var(--c-line); }
+.cr .t { flex: 1; font-size: 13px; } .cr .hex { font: 500 11.5px var(--f-mono); color: var(--c-text-2); }
+.sw2 { width: 22px; height: 22px; border-radius: 6px; box-shadow: inset 0 0 0 1px #ffffff26; }
+.picker { margin: 4px 8px 8px; padding: 12px; border-radius: 12px; background: var(--c-bg); border: 1px solid var(--c-line); }
+.sv { height: 120px; border-radius: 8px; background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(222 100% 60%)); position: relative; }
+.sv i { position: absolute; left: 78%; top: 22%; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #0006; }
+.hue { height: 10px; border-radius: 6px; margin: 10px 0; background: linear-gradient(90deg, red, yellow, lime, cyan, blue, magenta, red); position: relative; } .hue i { position: absolute; left: 61%; top: -3px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; background: hsl(222 100% 60%); }
+.prow { display: flex; gap: 8px; align-items: center; } .prow .field { height: 30px; flex: 1; font: 500 12px var(--f-mono); }
+.contrast { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--c-text-2); }
+.foot { padding: 12px; border-top: 1px solid var(--c-line); display: flex; gap: 8px; }
+.stage { position: relative; background: repeating-conic-gradient(#0b0d12 0 25%, #0e1016 0 50%) 0 0/24px 24px; padding: 22px 28px; }
+.bar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: var(--c-text-2); font-size: 12px; }
+.bar .seg { display: flex; padding: 3px; border-radius: 9px; background: var(--c-surface); } .bar .seg span { height: 26px; padding: 0 10px; display: grid; place-items: center; border-radius: 6px; } .bar .seg span.on { background: var(--c-raised); color: var(--c-text); }
+.mini { width: 860px; height: 560px; border-radius: 12px; overflow: hidden; box-shadow: 0 24px 60px #000a, 0 0 0 1px #ffffff14; display: flex; flex-direction: column; background: var(--page-bg); }
+.mini .strip { height: 40px; background: var(--header-bg); display: flex; align-items: flex-end; padding-left: 8px; gap: 2px; }
+.mini .tab { display: flex; align-items: center; gap: 8px; width: 180px; height: 32px; margin-bottom: 4px; padding: 0 10px; border-radius: 8px; font-size: 12px; color: var(--header-text); position: relative; }
+.mini .tab.on { background: var(--tab-active-bg); color: var(--c-text); box-shadow: 0 0 0 1px var(--c-line); } .mini .tab.on::after { content: ""; position: absolute; left: 50%; margin-left: -11px; bottom: -1px; width: 22px; height: 2px; border-radius: 2px; background: var(--tab-indicator); }
+.mini .tb { height: 44px; background: var(--toolbar-bg); border-bottom: 1px solid var(--c-line); display: flex; align-items: center; gap: 2px; padding: 0 8px; }
+.mini .om { flex: 1; height: 34px; margin: 0 8px; border-radius: 10px; background: var(--omnibox-bg); display: flex; align-items: center; padding: 0 12px; color: var(--c-text-2); font-size: 13px; }
+.mini .pg { flex: 1; position: relative; background: radial-gradient(60% 60% at 50% 115%, color-mix(in oklab, var(--c-accent) 55%, transparent), transparent), var(--page-bg); }
+.mini .menu { position: absolute; right: 10px; top: 4px; width: 230px; }
+.mini .cardx { position: absolute; left: 40px; top: 40px; width: 380px; }
+.pick { position: absolute; outline: 2px dashed var(--c-accent-2); outline-offset: 2px; border-radius: 10px; }
+.pick b { position: absolute; top: -24px; left: 0; padding: 2px 6px; border-radius: 4px; background: var(--c-accent-2); color: #001; font: 600 11px var(--f-ui); white-space: nowrap; }
+</style></head><body data-theme-root>
+<div class="ed"><div class="side">
+ <div class="sh"><span class="ib">${I}</span><div class="nm"><b>Mon thème</b><span>Basé sur Crépuscule · modifié</span></div><span class="ib"><i data-i="more"></i></span></div>
+ <div class="tabs2"><span class="on">Couleurs</span><span>Header</span><span>Menus</span><span>Fond</span></div>
+ <div class="list">
+  <div class="grp">Base</div>
+  <div class="cr"><span class="sw2" style="background:#05070c"></span><span class="t">Fond</span><span class="hex">#05070C</span></div>
+  <div class="cr"><span class="sw2" style="background:#0e121d"></span><span class="t">Surfaces</span><span class="hex">#0E121D</span></div>
+  <div class="cr"><span class="sw2" style="background:#eef2fb"></span><span class="t">Texte</span><span class="hex">#EEF2FB</span></div>
+  <div class="cr on"><span class="sw2" style="background:#3d6bff"></span><span class="t">Accent</span><span class="hex">#3D6BFF</span></div>
+  <div class="picker"><div class="sv"><i></i></div><div class="hue"><i></i></div>
+   <div class="prow"><span class="field">#3D6BFF</span><span class="btn sm quiet"><i data-i="eye" data-size="sm"></i></span></div>
+   <div class="contrast"><span class="chip ok">AA 6,1:1</span>texte blanc sur l'accent</div></div>
+  <div class="cr"><span class="sw2" style="background:#5ad2e8"></span><span class="t">Second accent</span><span class="hex">#5AD2E8</span></div>
+  <div class="grp">Avancé (dérivé automatiquement)</div>
+  <div class="cr"><span class="sw2" style="background:#141a28"></span><span class="t">Onglet actif</span><span class="hex" style="color:var(--c-text-3)">auto</span></div>
+  <div class="cr"><span class="sw2" style="background:#0e121d"></span><span class="t">Menus</span><span class="hex" style="color:var(--c-text-3)">auto</span></div>
+ </div>
+ <div class="foot"><span class="btn quiet">Annuler</span><span class="btn" style="margin-left:auto"><i data-i="copy" data-size="sm"></i>Dupliquer</span><span class="btn primary">Appliquer</span></div>
+</div>
+<div class="stage"><div class="bar"><b style="color:var(--c-text);font-weight:600">Aperçu</b><span class="seg"><span class="on">Fenêtre</span><span>Page interne</span><span>Menus</span></span><span style="margin-left:auto">Cliquez un élément de l'aperçu pour modifier sa couleur</span><span class="btn sm"><i data-i="eye" data-size="sm"></i>Essayer en direct</span></div>
+ <div class="mini" style="--c-accent:#3d6bff">
+  <div class="strip"><div class="tab"><span style="width:14px;height:14px;border-radius:4px;background:#1f6feb"></span>Le Monde</div><div class="tab on"><span style="width:14px;height:14px;border-radius:4px;background:#3d7a5c"></span>Wikipédia</div><div class="tab"><span style="width:14px;height:14px;border-radius:4px;background:#24292f"></span>GitHub</div></div>
+  <div class="tb"><span class="ib"><i data-i="back"></i></span><span class="ib"><i data-i="reload"></i></span><div class="om">fr.wikipedia.org/wiki/Crépuscule</div><span class="ib"><i data-i="shieldok"></i></span><span class="ib"><i data-i="menu"></i></span></div>
+  <div class="pg"><div class="menu"><div class="mi"><i data-i="newtab"></i>Nouvel onglet</div><div class="mi hover"><i data-i="history"></i>Historique</div><div class="mi"><i data-i="palette"></i>Apparence</div><div class="msep"></div><div class="mi"><i data-i="settings"></i>Paramètres</div></div>
+   <div class="card cardx"><div class="row"><div class="tt"><b>Bloquer les traqueurs</b><span>Exemple de réglage</span></div><span class="sw on"></span></div><div class="row"><div class="tt"><b>Action principale</b></div><span class="btn primary sm">Enregistrer</span></div></div><div class="pick" style="left:34px;top:34px;width:392px;height:132px"><b>Accent · boutons, interrupteurs</b></div></div>
+ </div>
+</div></div>
+<script src="common.js"></script><script>document.querySelector('.sh .ib').innerHTML = I('back');</script><script src="icons.js"></script></body></html>
