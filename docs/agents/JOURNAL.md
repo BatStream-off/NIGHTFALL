@@ -4,6 +4,50 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-05 soir — M-0002 et M-0003 ACCEPTÉES (audit final)
+- Corrections du Directeur (autorisées par le propriétaire) : M-0003 0dc8013, M-0002 7729abb.
+- Audit final (Opus, agent neuf) : **ACCEPTÉ** pour les deux, aucun MAJEUR. Mineurs : errata
+  du §10 / §8 à reporter dans le corps des textes (P1-5 hors du lot « faible risque », `$to`
+  exceptions jetées, portail captif, fourchettes) — à reprendre dans les fiches L1 ; précision
+  `DoClose` transmise à M-0008.
+- Limite de 5 h atteinte à 17:00, reprise à 18:00 (M-0007, M-0008, audit final).
+
+## 2026-11-05 — Décisions du propriétaire ; lot L0 lancé
+- **Validé** : plan (ordre L0 → L6) ; lancement de L0 ; le Directeur corrige lui-même M-0002 et
+  M-0003 (refusées deux fois) puis audit final ; protection de `main` (le proxy refuse ce réglage
+  au Directeur : instructions données au propriétaire) ; effacement de la copie Chromium des
+  autorisations mémorisées au verrouillage et à la fermeture ; uBlock Origin exécuté en CI comme
+  outil de mesure seulement.
+- **Non validé** : VideoGuard désactivé par défaut en navigation privée (comportement actuel conservé).
+- **Design** : le propriétaire veut voir les maquettes avant de décider ; 8 maquettes envoyées.
+- **M-0005** : corrections livrées (011d19d), second audit à faire. **M-0006** : audit 2 REFUSÉ
+  (2 MAJEUR : remise à zéro des autorisations ≠ comportement identique → réappliquer au
+  déverrouillage ; critères de la vue d'ensemble du Security Center absents et parallélisme
+  M-E3/M-E4/M-E5 faux) → deux refus : propriétaire à consulter.
+- **L0** : M-0007 (sécurité du verrouillage, réglages robustes, autorisations Chromium) et M-0008
+  (onglets, menus, Accueil), Exécuteurs Opus en parallèle ; M-0007 intègre en premier.
+
+## 2026-11-05 — M-0004 ACCEPTÉE ; M-0003 arrêtée (règle 6) ; M-0002 livrée
+- **M-0004** : audit 2 (Opus, agent neuf) ACCEPTÉ, 5 MINEUR (§0 licence à aligner sur
+  §9.3, clause §4 simplifiée, empreinte par la liste des catégories envoyées → paramètres
+  constants et filtrage local, moyen de l'auto-test VG-25 à préciser, réserve licence à
+  lever). Banc rejoué et éprouvé par mutation de `videoguard.js`.
+- **M-0003** : audit 2 (agent neuf) **REFUSÉ** — 3 MAJEUR sur la justesse des risques :
+  `$to` en réalité ignoré par adblock-rust (`fb_network_builder.rs:260-264`), donc perte
+  de couverture et non faux positifs (erreur introduite par la correction) ; P1-6
+  `$removeparam` : exceptions `@@…$removeparam` rejetées par adblock-rust
+  (`network.rs:850-851`) → réécriture d'URL là où uBO s'abstient ; analyse de sécurité
+  incohérente : listes en cache non authentifiées déjà chargées avant déverrouillage
+  avec la permission TRUSTED. Mesures et outillage confirmés. **Deux refus successifs →
+  arrêt et consultation du propriétaire (charte §5).** Recommandation du Directeur :
+  le Directeur corrige lui-même ces trois points (précis et vérifiables), puis troisième
+  audit par un agent neuf.
+- **Constat de sécurité à prioriser** (M-0003 audit 2, M3) : intégrité des listes
+  Shield en cache (texte clair, permission TRUSTED pour 5 listes, chargées avant
+  déverrouillage).
+- **M-0002** livrée (Opus) : 4 bugs reproduits avec cause ; audit lancé.
+- **M-0006** lancée (Architecte Opus) ; **M-0005** en cours.
+
 ## 2026-11-05 — Reprise après la limite hebdomadaire ; M-0003 et M-0004
 - Limite **hebdomadaire** atteinte le 2026-11-04 au soir (M-0002, M-0003, audit M-0004
   interrompus), levée le 2026-11-05 à 8:00 ; reprise par SendMessage.

@@ -2,7 +2,7 @@
 
 - **Rôle** : Optimiseur
 - **Modèle** : opus — raison : étude comparative technique (moteurs, syntaxes, cosmétique, performances) et choix d'architecture : raisonnement complexe et décision structurante
-- **Statut** : PRÉPARÉE
+- **Statut** : ACCEPTÉE
 - **Branche** : agent/M-0003-audit-shield
 - **Copie isolée (worktree)** : oui
 - **Dépend de** : rien (phase d'audit de la refonte, aucune fusion)
