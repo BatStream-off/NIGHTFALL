@@ -10,11 +10,13 @@
 
 1. **Le moteur n'est pas le problème.** Avec les mêmes 8 listes, adblock-rust 0.13.5 (version résolue en CI) et le
    moteur réseau de uBlock Origin prennent la même décision sur 99,85 % des 227 054 requêtes vérifiables du jeu
-   d'adblock-rust. On monte à 99,98 % une fois les `!#include` résolus. Sur les 3 283 requêtes d'une exploration
-   réelle (3 800 au second run), l'accord est de 100 %. Remplacer adblock-rust n'apporterait aucun gain mesurable. Ses alternatives sont
+   d'adblock-rust. On monte à 99,98 % une fois les `!#include` résolus. Sur l'exploration réelle, l'accord est de 100 % aux runs
+   41845086446 et 41848082350, et de 99,86 % au run 41850060618 : les 6 écarts sont un artefact de mon harnais, qui
+   ne transmet pas la méthode HTTP à uBO (§6.2). Remplacer adblock-rust n'apporterait aucun gain mesurable. Ses alternatives sont
    sous GPL (uBO, tsurlfilter) et écrites en JavaScript ou TypeScript.
 2. **Les écarts viennent de l'intégration dans NIGHTFALL.** Sept constats sont mesurés ou exécutés :
-   - la liste « uBlock filters » est chargée sans ses 10 `!#include` : il manque 18 024 règles ;
+   - la liste « uBlock filters » est chargée sans ses 10 `!#include` : 18 024 lignes de règles manquent, dont au
+     plus environ 16 568 seraient réellement actives sur Chromium (§4.1) ;
    - les blocs `!#if` sont ignorés : 191 règles prévues pour d'autres environnements sont appliquées ;
    - aucune ressource `$redirect` : 501 règles annulent la requête au lieu de servir un substitut ;
    - `$removeparam` (216 règles), `$csp` (35), `$document` (3 695) et la partie document de `$all` (1 285) sont
@@ -22,15 +24,16 @@
    - `$popup` est rejeté par le moteur (3 764 règles) ;
    - 512 règles de scriptlet (15,7 %) appellent un des 37 scriptlets que NIGHTFALL ne fournit pas ;
    - l'interface affiche « 164 012 règles » alors que le moteur en accepte 159 585.
-3. **Les performances sont saines, avec deux exceptions.** Une décision réseau prend en médiane 5,4 à 8,0 µs
-   (p99 22 à 43 µs) selon la plateforme et le run. Les deux points coûteux :
-   - le moteur est reconstruit en 82 à 140 ms, de façon synchrone, deux fois au démarrage, et l'appel lié au
+3. **Les performances sont saines, avec deux exceptions.** Une décision réseau prend en médiane 5,0 à 8,0 µs
+   (p99 21 à 43 µs) selon la plateforme et le run (3 runs). Les deux points coûteux :
+   - le moteur est reconstruit en 78 à 140 ms (médianes de `Shield::new`, 3 runs), de façon synchrone, deux fois au démarrage, et l'appel lié au
      déverrouillage tourne sur le fil d'E/S de CEF ;
    - chaque cadre reçoit un script de 28,6 ko (médiane), qui contient 531 sélecteurs génériques identiques sur
      toutes les pages.
 4. **Recommandation : garder adblock-rust et corriger l'intégration** (§7). En tête :
    - résoudre `!#include` et `!#if`, valider les listes téléchargées ;
-   - mettre en cache le moteur sérialisé (désérialisation : 1,5 à 3,0 ms) ;
+   - construire le moteur hors du fil d'E/S ; un cache du moteur sérialisé n'est envisageable qu'avec une
+     authentification du fichier (risque de sécurité, §7 P2-0) ;
    - appliquer `$removeparam`, servir des ressources `$redirect` écrites par NIGHTFALL ;
    - compléter les scriptlets les plus utilisés ;
    - injecter scriptlets et CSS dans le processus de rendu.
@@ -52,6 +55,7 @@
 | Run | Rôle | Jobs (id) |
 |---|---|---|
 | 41845086446 | Run principal : listes, couverture, temps, cosmétique, constats | entrées 126627902445 ; Linux 126630578235 ; Windows 126630578449 ; macOS 126630578626 |
+| 41850060618 | Run du commit audité (`5f472da`) : 3e répétition complète, tous les jobs verts | entrées 126643863892 ; Linux 126646985444 ; Windows 126646985704 ; macOS 126646985940 |
 | 41848082350 | Répétition complète (listes et exploration retéléchargées), base mémoire corrigée, scriptlets par liste, constats `$elemhide` / `$specifichide` corrigés | entrées 126637240424 ; Linux 126640107856 ; Windows 126640107745 ; macOS 126640107878 |
 
 Les sorties brutes sont dans `mesures/run-<id>-<os>.md` (copie exacte du journal entre les marqueurs).
@@ -61,7 +65,10 @@ Répétition (run 41848082350) : les listes EasyList et EasyPrivacy avaient chan
 différents), uBO filters et uBO privacy non. Les comptages des listes par défaut bougent de quelques règles
 (164 009 → 164 011 règles). Les rejets (4 424), `!#include` (18 024) et scriptlets (3 253 / 2 741) sont
 identiques, tout comme l'accord avec uBO sur le jeu adblock-rust (99,85 %). L'exploration a donné 3 998 requêtes
-(9 pages en 403 au lieu de 11), avec un accord de 100 % sur 3 800 requêtes vérifiables. Les temps du runner Linux
+(9 pages en 403, comme aux deux autres runs), avec un accord de 100 % sur 3 800 requêtes vérifiables.
+Run 41850060618 : mêmes comptages des listes à 1-2 règles près (164 012 règles, 4 424 rejets, 18 024 règles
+incluses absentes, 2 741 / 3 253 scriptlets), accord de 99,85 % / 99,98 % sur le jeu adblock-rust ; exploration
+de 4 573 requêtes (4 373 vérifiables), accord de 99,86 % (voir §6.2 pour les 6 écarts). Les temps du runner Linux
 étaient 15 à 25 % plus lents au run 2 (`should_block` : 7,06 µs contre 5,79 µs de médiane ; `Shield::new` :
 111 ms contre 92 ms) : c'est l'ordre de grandeur de la dispersion entre runners.
 
@@ -86,7 +93,7 @@ cargo run --release -p nf-shield --example shield_audit -- /tmp/in
   pas cadre principal et iframes : tous les `document` sont traités comme des navigations principales, que
   Shield ne vérifie pas.
 - L'exploration réelle est petite : 30 pages, 3 501 requêtes. Elle tourne sans connexion à un compte et depuis des
-  adresses de centre de données : 11 pages sur 30 ont répondu HTTP 403 (protection anti-robots), ce qui réduit
+  adresses de centre de données : 9 pages sur 30 ont répondu HTTP 403 aux trois runs (protection anti-robots), ce qui réduit
   fortement les requêtes de Reddit, NYT, Leboncoin, L'Équipe, Medium, eBay, Stack Overflow et Codepen.
 - Les listes évoluent : les chiffres valent pour les SHA-256 du run cité.
 
@@ -129,10 +136,10 @@ tsurlfilter `de4c7af`).
 | Langage, forme | Bibliothèque Rust. Moteur compilé en FlatBuffers (`src/flatbuffers/fb_network_filter.fbs`), sérialisable (`src/engine.rs:436-466`) | Extension JS ; moteur réseau dans `src/js/static-net-filtering.js` (6 124 lignes) avec tries en WASM (`src/js/hntrie.js`, `src/js/biditrie.js`) ; image mémoire (« selfie », `static-net-filtering.js:539`) | Bibliothèque TS (`packages/tsurlfilter/src/engine/`), extension (`tswebextension`), convertisseur MV3 (`dnr-converter`) | adblock-rust intégré dans CEF (`crates/nf-shield`, `app/src/nf/client.rs`) |
 | Indexation réseau | Jetons hachés par seaux, fusion de règles (`src/optimizer.rs`), regex compilées à la demande puis jetées (`src/regex_manager.rs`) | Seaux par jeton + dictionnaires d'hôtes en trie (`FilterHostnameDict`, `static-net-filtering.js:2573`) | Tables : domaines, hôtes, raccourcis en trie, balayage séquentiel (`engine/network-engine.ts`, `engine/lookup-tables/`) ; règles relues à la demande depuis le texte (`filterlist/rule-storage`) | celle d'adblock-rust |
 | Options réseau | 38 noms reconnus (`src/filters/abstract_network.rs:189-312`). Absents : `popup`, `denyallow`, `header`, `permissions`, `urlskip`, `replace`, `strict1p/3p`, `ipaddress`, `elemhide`, `specifichide`… `$to` est analysé mais pas appliqué (CHANGELOG 0.13.3) | Le plus complet : `denyallow`, `header`, `permissions`, `popup`/`popunder`, `replace`, `urlskip`, `uritransform`, `ipaddress`, `strict1p/3p`, `cname`… (`src/js/static-filtering-parser.js`, `netOptionTokenDescriptors`) | Syntaxe AdGuard : `cookie`, `stealth`, `removeheader`, `jsonprune`, `hls`, `referrerpolicy`, `urltransform`, `permissions`, `replace`, `header`, `popup`… (`src/rules/network-rule.ts`, `NETWORK_RULE_OPTIONS`, dossier `src/modifiers/`) | celles d'adblock-rust, moins `redirect`, `removeparam`, `csp`, `document` et la méthode (non exploités) |
-| Préprocesseur `!#if` / `!#include` | **Non** (aucune gestion dans `src/lists.rs`) : c'est à l'intégrateur de le faire | Oui (`src/js/static-filtering-parser.js:4340-4448`, `src/js/assets.js:422-440`) | Oui (directives AdGuard `!#if`, `!#include`, dans le chargeur de listes) | **Non** |
+| Préprocesseur `!#if` / `!#include` | **Non** (aucune gestion dans `src/lists.rs`) : c'est à l'intégrateur de le faire | Oui (`src/js/static-filtering-parser.js:4340-4448`, `src/js/assets.js:422-440`) | Pas dans `packages/tsurlfilter` (aucune occurrence de `#include` dans ses sources) : confié au paquet externe `@adguard/filters-downloader` (dépendance déclarée dans `packages/adguard-api/package.json:49`), dont le code n'a **pas** été lu | **Non** |
 | Cosmétique | Propre au site par hachage d'hôte, génériques classes/id à la demande, génériques complexes renvoyés à chaque page (`src/cosmetic_filter_cache.rs:233-366`) | Génériques « faibles » (classes/id) découverts par le script de contenu, génériques « forts » injectés en feuille de style utilisateur par `tabs.insertCSS` (`src/js/cosmetic-filtering.js:241-299`, `726`, `893`) | Moteur cosmétique (`src/engine/cosmetic-engine/`), CSS étendu (bibliothèque ExtendedCss), injection `#$#` et `#%#` | Tout passe par un script injecté par cadre, puis une balise `<style>` dans la page |
 | Procédural | 10 opérateurs + 4 actions (`src/filters/cosmetic.rs:51-147`). Rejette `:watch-attr`, `:others`, `:matches-media`, `:shadow`, `:if`, `:matches-prop`, `:-abp-properties` | 26 opérateurs (`static-filtering-parser.js`, `proceduralOperatorTokens`) | ExtendedCss : `:contains`, `:has`, `:xpath`, `:upward`, `:matches-css`, `:matches-attr`, `:matches-property`, `:remove`… | les 10 + 4 d'adblock-rust (`cosmetic.js`) |
-| Scriptlets | Mécanisme seulement (ressources fournies par l'intégrateur, permissions, `src/resources/resource_storage.rs:275-433`). Brave fournit ceux de uBO à part | Au moins 99 scriptlets publics, dont 34 `trusted-*` (comptage par expression régulière sur `src/js/resources/*.js`, commande au §3.1) | Bibliothèque `@adguard/scriptlets` (GPL), avec table de correspondance uBO/ABP (`packages/agtree/src/compatibility-tables/scriptlets/`, 90 fichiers, MIT) | 21 scriptlets + alias, écrits par NIGHTFALL |
+| Scriptlets | Mécanisme seulement (ressources fournies par l'intégrateur, permissions, `src/resources/resource_storage.rs:275-433`). Brave fournit ceux de uBO à part | 99 scriptlets publics, dont 34 `trusted-*` (comptage par expression régulière sur `src/js/resources/*.js`, commande au §3.1) | Bibliothèque `@adguard/scriptlets` (GPL), avec table de correspondance uBO/ABP (`packages/agtree/src/compatibility-tables/scriptlets/`, 90 fichiers, MIT) | 21 scriptlets + alias, écrits par NIGHTFALL |
 | Redirections | Mécanisme seulement (`src/blocker.rs:228-290`, ressource renvoyée en `data:`) | 48 ressources (`src/js/redirect-resources.js`) | Ressources de redirection AdGuard (table `compatibility-tables/redirects/`, 54 fichiers) | aucune |
 | Filtrage HTML | Non (`HtmlFilteringUnsupported`) | Oui, Firefox seulement (`src/js/html-filtering.js`) | Oui (`$$`, tswebextension) | Non |
 | En-têtes, CSP | `get_csp_directives` (`src/engine.rs:287`) | `$csp`, `$header`, `$permissions` (`src/js/httpheader-filtering.js`) | `$csp`, `$header`, `$permissions`, `$removeheader`, `$cookie` | Non |
@@ -142,8 +149,22 @@ tsurlfilter `de4c7af`).
 ### 3.1 Commandes de comptage citées
 
 ```
-# Scriptlets publics de uBO (approximation par expression régulière, ≥ 99 dont 34 « trusted »)
-cd /home/claude/ref/uBlock/src/js/resources && python3 -I -c "import re,glob;n=[re.search(r\"name:\s*'([^']+)'\",m.group(1)).group(1) for f in glob.glob('*.js') for m in re.finditer(r'builtinScriptlets\.push\(\{(.*?)\n\}\)',open(f).read(),re.S) if re.search(r\"name:\s*'([^']+)'\",m.group(1))];p=[x for x in n if not x.endswith('.fn')];print(len(p),sum(x.startswith('trusted-') for x in p))"
+# Scriptlets publics de uBO : affiche « 99 34 » (99 noms distincts hors .fn, dont 34 « trusted- »).
+# Les définitions passent par registerScriptlet(...) et par builtinScriptlets.push({...}) : les deux formes
+# sont comptées. (La commande de la première version de ce document ne comptait que la seconde et affiche « 29 8 ».)
+cd /home/claude/ref/uBlock/src/js/resources && python3 -I -c "
+import re,glob
+n=[]
+for f in glob.glob('*.js'):
+  s=open(f).read()
+  for m in re.finditer(r'registerScriptlet\(\s*\w+\s*,\s*\{(.*?)\}\s*\)', s, re.S):
+    x=re.search(r\"name:\s*'([^']+)'\",m.group(1))
+    if x: n.append(x.group(1))
+  for m in re.finditer(r'builtinScriptlets\.push\(\{(.*?)\n\}\)', s, re.S):
+    x=re.search(r\"name:\s*'([^']+)'\",m.group(1))
+    if x: n.append(x.group(1))
+p=sorted(set(x for x in n if not x.endswith('.fn')))
+print(len(p),sum(x.startswith('trusted-') for x in p))"
 # Ressources de redirection de uBO : 48
 grep -c "^    \[ '" /home/claude/ref/uBlock/src/js/redirect-resources.js
 ```
@@ -188,7 +209,18 @@ liste.
 
 - **`!#include` non résolus.** `ubo_filters` en contient 10 et `ubo_privacy` 1 (tous résolus avec succès par
   `ci/shield_inputs.py`). Une fois résolue, `ubo_filters` passe de 6 073 à 24 019 règles (6 042 réseau, 16 920
-  cosmétiques). Au total, **18 024 règles** des listes activées ne sont jamais chargées par NIGHTFALL.
+  cosmétiques). Au total, **18 024 lignes de règles** des listes activées ne sont jamais chargées par NIGHTFALL. Ce chiffre
+  surestime le gain réel :
+  - au moins 576 de ces lignes (648 − 72 pour `ubo_filters`) sont dans des blocs `!#if` faux pour Chromium : uBO
+    ne les chargerait pas ;
+  - 880 seraient rejetées par le moteur (1 057 − 177 rejets) ;
+  - le gain utile est donc d'**au plus environ 16 568 règles** (18 024 − 576 − 880, en supposant les deux groupes
+    disjoints ; s'ils se recouvrent, le gain est un peu plus grand). **NON MESURÉ** exactement.
+
+  Mon résolveur (`ci/shield_inputs.py:62-82`) suit **toutes** les directives `!#include`, y compris celles d'un
+  bloc `!#if` faux. uBO, lui, ignore les `!#include` exclus par un `!#if` (`ref/uBlock/src/js/assets.js:422-440`).
+  Ici, les 10 fichiers inclus ont tous été résolus. Je n'ai pas vérifié si certaines inclusions sont elles-mêmes
+  dans un `!#if` faux.
 - **Compteur affiché** : « 164 012 règles » (`rules_loaded()`), pour 159 585 règles acceptées par le moteur.
 
 ### 4.2 Règles rejetées par le moteur, par motif
@@ -223,7 +255,7 @@ Options inconnues (règles rejetées) :
 | `$document` (blocage de page) | 3 695 | navigations principales jamais vérifiées (`lib.rs:244`) |
 | `$all`, partie « document » | 1 285 | idem (le reste de la règle s'applique) |
 | `$redirect` | 501 | bloque sans substitut : aucune ressource fournie |
-| `$to` | 270 | analysé mais pas appliqué par adblock-rust 0.13.5 (la règle s'applique comme sans `$to`) |
+| `$to` | 270 | **appliqué plus largement que prévu** : adblock-rust 0.13.5 analyse `$to` sans l'utiliser au filtrage (`ref/adblock-rust/CHANGELOG.md:18`), donc la règle s'applique comme si `$to` était absent. Risque de faux positifs, pas absence d'effet |
 | `$removeparam` | 216 | `rewritten_url` ignoré |
 | `$redirect-rule` | 152 | sans effet sans ressource |
 | `$csp` | 35 | `get_csp_directives` jamais appelé |
@@ -351,14 +383,14 @@ Run 41845086446, Linux. Construction en médiane de 5. Gains en requêtes bloqu�
 | V1 = V0 avec `!#include` résolus | 117,2 ms | 8,7 Mio | +289 / −3 | 0 / 0 | correction, pas un ajout |
 | V2 EasyList + EasyPrivacy seules | 64,3 ms | 5,8 Mio | +832 / −1 006 | +1 / −3 | les listes uBO apportent un gain net |
 | V1 + Fanboy Annoyances | 157,2 ms | 11,7 Mio | +2 038 / −7 | +19 / 0 | surtout cosmétique (49 990 règles) |
-| V1 + AdGuard Base | 187,7 ms | 12,5 Mio | +586 / −181 | +2 / −1 | ses exceptions débloquent 181 requêtes : à éviter |
-| V1 + AdGuard Tracking | 347,3 ms | 28,8 Mio | +2 158 / −194 | +29 / 0 | le plus gros gain anti-pistage, mais 4× plus coûteux |
+| V1 + AdGuard Base | 187,7 ms | 12,5 Mio | +586 / −181 | +2 / −1 | ses exceptions débloquent 181 requêtes (correction ou perte : non établi) |
+| V1 + AdGuard Tracking | 347,3 ms | 28,8 Mio | +2 158 / −194 | +29 / 0 | le plus gros gain anti-pistage, mais 3× plus coûteux à construire ; 13,8 Mo, au-delà de la limite de `download()` |
 | V1 + AdGuard Français | 120,6 ms | 9,4 Mio | +289 / −239 | 0 / 0 | ≈ Liste FR, pas d'intérêt en plus |
 | V1 + uBO URL tracking | 112,1 ms | 8,8 Mio | +289 / −3 (= V1) | 0 / 0 | utile seulement si `$removeparam` est appliqué |
 | V1 + uBO cookies | 113,0 ms | 9,0 Mio | = V1 | 0 / 0 | inutile sans ses scriptlets (12 sur 2 162 servis) |
 | V1 + EasyList Cookie | 132,2 ms | 10,7 Mio | +845 / −3 | +17 / 0 | |
-| V1 + Peter Lowe | 112,3 ms | 8,8 Mio | +2 071 / −3 | +24 / 0 | meilleur rapport gain/coût ; licence à vérifier |
-| V1 + URLhaus | 228,5 ms | 23,5 Mio | = V1 | 0 / 0 | utile seulement si les navigations sont vérifiées |
+| V1 + Peter Lowe | 112,3 ms | 8,8 Mio | +2 071 / −3 | +24 / 0 | dont +951 blocages de premières parties (46 % du gain) ; licence à vérifier |
+| V1 + URLhaus | 228,5 ms | 23,5 Mio | = V1 | 0 / 0 | utile seulement si les navigations sont vérifiées ; 12,2 Mo, au-delà de la limite de 10 Mio de `download()` |
 | VP = V1 + URL tracking + 2 listes cookies + Peter Lowe + URLhaus | 253,7 ms | 26,0 Mio | +2 620 / −3 | +41 / 0 | |
 
 ### 5.2 bis Mémoire par variante (run 41848082350, Linux, base mémoire corrigée)
@@ -422,7 +454,8 @@ copiés depuis la documentation de uBO.
    attribués à leur règle par un moteur en mode débogage, et exceptions `@@` appliquées. Ce n'est qu'un
    indicateur : un blocage de premier niveau peut être voulu (pisteur hébergé par le site), et un faux positif
    peut venir d'un tiers.
-5. **Effets non appliqués** : requêtes que uBO servirait par une ressource de substitution, URL qu'il nettoierait,
+5. **Effets non appliqués** (calculés par adblock-rust) : requêtes pour lesquelles le moteur désigne une ressource
+   de substitution, URL qu'il nettoierait,
    documents qui recevraient une CSP.
 
 ### 6.2 Premiers résultats (run 41845086446, identiques sur les 3 plateformes)
@@ -435,14 +468,21 @@ copiés depuis la documentation de uBO.
 - Règles derrière « uBO seul » (V0) : `*$from=googleads.g.doubleclick.net` (110), `||pagefair.net^` (66),
   `||npttech.com/advertising.js^$script,3p` (47), `||amazon-adsystem.com^` (43)… Elles viennent pour la plupart
   des fichiers `!#include` : il en reste 56 après résolution.
-- « NIGHTFALL seul » : `/somtag/loader/*` (3 requêtes), probablement une règle dans un bloc `!#if` que uBO écarte.
-  **NON VÉRIFIÉ** règle par règle.
+- « NIGHTFALL seul » (V0) : `/somtag/loader/*` (3 requêtes). Mon hypothèse d'une règle d'un bloc `!#if` était
+  fausse : avec les `!#include` résolus (V1), « NIGHTFALL seul » tombe à 0. Ces 3 requêtes sont donc débloquées
+  par une exception présente dans les fichiers inclus, que NIGHTFALL ne charge pas.
+- Exploration du run 41850060618 : 6 requêtes « NIGHTFALL seul », toutes vers googlevideo, par la règle
+  `/\.googlevideo\.com\/videoplayback\?expire=…/$xhr,3p,method=get…`. C'est un **artefact de mon harnais** :
+  `ci/shield_ubo_oracle.mjs:61` ne transmet pas la méthode HTTP à `matchRequest`, donc une règle `$method=` ne
+  peut pas correspondre dans uBO, alors que Shield passe « GET ». La correction (ajouter la méthode aux détails
+  envoyés à uBO) n'est pas faite, pour ne pas relancer la CI. Accord réel attendu : 100 %, **NON VÉRIFIÉ**.
 - Blocages de premières parties dans l'exploration : 39 sur 797, surtout des points de collecte (`a1.api.bbc.com`,
   `developer.mozilla.org/pong/`, `collector.github.com`, `booking.com/c360/v1/track`, `cmp.lemonde.fr`). Aucun ne
   vise un script ou une feuille de style d'interface. Une seule exception `@@` a servi
   (`@@||cmp.lemonde.fr/js/lemonde.min.js$script,1p`).
-- Effets non appliqués : sur le jeu adblock-rust, 4 984 requêtes seraient servies par un substitut chez uBO alors
-  que NIGHTFALL les annule (4 283 scripts) ; 26 sur l'exploration (tous des scripts). URL nettoyées par
+- Effets non appliqués : sur le jeu adblock-rust, adblock-rust (et non uBO) désigne une ressource `$redirect` pour
+  4 984 requêtes que NIGHTFALL annule (4 283 scripts) ; 26 sur l'exploration (tous des scripts). Calcul fait avec
+  un moteur adblock-rust doté de ressources factices portant les noms demandés, pas avec uBO. URL nettoyées par
   `$removeparam` : 18 sous-requêtes avec V0, 45 avec la liste URL tracking, 47 navigations. 7 documents
   recevraient une `$csp`.
 - Par type (exploration, V0) : `ping` 87 %, `sub_frame` 61,5 %, `xmlhttprequest` 38,3 %, `image` 21,2 %,
@@ -453,7 +493,7 @@ copiés depuis la documentation de uBO.
 - **Cosmétique dans la page** (éléments réellement masqués, cassures visuelles), scriptlets réellement efficaces,
   murs anti-bloqueur, publicités YouTube : il faut un navigateur NIGHTFALL réel. **NON MESURÉ**.
 - **Pop-ups après un clic** (`$popup`) : il faut simuler un geste. **NON MESURÉ**.
-- **Pages protégées contre les robots** : 11 pages sur 30 en HTTP 403 depuis la CI.
+- **Pages protégées contre les robots** : 9 pages sur 30 en HTTP 403 depuis la CI (trois runs).
 - **Paramètres de pistage** des liens entrants (`utm_*`, `fbclid`) : l'exploration ouvre les pages directement.
   **NON MESURÉ**.
 
@@ -476,7 +516,7 @@ par la CI :
 
 **Décision proposée : garder adblock-rust comme moteur unique, et réécrire autour de lui la couche
 d'intégration.** Raisons :
-- accord de 99,85 à 100 % avec uBO à listes égales ;
+- accord de 99,85 à 100 % avec uBO à listes égales (99,86 % au run 41850060618, à cause d'un artefact du harnais) ;
 - 3,5 à 4,7 µs par décision ;
 - licence MPL identique à celle de NIGHTFALL ;
 - sérialisation rapide ;
@@ -491,28 +531,29 @@ Gains « mesurés » = chiffres de ce rapport ; gains « estimés » = calculs e
 
 | # | Proposition | Gain | Coût, risque | Licence |
 |---|---|---|---|---|
-| P1-1 | Résoudre `!#include` (même dossier, comme uBO) à la mise à jour | Mesuré : +18 024 règles ; accord avec uBO de 99,85 % à 99,98 % ; +289 requêtes bloquées sur le jeu adblock-rust | +30 ms de construction (87 → 117 ms, Linux), +1,4 Mio sérialisé, +1,2 µs de médiane par requête ; risque faible (11 téléchargements de plus par mise à jour, 2,0 Mo de plus) | listes non redistribuées |
+| P1-1 | Résoudre `!#include` (même dossier, comme uBO, **en évaluant `!#if` d'abord**, avec P1-2) à la mise à jour | Mesuré : 18 024 lignes, au plus ≈ 16 568 règles utiles (§4.1) ; accord avec uBO de 99,85 % à 99,98 % ; +289 requêtes bloquées sur le jeu adblock-rust | +30 ms de construction (87 → 117 ms, Linux), +1,4 Mio sérialisé, +1,2 µs de médiane par requête ; risque faible (11 téléchargements de plus par mise à jour, 2,0 Mo de plus) | listes non redistribuées |
 | P1-2 | Évaluer `!#if` (Chromium de bureau) avant `add_filter_list` | Mesuré : 191 règles d'autres environnements retirées (767 avec P1-1 : 191 − 72 + 648) ; effet sur le réseau nul ; risque de faux positif cosmétique retiré (non mesuré) | Petit module Rust écrit d'après la doc publique ; tests unitaires faciles | code original |
-| P1-3 | Valider les listes téléchargées (en-tête ABP ou `! Title`, part minimale de règles acceptées) ; garder l'ancienne version en cas d'échec ; ETag / `If-Modified-Since` ; respecter `! Expires` (`read_list_metadata`, `adblock-rust/src/lists.rs:100`) | Robustesse (portail captif, page d'erreur) : **NON MESURÉ** ; bande passante : 5,3 Mo toutes les 12 h aujourd'hui, en grande partie évitables | Faible | — |
+| P1-3 | Lever la limite de taille de `download()` : `ureq` 2 `into_string` refuse les réponses de plus de 10 Mio (`lib.rs:418-423`). URLhaus (12,2 Mo) et AdGuard Tracking (13,8 Mo) échoueraient donc aujourd'hui, ce que mes mesures, faites avec Python, ne montrent pas. Valider les listes téléchargées (en-tête ABP ou `! Title`, part minimale de règles acceptées) ; garder l'ancienne version en cas d'échec ; ETag / `If-Modified-Since` ; respecter `! Expires` (`read_list_metadata`, `adblock-rust/src/lists.rs:100`) | Robustesse (portail captif, page d'erreur) : **NON MESURÉ** ; bande passante : 5,3 Mo toutes les 12 h aujourd'hui, en grande partie évitables | Faible | — |
 | P1-4 | Compteur de règles exact (règles acceptées par le moteur) | Mesuré : affichage 164 012 contre 159 585 réelles | Trivial | — |
-| P1-5 | Construire le moteur hors du fil d'E/S et du verrou `core()` ; une seule construction au démarrage ; cache du moteur sérialisé (`Engine::serialize` / `deserialize`, contrôle de version et de somme intégré, `adblock-rust/src/engine.rs:436-466`), invalidé quand listes ou filtres changent | Estimé : de 82–140 ms à 1,5–3,0 ms par chargement, deux fois au démarrage | Moyen : fichier de 7–9 Mio dans le profil (`write_private`). Les filtres personnels y sont inclus : chiffrer le fichier ou construire les filtres personnels à part | — |
+| P1-5 | Construire le moteur hors du fil d'E/S et hors du verrou `core()` ; une seule construction au démarrage (pas de construction avec la configuration par défaut suivie d'une seconde au déverrouillage) | Estimé : supprime un blocage du fil d'E/S de 78 à 140 ms au déverrouillage et une construction sur deux au démarrage (gain non mesuré dans le navigateur) | Moyen : fil de travail, remplacement atomique du moteur déjà présent (`RwLock<Arc<Engine>>`) | — |
 | P1-6 | Appliquer `$removeparam` : `request.set_url(rewritten_url)` dans `on_before_resource_load` (doc CEF : une URL modifiée vaut redirection), y compris sur les navigations principales (nettoyage seulement, jamais de blocage) ; puis activer la liste URL tracking | Mesuré : 216 règles aujourd'hui, 2 532 de plus avec la liste ; effet sur nos jeux faible (45 sous-requêtes, 47 navigations sur 242 945), effet réel **NON MESURÉ** | Risque de boucle de redirection, à protéger ; test d'auto-test 6.4-5 | listes non redistribuées |
 | P1-7 | Ressources `$redirect` écrites par NIGHTFALL (`noop.js`, `noop.txt`, `noop.html`, `noop.css`, `noop.json`, `1x1.gif`, `2x2.png`, `noopmp3-0.1s`, `noopmp4-1s`, alias `noopjs`, `nooptext`, `abp-resource:blank-*`), servies par `get_resource_handler` au lieu d'annuler | Mesuré : 4 984 requêtes du jeu adblock-rust et 26 de l'exploration recevraient un substitut au lieu d'une erreur. Moins de cassures et de détection anti-bloqueur : **NON MESURÉ** | Moyen (CEF `ResourceHandler`) ; les ressources triviales en premier ; les substituts de bibliothèques (`google-ima.js`, 106 règles ; `googletagservices_gpt.js` ; `googletagmanager_gtm.js`) à écrire nous-mêmes d'après le comportement documenté, **jamais copiés de uBO (GPL)** | code original |
 | P1-8 | Compléter les scriptlets, par usage : `href-sanitizer`, `set-local-storage-item`, `remove-cookie` (+ `cookie-remover`), `nowebrtc`, `abort-on-stack-trace` (`aost`), `trusted-prevent-dom-bypass`, `noeval`, `replace-node-text` (`rpnt`), `trusted-set-cookie`, `set-cookie`, `trusted-replace-argument`, `nobab`, `nofab`… | Estimé : de 84,3 % à 97,9 % des règles de scriptlet (+444 règles). Avec `set-cookie`, `trusted-set-cookie`, `trusted-click-element` et `set-session-storage-item` en plus, ouvre les listes anti-bandeaux de cookies (§5.6 : aujourd'hui 12 / 2 162 et 59 / 2 468) | Moyen ; chaque scriptlet a son test. La table de correspondance des noms de `agtree` (MIT) peut servir de référence | code original ; MIT compatible pour des données |
 | P1-9 | Injecter scriptlets et CSS dans le processus de rendu (`CefRenderProcessHandler::on_context_created`), avec les données de la page transmises à l'avance, au lieu d'`execute_java_script` dans `on_load_start` | Garantit l'exécution avant les scripts de la page (aujourd'hui **NON MESURÉ**, test 6.4-1) | Élevé : architecture CEF multiprocessus, IPC. À confier à l'Architecte (Opus) | — |
+| P2-0 | Cache du moteur sérialisé (`Engine::serialize` / `deserialize`) | Estimé : construction de 78–140 ms remplacée par la désérialisation (1,3–3,0 ms) **plus** la lecture d'un fichier de 7 à 9 Mio et `use_resources`, **non mesurés** | **Risque élevé, sécurité.** Pour une même version de crate, adblock-rust saute la vérification FlatBuffers (`ref/adblock-rust/src/engine.rs:441-444` et `469-479`) et la somme de contrôle est un seahash non cryptographique (`src/data_format/mod.rs:102-110`). La doc dit « A local rewrite of the stored file is outside this crate's threat model ». Un fichier réécrit dans le profil serait donc chargé sans contrôle de structure. La première construction a lieu avant déverrouillage (`app/src/nf/mod.rs:107`), donc sans clé. Conditions minimales : authentifier le fichier par un MAC à clé (clé du profil, donc seulement après déverrouillage) et reconstruire avant déverrouillage, ou ne pas mettre en cache. Hors du lot à faible risque ; **à confier à l'Architecte** | — |
 | P2-1 | Réponse du masquage générique au **cadre** qui l'a demandé, pas au cadre principal (`client.rs:476-484`) ; règle d'exception par site appliquée au site de la page aussi pour l'injection | Couverture cosmétique des iframes : **NON MESURÉ** (test 6.4-2) | Faible à moyen (identifier le cadre) | — |
 | P2-2 | Filtrer les requêtes sans navigateur (service workers) par `RequestContextHandler::resource_request_handler` | Trou de vie privée possible : **NON MESURÉ** (test 6.4-3) | Moyen ; risque de casser des applications web hors ligne | — |
 | P2-3 | Vérifier les navigations principales pour `$document`/`$all` (listes badware, URLhaus), avec une page « bloquée par Shield » et un bouton « continuer » | Mesuré : 3 695 + 1 285 règles deviennent actives ; URLhaus (108 991 règles) devient utile | Moyen ; faux positifs sur des navigations : il faut l'interface de dérogation. Touche la sécurité, donc décision du propriétaire | listes non redistribuées |
 | P2-4 | `$popup` : extraire ces règles avant le moteur, les compiler dans un second moteur interrogé seulement dans `on_before_popup` (source = page qui ouvre) | Mesuré : 3 764 règles aujourd'hui perdues ; gain réel **NON MESURÉ** | Moyen ; code original | — |
 | P2-5 | Cosmétique moins coûteuse : générer une fois par moteur la CSS des 531 sélecteurs génériques complexes et la mettre en cache ; mettre en cache par hôte le résultat de `url_cosmetic_resources` (réutilisé par `generic_css`) ; ne réévaluer les règles procédurales que sur les nœuds ajoutés | Estimé : environ 100 µs sur 150–210 par cadre côté navigateur, et environ 70 µs par signalement générique ; coût dans la page **NON MESURÉ** | Faible à moyen | — |
-| P2-6 | Ajouter Peter Lowe (activée par défaut chez uBO), et proposer en option EasyList Cookie et Fanboy Annoyances (après P1-8) | Mesuré : Peter Lowe +2 071 / −3 (jeu adblock-rust), +24 (exploration) pour un coût nul en construction | Faible ; **licence de Peter Lowe à vérifier** | listes non redistribuées |
+| P2-6 | Ajouter Peter Lowe (activée par défaut chez uBO), et proposer en option EasyList Cookie et Fanboy Annoyances (après P1-8) | Mesuré : Peter Lowe +2 071 / −3 (jeu adblock-rust), +24 (exploration), pour un coût de construction négligeable. Mais 951 de ces 2 071 blocages en plus (46 %) sont des blocages de premières parties (8 699 → 9 650), et sur l'exploration ils passent de 39 à 46 : c'est le signal de risque de faux positifs du §6.1 | Moyen : vérifier les blocages de premières parties ajoutés (risque de faux positifs) avant activation par défaut ; **licence de Peter Lowe à vérifier** | listes non redistribuées |
 | P2-7 | Réglages par site (« cosmétique désactivée », « scriptlets désactivés », mode strict comme Brave), journal des requêtes bloquées par onglet, sélecteur d'élément | Diagnostic des faux positifs par l'utilisateur : **NON MESURÉ** | Interface : missions de conception M-0005 / M-0006 | — |
-| P3-1 | AdGuard Tracking Protection | Mesuré : +2 158 / −194 ; +29 sur l'exploration | Construction ×3 (347 ms), 28,8 Mio sérialisé, pic 76 Mio : à réévaluer après P1-5 | GPL, non redistribuée |
+| P3-1 | AdGuard Tracking Protection | Mesuré : +2 158 / −194 ; +29 sur l'exploration | Construction ×3 (347 ms au run 41845086446), 28,8 Mio sérialisé, pic 96,3 Mio (run 41848082350, textes compris) ; 13,8 Mo à télécharger, au-delà de la limite de `download()` (P1-3) : à réévaluer après P1-3 et P1-5 | GPL, non redistribuée |
 | P3-2 | `$csp` (35 règles), filtrage HTML `##^` (71), `$replace`, `$urlskip` (215), `$denyallow` (83) | Faible en volume | CEF ne permet pas de modifier les en-têtes de réponse dans `on_resource_response` (doc : « The response object cannot be modified ») ; le filtrage HTML demanderait `get_resource_response_filter`. Coût élevé | — |
-| P3-3 | Ne pas ajouter AdGuard Base ni AdGuard Français | Mesuré : Base débloque 181 requêtes ; Français ≈ Liste FR (+289 / −239) | — | — |
+| P3-3 | Pas d'ajout par défaut d'AdGuard Base ni d'AdGuard Français | Mesuré : Base +586 / −181 sur le jeu adblock-rust (+2 / −1 sur l'exploration) ; ses exceptions débloquent 181 requêtes, ce qui peut aussi bien corriger des faux positifs que réduire la couverture : **NON ÉTABLI**. Français ≈ Liste FR (+289 / −239) | Gain faible pour un coût de construction +60 % (Base) | — |
 | — | **Ne pas remplacer adblock-rust** | Aucun gain mesurable, risque élevé | — | — |
 
-Ordre conseillé : P1-1 à P1-5 (une mission, faible risque, tout se vérifie par des tests du module et ce banc),
+Ordre conseillé : P1-1 à P1-5 (une mission, faible risque ; P2-0 en est exclu, tout se vérifie par des tests du module et ce banc),
 puis P1-6 à P1-8, puis P1-9 et P2-1 / P2-2 avec l'Architecte. Après chaque étape : rejouer ce banc (jobs
 « Audit Shield ») et comparer aux chiffres du §5–6.
 
@@ -526,3 +567,23 @@ puis P1-6 à P1-8, puis P1-9 et P2-1 / P2-2 avec l'Architecte. Après chaque ét
   garder sans effet sur les autres PR est possible tel quel.
 - L'exemple `shield_audit.rs` est compilé par `cargo test` sur les 3 OS (vérifié : jobs « Modules » verts). Il
   n'est jamais inclus dans le navigateur.
+- Hors périmètre : Clippy échoue déjà sur `develop`, dans `crates/nf-shield/src/lib.rs:151`
+  (`clippy::manual_range_patterns`). L'échec est masqué par `continue-on-error` dans le job « Modules ».
+
+## 9. Corrections après l'audit indépendant
+
+Chaque point a été revérifié dans les sources ou les journaux avant d'être corrigé :
+
+| Point | Correction |
+|---|---|
+| M1 | Cache du moteur sérialisé retiré du lot à faible risque : P2-0, risque élevé (sécurité), à confier à l'Architecte. P1-5 ne garde que la construction hors du fil d'E/S et la construction unique |
+| m1 | Gain des `!#include` ramené à « au plus ≈ 16 568 règles utiles » (§4.1) |
+| m2 | Artefact `$method` de l'oracle expliqué (§6.2) |
+| m3 | 9 pages en 403 dans chacun des 3 runs |
+| m4 | Commande du §3.1 remplacée : elle affiche « 99 34 » |
+| m5 | tsurlfilter : préprocesseur dans `@adguard/filters-downloader`, non lu |
+| m6 | Hypothèse `/somtag` corrigée ; pic de 96,3 Mio ; effets `$redirect` attribués à adblock-rust |
+| m7 | Peter Lowe et AdGuard Base nuancés |
+| m8 | Limite de 10 Mio de `download()` ajoutée (P1-3) ; `$to` reclassé comme risque de faux positifs |
+| m9 | Run 41850060618 intégré (§1.2, §6.2, sorties dans `mesures/`) |
+
