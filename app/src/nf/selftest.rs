@@ -980,6 +980,42 @@ fn step_toggle() {
                 // L0 : then the lock checks (M-0007), which end on the final menu.
                 on_ui_delayed(800, step_lock_guard);
             });
+/// Integrated title bar (prototype M-0005): the frameless window received
+/// the draggable regions of the tab strip and, on Windows, the real window
+/// procedure answers "caption" there and "client" on a tab, keeps its
+/// resize borders, and maximises / restores through the interface buttons.
+fn step_titlebar() {
+    step("barre de titre intégrée");
+    let r = super::titlebar::report(1);
+    state::log(&format!("selftest: barre de titre {r}"));
+    if !super::titlebar::FRAMELESS {
+        return step_final_menu();
+    }
+    if r["draggable"].as_u64().unwrap_or(0) == 0 || r["dragPoint"].is_null() || r["noDragPoint"].is_null() {
+        return fail(&format!("barre de titre : zones de déplacement absentes {r}"));
+    }
+    if cfg!(target_os = "windows") {
+        let h = &r["hitTest"];
+        let ok = h["drag"] == 2 && h["noDrag"] == 1 && h["content"] == 1 && h["leftEdge"] == 10 && h["bottomRight"] == 17;
+        if !ok {
+            return fail(&format!("barre de titre : réponses WM_NCHITTEST inattendues {h}"));
+        }
+    }
+    call("win.maximize", json!({}));
+    on_ui_delayed(1500, || {
+        let r = super::titlebar::report(1);
+        state::log(&format!("selftest: barre de titre après agrandissement {r}"));
+        if r["maximized"] != true {
+            return fail("barre de titre : la fenêtre ne s'est pas agrandie");
+        }
+        call("win.maximize", json!({}));
+        on_ui_delayed(1500, || {
+            let r = super::titlebar::report(1);
+            state::log(&format!("selftest: barre de titre après restauration {r}"));
+            if r["maximized"] != false {
+                return fail("barre de titre : la fenêtre n'a pas été restaurée");
+            }
+            step_final_menu();
         });
     });
 }
@@ -995,6 +1031,8 @@ fn step_final_menu() {
     let ok = windows::popup_report(1);
     on_ui_delayed(1200, move || {
         state::log(&format!("selftest: menu déroulant {ok}"));
+        // The open menu is cut out of the draggable area (last region).
+        state::log(&format!("selftest: barre de titre avec menu ouvert {}", super::titlebar::report(1)));
         if !ok.starts_with("ouvert") {
             return fail("menu déroulant non ouvert");
         }
@@ -1444,5 +1482,6 @@ fn step_lock_guard_cleanup() {
     }
     super::permissions::reset_chromium(PERM_ORIGIN, "clipboard");
     windows::activate_tab(1, MAIN_TAB.load(std::sync::atomic::Ordering::SeqCst));
-    on_ui_delayed(1000, step_final_menu);
+    // Then the integrated title bar, which ends on the final menu.
+    on_ui_delayed(1000, step_titlebar);
 }

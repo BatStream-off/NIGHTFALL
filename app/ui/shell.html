@@ -55,6 +55,10 @@
       <symbol id="i-sound-off" viewBox="0 0 24 24"><path d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3z"/><path d="m15.5 9.5 5 5M20.5 9.5l-5 5"/></symbol>
       <symbol id="i-reopen" viewBox="0 0 24 24"><path d="M5.5 12a6.5 6.5 0 1 0 2-4.7"/><path d="M5.2 4.3v3.9h3.9"/><rect x="9.5" y="10" width="5" height="4.5" rx="1"/></symbol>
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.8"/><path d="M4.2 12h15.6M12 4.2c2.3 2.2 3.4 4.8 3.4 7.8s-1.1 5.6-3.4 7.8c-2.3-2.2-3.4-4.8-3.4-7.8S9.7 6.4 12 4.2z"/></symbol>
+      <symbol id="i-win-min" viewBox="0 0 24 24"><path d="M7 12h10"/></symbol>
+      <symbol id="i-win-max" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.2"/></symbol>
+      <symbol id="i-win-restore" viewBox="0 0 24 24"><rect x="7" y="9" width="8" height="8" rx="1.2"/><path d="M9.5 9V7.8A.8.8 0 0 1 10.3 7h5.9a.8.8 0 0 1 .8.8v5.9a.8.8 0 0 1-.8.8H15"/></symbol>
+      <symbol id="i-win-close" viewBox="0 0 24 24"><path d="m7.5 7.5 9 9M16.5 7.5l-9 9"/></symbol>
       <symbol id="i-eye" viewBox="0 0 24 24"><path d="M3.5 12S6.5 6.5 12 6.5 20.5 12 20.5 12 17.5 17.5 12 17.5 3.5 12 3.5 12z"/><circle cx="12" cy="12" r="2.6"/></symbol>
     </defs>
   </svg>
@@ -140,6 +144,16 @@
       <button class="icon" id="b-menu" title="Menu NIGHTFALL" aria-label="Menu"><svg><use href="#i-menu"/></svg></button>
     </div>
     <div id="banner" hidden></div>
+  </div>
+
+  <!-- Integrated title bar (prototype M-0005): draggable band over the
+       splash and lock screens, and the window buttons (Windows; macOS keeps
+       its own buttons, drawn by the system at the top left). -->
+  <div id="dragband" hidden></div>
+  <div id="winctl" hidden>
+    <button id="w-min" title="Réduire" aria-label="Réduire"><svg><use href="#i-win-min"/></svg></button>
+    <button id="w-max" title="Agrandir" aria-label="Agrandir"><svg><use href="#i-win-max"/></svg></button>
+    <button id="w-close" class="close" title="Fermer" aria-label="Fermer"><svg><use href="#i-win-close"/></svg></button>
   </div>
 
   <!-- Dropdown popup (mode=popup): overlay view opened by the native side -->

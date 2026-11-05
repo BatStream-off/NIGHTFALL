@@ -284,3 +284,29 @@ html.popup, html.popup body { background: transparent; }
 #b-menu { position: relative; }
 #b-menu.has-update::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--arc); box-shadow: 0 0 0 2px var(--slate); }
 .m-item.accent { color: var(--arc); font-weight: 600; }
+
+/* ---------- Integrated title bar (prototype M-0005) ----------
+   The window has no system frame. Empty areas of the tab strip (or of the
+   toolbar and side header with vertical tabs) move the window; everything
+   clickable opts out. CEF reads these regions (app-region). */
+:root { --winctl-w: 138px; --mac-lights: 78px; }
+body.frameless #tabstrip { -webkit-app-region: drag; app-region: drag; }
+body.frameless.vertical #toolbar, body.frameless .side-head { -webkit-app-region: drag; app-region: drag; }
+body.frameless #tabstrip .tab, body.frameless button, body.frameless input, body.frameless #omnibox, body.frameless .vtab { -webkit-app-region: no-drag; app-region: no-drag; }
+body.frameless.os-windows:not(.fullscreen) #tabstrip { padding-right: var(--winctl-w); }
+body.frameless.os-windows.vertical:not(.fullscreen) #toolbar { padding-right: calc(var(--winctl-w) + 4px); }
+body.frameless.os-macos:not(.fullscreen) #tabstrip { padding-left: var(--mac-lights); }
+body.frameless.os-macos:not(.fullscreen) .side-head { padding-left: var(--mac-lights); }
+body.frameless.os-macos .side-head img { display: none; }
+/* Splash and lock screen: a band at the top still moves the window. */
+#dragband { position: fixed; left: 0; right: 0; top: 0; height: 38px; z-index: 55; -webkit-app-region: drag; app-region: drag; }
+#winctl { position: fixed; top: 0; right: 0; z-index: 60; display: flex; height: 38px; -webkit-app-region: no-drag; app-region: no-drag; }
+body.vertical:not(.locked) #winctl { height: 52px; }
+#winctl button { width: 46px; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--icon); display: grid; place-items: center; transition: background .12s, color .12s; }
+#winctl button svg { width: 16px; height: 16px; stroke-width: 1.4; }
+#winctl button:hover { background: var(--hover); color: #fff; }
+#winctl button:active { background: var(--press); transform: none; }
+#winctl button.close:hover { background: #c42b3c; color: #fff; }
+#winctl button.close:active { background: #9e2231; }
+body.inactive #winctl button, body.inactive #tabstrip .tab:not(.active) { color: #5f6b85; }
+body.fullscreen #winctl { display: none; }

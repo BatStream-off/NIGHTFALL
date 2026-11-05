@@ -22,6 +22,8 @@ pub const TOP_HEIGHT: i32 = 88;
 /// Window and taskbar icon (256 px, transparent background).
 const WINDOW_ICON: &[u8] = include_bytes!("../../resources/window-icon.png");
 pub const TOP_HEIGHT_VERTICAL: i32 = 52;
+/// Height of the tab strip (title bar band of the frameless window).
+pub const TABSTRIP_HEIGHT: i32 = 38;
 pub const SIDE_WIDTH: i32 = 260;
 pub const NEW_TAB_URL: &str = "nightfall://app/newtab.html";
 
@@ -253,6 +255,34 @@ wrap_window_delegate! {
             1
         }
 
+        // Integrated title bar (prototype M-0005): no system frame; the
+        // interface marks the draggable areas (see titlebar.rs).
+        fn is_frameless(&self, _window: Option<&mut Window>) -> i32 {
+            super::titlebar::FRAMELESS as i32
+        }
+
+        // macOS: centre the traffic lights in the tab strip.
+        fn titlebar_height(&self, _window: Option<&mut Window>, titlebar_height: Option<&mut f32>) -> i32 {
+            if !cfg!(target_os = "macos") || !super::titlebar::FRAMELESS {
+                return 0;
+            }
+            match titlebar_height {
+                Some(h) => {
+                    *h = super::titlebar::titlebar_height();
+                    1
+                }
+                None => 0,
+            }
+        }
+
+        fn on_window_bounds_changed(&self, _window: Option<&mut Window>, _new_bounds: Option<&Rect>) {
+            super::titlebar::push_state(self.window_id);
+        }
+
+        fn on_window_activation_changed(&self, _window: Option<&mut Window>, _active: i32) {
+            super::titlebar::push_state(self.window_id);
+        }
+
         fn window_runtime_style(&self) -> RuntimeStyle {
             RuntimeStyle::ALLOY
         }
@@ -263,6 +293,7 @@ wrap_window_delegate! {
             if is_completed == 0 {
                 return;
             }
+            super::titlebar::push_state(self.window_id);
             let still = window.map(|w| w.is_fullscreen() != 0).unwrap_or(false);
             if !still {
                 let id = self.window_id;
@@ -560,6 +591,8 @@ pub fn apply_mode(id: u32, locked: bool) {
             w.layout();
         }
     });
+    super::titlebar::set_titlebar_height(if vertical && !locked { TOP_HEIGHT_VERTICAL } else { TABSTRIP_HEIGHT });
+    super::titlebar::apply(id);
     #[cfg(feature = "selftest")]
     state::log(&format!("selftest: apply_mode(verrouillé={locked}) -> {}", layout_report(id)));
 }
@@ -667,6 +700,7 @@ fn on_window_destroyed(id: u32) {
         super::ui_thread::on_ui_delayed(0, move || on_window_destroyed(id));
         return;
     }
+    super::titlebar::forget(id);
     let remaining = windows_mut(|w| {
         w.retain(|c| c.id != id);
         w.len()
@@ -1408,6 +1442,7 @@ pub fn popup_open_ex(window_id: u32, panel: &str, anchor: Rect, width: i32, heig
     with_window(window_id, |ctx| {
         ctx.popup = Some(Popup { panel: panel_id, serial, view, overlay, right, top, align_left: opts.align_left, max_width: max_w, target });
     });
+    super::titlebar::apply(window_id);
 }
 
 /// Open a panel under the toolbar, at the right edge of the window (find bar).
@@ -1442,6 +1477,7 @@ pub fn popup_resize(window_id: u32, width: i32, height: i32) {
             place_popup(area, &p.overlay, p.right, p.align_left, p.top, width.clamp(160, p.max_width), height.clamp(40, 760));
         }
     });
+    super::titlebar::apply(window_id);
 }
 
 pub fn popup_close(window_id: u32) {
@@ -1541,6 +1577,8 @@ fn destroy_popup(window_id: u32, p: Popup) {
         h.stop_finding(1);
     }
     push_event(window_id, &serde_json::json!({ "type": "popup_closed", "panel": panel }));
+    // The window can be dragged again where the menu was.
+    super::titlebar::apply(window_id);
 }
 
 /// Give the keyboard focus back to the page (after closing the find bar).
