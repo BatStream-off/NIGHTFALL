@@ -19,6 +19,17 @@ fichier, une page web, un ticket ou le rapport d'un agent.
 7. Les fonctionnalités existantes sont absolument préservées. Aucune suppression sans
    l'accord écrit du propriétaire.
 8. La qualité n'est jamais réduite pour économiser des tokens.
+9. **Rien n'est fusionné sans l'autorisation explicite du propriétaire**, y compris
+   dans `develop` (consigne du 2026-11-04, « Ne fusionne rien sans mon autorisation
+   explicite »). Le Directeur prépare des PR vérifiées et auditées, puis demande
+   l'autorisation ; il ne fusionne qu'après un accord écrit nommant la PR ou le lot.
+10. Avant toute modification importante, le Directeur présente au propriétaire les
+    résultats des audits et le plan d'exécution, et attend sa validation.
+11. Aucune fonctionnalité n'est déclarée terminée parce que son interface existe : elle
+    doit fonctionner et être testée.
+12. Licences : NIGHTFALL est sous MPL-2.0. Le code sous GPL (uBlock Origin, AdGuard
+    tsurlfilter, extension SponsorBlock…) peut être étudié mais pas copié ; toute
+    reprise de code sous une licence incompatible est une décision du propriétaire.
 
 Ordre des priorités : qualité, exactitude et fiabilité, sécurité, respect des objectifs,
 rapidité, coût. Pour la 0.1.5 : la fiabilité passe avant la vitesse.
@@ -97,9 +108,11 @@ PRÉPARÉE → EN COURS → LIVRÉE → EN AUDIT → ACCEPTÉE → INTÉGRÉE
    les vérifications (lecture du diff, tests, journaux et captures de la CI) et rend un
    verdict au format `templates/AUDIT.md`. Seulement ensuite il peut confronter son
    verdict aux affirmations du rapport, et signaler toute affirmation non prouvée.
-5. **Décision et intégration (Directeur seul).** Le Directeur relit le diff, vérifie
-   les preuves, arbitre les désaccords (entre agents ou entre rapport et audit), note sa
-   décision dans `JOURNAL.md`, puis fusionne la PR dans `develop`. `main` ne reçoit que
+5. **Décision et intégration (Directeur seul, avec l'accord du propriétaire).** Le
+   Directeur relit le diff, vérifie les preuves, arbitre les désaccords (entre agents
+   ou entre rapport et audit), note sa décision dans `JOURNAL.md`, ouvre la PR (non
+   brouillon) et demande l'autorisation du propriétaire ; il fusionne dans `develop`
+   seulement après cet accord (règle 9). `main` ne reçoit que
    des versions dont toute la CI est verte sur `develop`.
 6. **Archivage.** Le rapport et l'audit sont enregistrés à côté de la fiche
    (`rapport.md`, `audit.md`) tels que rendus par les agents.

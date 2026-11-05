@@ -1,0 +1,52 @@
+easylist: 2058219 octets, sha256 fd080488e7f52acf, !#include 0 (résolus 0)
+easyprivacy: 1512915 octets, sha256 3584c87135ce1ab0, !#include 0 (résolus 0)
+liste_fr: 434821 octets, sha256 da7f9b6b69ae88dd, !#include 0 (résolus 0)
+ubo_filters: 471036 octets, sha256 24019c9bfed8adc1, !#include 10 (résolus 10)
+ubo_quick_fixes: 85754 octets, sha256 16737f89a8f26533, !#include 0 (résolus 0)
+ubo_privacy: 184852 octets, sha256 1fec04bf88ebf457, !#include 1 (résolus 1)
+ubo_unbreak: 281825 octets, sha256 80af7e9020803e26, !#include 0 (résolus 0)
+ubo_badware: 272731 octets, sha256 45890f5eabcab277, !#include 0 (résolus 0)
+fanboy_annoyance: 2181575 octets, sha256 3d8148926879239c, !#include 4 (résolus 4)
+adguard_base: 4365775 octets, sha256 9df18ad234263403, !#include 0 (résolus 0)
+adguard_tracking: 13791650 octets, sha256 2e80a6ee31729918, !#include 0 (résolus 0)
+adguard_french: 604504 octets, sha256 e410d3bca8275d1d, !#include 0 (résolus 0)
+ubo_url_tracking: 180930 octets, sha256 65a5d30f4692632a, !#include 0 (résolus 0)
+ubo_cookies: 378165 octets, sha256 8880ba59f32608a2, !#include 0 (résolus 0)
+ubo_annoyances: 437 octets, sha256 f6b99bdd54bd011d, !#include 1 (résolus 1)
+easylist_cookie: 1218033 octets, sha256 92691c697645c2a5, !#include 1 (résolus 1)
+peter_lowe: 95342 octets, sha256 a5e162820a181bb1, !#include 0 (résolus 0)
+urlhaus: 12213517 octets, sha256 70a4d8e214b7f406, !#include 0 (résolus 0)
+requests.json: 67453833 octets, sha256 e66434a33448b65c9672a5fcdd1ff5278efa80354c1b4a3169b5655f95bc03fa
+https://fr.wikipedia.org/wiki/Rust_(langage) -> https://fr.wikipedia.org/wiki/Rust_(langage) HTTP 200, 41 requêtes, 447 classes, 4614 id 
+https://www.youtube.com/ -> https://www.youtube.com/ HTTP 200, 128 requêtes, 517 classes, 574 id 
+https://github.com/chromiumembedded/cef -> https://github.com/chromiumembedded/cef HTTP 200, 199 requêtes, 436 classes, 98 id 
+https://www.lemonde.fr/ -> https://www.lemonde.fr/ HTTP 200, 53 requêtes, 581 classes, 201 id 
+https://news.ycombinator.com/ -> https://news.ycombinator.com/ HTTP 200, 6 requêtes, 21 classes, 122 id 
+https://developer.mozilla.org/fr/docs/Web/JavaScript -> https://developer.mozilla.org/fr/docs/Web/JavaScript HTTP 200, 81 requêtes, 70 classes, 42 id 
+https://www.reddit.com/r/rust/ -> https://www.reddit.com/r/rust/ HTTP 403, 1 requêtes, 27 classes, 0 id 
+https://www.bbc.com/news -> https://www.bbc.com/news HTTP 200, 483 requêtes, 451 classes, 54 id 
+https://www.figma.com/community -> https://www.figma.com/community HTTP 403, 1 requêtes, 0 classes, 0 id 
+https://react.dev/ -> https://react.dev/ HTTP 200, 66 requêtes, 509 classes, 38 id 
+https://vuejs.org/ -> https://vuejs.org/ HTTP 200, 78 requêtes, 103 classes, 15 id 
+https://angular.dev/ -> https://angular.dev/ HTTP 200, 50 requêtes, 94 classes, 24 id 
+https://threejs.org/examples/ -> https://threejs.org/examples/ HTTP 200, 33 requêtes, 6 classes, 14 id 
+https://www.amazon.fr/ -> https://www.amazon.fr/ HTTP 200, 3 requêtes, 31 classes, 0 id 
+https://www.booking.com/ -> https://www.booking.com/index.fr.html HTTP 202, 294 requêtes, 346 classes, 109 id 
+https://www.twitch.tv/directory -> https://www.twitch.tv/directory HTTP 200, 290 requêtes, 380 classes, 18 id 
+https://maps.google.com/ -> https://www.google.com/maps/@41.1245334,-104.808448,8z?entry=ttu&g_ep=EgoyMDI2MTEwMi4wIKXMDSoASAFQAw%3D%3D HTTP 200, 309 requêtes, 385 classes, 6 id 
+https://docs.rs/ -> https://docs.rs/ HTTP 200, 14 requêtes, 56 classes, 6 id 
+https://stackoverflow.com/questions -> https://stackoverflow.com/questions HTTP 403, 82 requêtes, 594 classes, 123 id 
+https://www.theverge.com/ -> https://www.theverge.com/ HTTP 200, 799 requêtes, 628 classes, 192 id 
+https://www.figma.com/ -> https://www.figma.com/fr-fr/ HTTP 200, 507 requêtes, 219 classes, 53 id 
+https://codepen.io/trending -> https://codepen.io/trending HTTP 403, 18 requêtes, 20 classes, 7 id 
+https://www.nytimes.com/ -> https://www.nytimes.com/ HTTP 403, 7 requêtes, 0 classes, 0 id 
+https://www.leboncoin.fr/ -> https://www.leboncoin.fr/ HTTP 403, 7 requêtes, 0 classes, 0 id 
+https://www.ebay.fr/ -> https://www.ebay.fr/ HTTP 403, 2 requêtes, 6 classes, 2 id 
+https://grafana.com/grafana/dashboards/ -> https://grafana.com/grafana/dashboards/ HTTP 200, 160 requêtes, 889 classes, 210 id 
+https://www.notion.so/ -> https://www.notion.com/ HTTP 200, 253 requêtes, 346 classes, 64 id 
+https://medium.com/ -> https://medium.com/ HTTP 403, 18 requêtes, 19 classes, 7 id 
+https://www.lequipe.fr/ -> https://www.lequipe.fr/ HTTP 403, 1 requêtes, 0 classes, 0 id 
+https://browserbench.org/Speedometer3.1/ -> https://browserbench.org/Speedometer3.1/ HTTP 200, 12 requêtes, 18 classes, 26 id 
+uBO : 8 listes compilées en 1051 ms (une construction, Node v24.22.1, WASM true)
+uBO requests.json : 242945 requêtes, 101371 bloquées (hors navigations), matchRequest médiane 5.98 µs, p99 41.92 µs, p99,9 129.96 µs
+uBO crawl.ndjson : 3998 requêtes, 1164 bloquées (hors navigations), matchRequest médiane 5.90 µs, p99 49.06 µs, p99,9 85.90 µs
