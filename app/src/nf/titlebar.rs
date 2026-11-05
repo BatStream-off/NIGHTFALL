@@ -228,6 +228,7 @@ pub fn report(window_id: u32) -> serde_json::Value {
         .iter()
         .find(|r| r.draggable == 0 && r.bounds.y < 40 && r.bounds.width > 4)
         .map(|r| (r.bounds.x + r.bounds.width / 2, r.bounds.y + r.bounds.height / 2));
+    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
     let mut v = serde_json::json!({
         "ok": true,
         "frameless": FRAMELESS,

@@ -238,12 +238,12 @@ mod tests {
 
     #[test]
     fn saved_settings_are_read_tolerantly() {
-        let s: ThemeSettings = serde_json::from_str(r#"{"active":"custom-1","custom":[
+        let s: ThemeSettings = serde_json::from_str(r##"{"active":"custom-1","custom":[
             {"id":"custom-1","name":"Mien","bg":"#000000","surface":"#111111","text":"#ffffff","accent":"#3867ff","accent2":"#7aa2ff"},
             {"id":"custom-2","name":"Cassé","bg":"nope"},
             {"weird":true},
             "pas un objet"
-        ],"future_field":1}"#).unwrap();
+        ],"future_field":1}"##).unwrap();
         let customs = custom_themes(&s);
         assert_eq!(customs.len(), 1);
         assert_eq!(active_theme(&s).name, "Mien");
