@@ -4,6 +4,14 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-05 soir — M-0002 et M-0003 ACCEPTÉES (audit final)
+- Corrections du Directeur (autorisées par le propriétaire) : M-0003 0dc8013, M-0002 7729abb.
+- Audit final (Opus, agent neuf) : **ACCEPTÉ** pour les deux, aucun MAJEUR. Mineurs : errata
+  du §10 / §8 à reporter dans le corps des textes (P1-5 hors du lot « faible risque », `$to`
+  exceptions jetées, portail captif, fourchettes) — à reprendre dans les fiches L1 ; précision
+  `DoClose` transmise à M-0008.
+- Limite de 5 h atteinte à 17:00, reprise à 18:00 (M-0007, M-0008, audit final).
+
 ## 2026-11-05 — Décisions du propriétaire ; lot L0 lancé
 - **Validé** : plan (ordre L0 → L6) ; lancement de L0 ; le Directeur corrige lui-même M-0002 et
   M-0003 (refusées deux fois) puis audit final ; protection de `main` (le proxy refuse ce réglage
