@@ -86,14 +86,19 @@ vue latérale, onglet restant) ; `navigateur_detruit_ms` 4 à 11 ms par onglet.
 onglet, clé `id`) ; côté natif, ne pas pousser `tabs` si l'onglet est déjà actif. Risque faible ;
 à couvrir par le test `fermeture` de `diag.rs` (doit passer à 30/30).
 
-### 3.2 Boutons défectueux — 4 causes constatées
+### 3.2 Boutons défectueux — 3 causes constatées, 1 non vérifiée
 
 Inventaire : **238 éléments** sur 30 écrans des pages internes (job Linux 127105203164,
 `RESUME boutons elements=238 clique=215 desactive=4 masque=18 …`) + **53 éléments** de la barre et
 des menus déroulants cliqués dans le vrai navigateur sur chaque plateforme (lignes `DIAG bouton`).
+Limite de l'inventaire Playwright : la maquette n'a ni vues natives, ni événements `tabs` poussés,
+ni focus natif ; elle ne peut donc pas voir les bugs qui dépendent de ces événements (bouton ×,
+menus déroulants, Accueil) — seuls les clics dans le vrai navigateur les révèlent.
 
 1. **Bouton × des onglets** : voir 3.1.
-2. **Un menu déroulant en ferme un autre (macOS)** — constaté : menu ouvert puis clic sur Shield :
+2. **Un menu déroulant en ferme un autre (macOS)** — constaté **sur le banc, à confirmer à la
+   main** : le banc donne le focus natif (`request_focus`) puis envoie le clic par DevTools ; cet
+   ordre est artificiel et peut favoriser la course. Menu ouvert puis clic sur Shield :
    Windows 5/5 Shield affiché, **macOS 0/5** (`menu_final=-`, commandes `popup.open,popup.close`) ;
    second clic sur Shield pour le fermer : Windows 5/5 fermé, **macOS 0/5 (il se rouvre)**.
    « Rechercher dans la page… » depuis le menu : la barre de recherche s'ouvre puis se referme
@@ -112,9 +117,12 @@ des menus déroulants cliqués dans le vrai navigateur sur chaque plateforme (li
    testé) : l'autorisation reste en attente et serait consommée si l'onglet est recréé (onglet mis
    en veille puis restauré, `windows.rs:812`), laissant une navigation interne autorisée à tort.
    Correction : autoriser la navigation sur le navigateur existant
-   (`browsers()[id].allow_internal_nav = true`). Risque faible, toucher à la sécurité des pages
-   internes : audit nécessaire.
-4. **`confirm()` / `prompt()` sans gestionnaire** : 9 boutons en dépendent (historique « Tout
+   (`browsers()[id].allow_internal_nav = true`), **cesser d'empiler** l'onglet dans
+   `INTERNAL_TABS` depuis `navigate_active` (`windows.rs:1198-1199`) et **purger** les entrées en
+   attente pour un onglet (`state.rs:470-485`, consommées aussi à la restauration d'un onglet en
+   veille, `windows.rs:812`). Risque faible, mais touche à la sécurité des pages internes : audit
+   nécessaire.
+4. **`confirm()` / `prompt()` sans gestionnaire — NON VÉRIFIÉ comme bug** : 9 boutons en dépendent (historique « Tout
    effacer », favoris Nouveau dossier/Sous-dossier/Renommer/Supprimer, mots de passe
    Afficher/Supprimer). NIGHTFALL n'a pas de `JsDialogHandler` (`client.rs:42-93`). Constaté :
    `confirm()` reste en attente au moins 2,5 s (Windows et macOS, `DIAG dialogue confirm
@@ -123,8 +131,10 @@ des menus déroulants cliqués dans le vrai navigateur sur chaque plateforme (li
    par capture avant toute conclusion.
 
 Autres résultats (constatés) : tous les autres éléments cliqués dans le vrai navigateur envoient
-la bonne commande et produisent l'effet attendu (barre : précédent, suivant, actualiser, favori,
-Shield, mots de passe, menu, nouvel onglet, verrouiller ; menu : 15 entrées ; menu contextuel :
+la bonne commande. L'effet est aussi constaté pour : précédent, suivant, Shield, mots de passe,
+menu, nouvel onglet, verrouiller. Pour « Actualiser » (`nav.reload`) et « Ajouter aux favoris »
+(`bookmark.toggle`), le journal donne `effet=aucun` : **seule la commande est prouvée**, leur effet
+(rechargement, favori enregistré) n'est pas observé par le banc. Également : menu : 15 entrées ; menu contextuel :
 9/9 ; Shield 2/2 ; zoom 3/3 ; recherche 3/3, « précédent/suivant » envoyant `find.stop` car le
 champ est vide). Panneau Mots de passe : « Générer » (`vault.generate`) et « Enregistrer »
 (`vault.saveForPage`) vérifiés ; le 3ᵉ élément a été relu « Enregistrer » au lieu de « Gérer les
@@ -172,9 +182,10 @@ contrôle de verrouillage, alors que `api::handle` en a un (`api.rs:48`). Correc
 toute action (sauf éventuellement `emergency.lockdown`) quand `!core().is_unlocked()`, dans
 `shortcut()` ; risque faible ; le test `h1` de `diag.rs` sert de test de non-régression.
 
-### 3.4 Chargement lent, ralentissements, manque de fluidité — cause principale établie
+### 3.4 Chargement lent, ralentissements, manque de fluidité — piste principale, effet non prouvé
 
-**Constaté : le thread IO de CEF est bloqué par `page.info`.**
+**Constaté : sur macOS, le thread IO de CEF est bloqué par `page.info` jusqu'à 2,16 s.
+Négligeable sur Windows. Supposé (non prouvé) : effet sur le chargement des pages.**
 
 | | Windows | macOS (tour 1) | macOS (tour 2) |
 |---|---|---|---|
@@ -182,25 +193,42 @@ toute action (sauf éventuellement `emergency.lockdown`) quand `!core().is_unloc
 | temps cumulé sur le thread IO | 3,2 s | 379,8 s | 340,6 s |
 | moyenne / max | 1,2 ms / 250 ms | 152 ms / 2 158 ms | 122 ms / 2 157 ms |
 
-(lignes `DIAG api_cout commande=page.info`). Cause : à **chaque** événement `tabs` la barre appelle
+(lignes `DIAG api_cout commande=page.info`). Mécanisme (lecture du code) : à **chaque** événement `tabs` la barre appelle
 `refreshPageInfo()` (`shell.js:790`, `:343`) ; `page_info` (`api.rs:1062`) appelle
 `windows_active_url` (`api.rs:565-571`) qui, depuis le thread IO (l'API est servie par le
 gestionnaire de schéma, `scheme.rs:126`), **attend le thread UI** jusqu'à 2 s
-(`recv_timeout`). Pendant ce temps aucune requête réseau, aucun contrôle Shield, aucun autre appel
-d'API n'est traité. Le maximum de 2,157 s = délai de 2 s atteint. Même schéma bloquant :
-`downloads.list` (`api.rs:397-405`, max 2,1 s au tour 1 sur macOS, la page Téléchargements
-l'appelle chaque seconde) et `settings.set` (`api.rs:986`, jusqu'à 3 s).
+(`recv_timeout`). Le maximum de 2,157 s correspond au délai de 2 s atteint.
+
+Ce qui n'est **pas** établi :
+- que des requêtes réseau ou des contrôles Shield soient retardés pendant l'attente : c'est déduit
+  du fait que le thread IO est occupé, **pas observé** ;
+- l'origine de la lenteur du thread UI sur macOS : il peut être occupé par le scénario de
+  diagnostic lui-même (DevTools, scripts, sondages toutes les 20 ms), ce qui gonflerait les
+  chiffres macOS ; sur Windows, avec le même scénario, la moyenne est de 1,24 ms (max 250 ms) ;
+- un lien chiffré avec les temps de chargement mesurés.
+
+Mesure qui trancherait : sur la même exécution, charger les mêmes pages (a) avec la barre normale
+et (b) sans appels `page.info` (par exemple barre de test qui n'appelle pas `refreshPageInfo`),
+plusieurs essais alternés, et comparer les temps de chargement et le temps de blocage du thread
+IO ; mesurer aussi `page.info` hors scénario (utilisation normale, sans DevTools) sur macOS.
+
+Même schéma bloquant dans le code : `downloads.list` (`api.rs:397-405`, max mesuré 2,1 s au
+tour 1 sur macOS, 0,3 ms sur Windows ; la page Téléchargements l'appelle chaque seconde) et
+`settings.set` (`api.rs:986`, délai de 3 s **lu dans le code, non mesuré**).
 
 **Constaté : volume d'événements `tabs`.** 2 544 (Windows) / 2 768 (macOS) envois de la liste
 complète des onglets en ≈ 20 min, ≈ 4 Mo de JavaScript exécuté dans les vues d'interface ; 6 à 22
 envois par chargement de page (colonne « push » ci-dessous) ; chacun reconstruit toute la barre et
 déclenche un `page.info`.
 
-**Constaté : les protections ne sont pas la cause.** Temps passé dans Shield par page (thread IO) :
-0,1 à 6 ms (Windows), jusqu'à 25 ms (bbc, macOS), pour des pages de 90 à 3 000 ms. Sur Windows
-(mesures stables), défaut / sans Shield / sans HTTPS d'abord / DNS désactivé / DoH Quad9 / tout
-désactivé sont dans la même plage pour chaque page ; sur macOS la dispersion de la machine de CI
-(q1–q3 jusqu'à ×2) masque toute différence. Coût d'HTTPS d'abord sur `http://example.com` : non
+**Constaté : le contrôle réseau de Shield (`should_block`) coûte peu.** Temps cumulé par page
+(thread IO) : 0,1 à 6,7 ms au maximum (Windows), médiane jusqu'à 25 ms et maximum 48,2 ms (bbc,
+macOS), pour des pages de 90 à 3 000 ms. Seul `should_block` et la **génération** du script de
+page sont mesurés ; l'**exécution** des scripts injectés (Shield, GPC, VideoGuard, son) dans les
+pages n'est pas mesurée. Sur Windows, example.com, Wikipédia et Le Monde restent dans la même plage
+quelle que soit la configuration ; **bbc fait exception** : 766 ms (défaut), 917 ms (sans Shield),
+1 010 ms (tout désactivé), soit plus lent sans protections — écart non expliqué (contenu servi
+différent sans blocage ?). Sur macOS la dispersion (q1–q3 jusqu'à ×2) masque toute différence. Coût d'HTTPS d'abord sur `http://example.com` : non
 mesurable (92 ms défaut contre 89 ms sans, Windows). Reconstruction du moteur Shield (164 145
 règles) : 98–101 ms (Windows), 168–237 ms (macOS), sur le thread appelant.
 
@@ -233,8 +261,8 @@ superposent aux chargements (non séparés dans cette mission).
 
 **Corrections proposées (non réalisées)** : (1) `page.info` sans aller-retour bloquant vers le
 thread UI (URL active tenue dans un état partagé, ou réponse calculée sur le thread UI et poussée
-avec l'événement `tabs`) — gain estimé : jusqu'à 120–150 ms de blocage du thread IO par événement
-sur macOS, risque faible ; (2) même traitement pour `downloads.list` et `settings.set` ;
+avec l'événement `tabs`) — gain : jusqu'à 120–150 ms de blocage du thread IO par événement sur
+macOS **dans ce banc** ; gain sur le chargement à établir par la mesure ci-dessus ; risque faible ; (2) même traitement pour `downloads.list` et `settings.set` ;
 (3) ne plus appeler `refreshPageInfo` à chaque `tabs`, et mettre la barre à jour par différence ;
 (4) regrouper les `update_tab` d'un même chargement (`windows.rs:1215-1227`). À mesurer après avec
 le même scénario (branche à conserver).
@@ -248,7 +276,10 @@ le même scénario (branche à conserver).
 | 1 onglet, après les tests de menus | 76 / 80 / 1 916 Mo / 2 147 Mo | 81 / 89 / 9 227 Mo |
 | après 20 ouvertures-fermetures de menu | **96 / 100** / 3 009 Mo / 2 623 Mo | **101 / 107** / 10 744 Mo |
 
-Exactement +1 navigateur d'interface et +1 processus de rendu par menu (lignes `DIAG
+Attention : la mesure « 1 onglet » (et donc 10 et 20 onglets) est **contaminée** par les 76 à
+81 navigateurs de menus déjà fuités par les étapes précédentes du scénario ; seules les
+**différences** entre étapes sont exploitables, pas les valeurs absolues. Exactement +1 navigateur
+d'interface et +1 processus de rendu par menu (lignes `DIAG
 menus_ouverts_fermes`, `MEM … par_type`). Bilan final : 187 navigateurs créés, 89 détruits
 (Windows) ; 191 / 88 (macOS). Les onglets, eux, sont bien libérés (`vivants_onglets` revient à 1
 après fermeture de 20 onglets). Au démarrage (lock screen) : 7 processus, 356 Mo RSS / 126 Mo USS
@@ -261,8 +292,9 @@ appelé quand la vue hôte est déjà détruite, et le navigateur n'est jamais f
 l'overlay dans `on_before_close` (ou attendre sa fermeture) ; risque moyen (cycle de vie CEF,
 code délicat) ; critère : `vivants_ui` stable après 20 menus.
 
-Mémoire par onglet (Windows, USS) : 1 → 10 → 20 onglets Wikipédia : 920 → 1 977 → 3 024 Mo
-(≈ 105 Mo par onglet), retour à 903 Mo après fermeture (pas de fuite côté onglets).
+Mémoire par onglet (Windows, USS, différences seulement) : 1 → 10 → 20 onglets Wikipédia :
+920 → 1 977 → 3 024 Mo (≈ 105 Mo par onglet), retour à 903 Mo après fermeture (pas de fuite côté
+onglets). Une mesure propre (profil neuf, aucun menu ouvert avant) reste à faire.
 
 **Autre point mesuré.** Vue latérale (onglets verticaux) créée même quand elle est désactivée
 (`windows.rs:420`) : `vivants_laterale=1` en permanence. Coût non isolé.
@@ -294,11 +326,12 @@ l'autre ; ses valeurs absolues sont à comparer avant/après **sur la même exé
 
 ## 5. Causes écartées (mesurées)
 
-- Contrôle Shield par requête : ≤ 6 ms par page (Windows), ≤ 25 ms (macOS, bbc), négligeable.
-- Script de page Shield / scripts injectés : inclus dans les mesures `script_page_*` des lignes
-  `DIAG nav`, sans écart de temps de chargement mesurable avec Shield désactivé (Windows).
+- Contrôle réseau Shield (`should_block`) : ≤ 6,7 ms par page (Windows), médiane ≤ 25 ms et
+  maximum 48,2 ms (macOS, bbc) : faible devant les temps de chargement.
+- Génération du script de page Shield (`script_page_*`) : mesurée, faible. **Non écartés** faute
+  de mesure : l'exécution des scripts injectés dans les pages (Shield, GPC, VideoGuard, son).
 - HTTPS d'abord, DNS sécurisé (automatique, désactivé, Quad9 strict) : aucune différence
-  mesurable sur les médianes Windows.
+  mesurable sur les médianes Windows (sauf l'écart inexpliqué de bbc, §3.4).
 - Fermeture native des onglets : rapide et complète (navigateurs détruits en < 80 ms).
 
 ## 6. Instrumentation (critère 5)
@@ -312,6 +345,11 @@ sécurité » (feature jamais par défaut, `NIGHTFALL_FEATURES` réservé à `se
 Changements de comportement **dans les builds selftest seulement** : avec `NIGHTFALL_SELFTEST=diag*`,
 pas de journal réseau et journal Chromium au niveau WARNING (comme une version publiée).
 
+**L'étape CI « Diagnostic et mesures M-0002 » (compilation release supplémentaire et scénario,
+jusqu'à 75 min) ne doit jamais être intégrée telle quelle dans `develop`** : elle allonge
+fortement chaque CI ; si on la garde, ce doit être à la demande (`workflow_dispatch`) ou dans un
+workflow séparé. L'inventaire Playwright (quelques minutes) peut être discuté séparément.
+
 La branche reste non fusionnée : le Directeur peut relancer exactement les mêmes mesures « après »
 en rebasant les corrections dessus (le scénario se lance seul dans la CI).
 
@@ -322,5 +360,13 @@ en rebasant les corrections dessus (le scénario se lance seul dans la CI).
   `request_focus`. La reproduction du bug × est la même sur la maquette Playwright avec de vrais
   événements souris, ce qui appuie le diagnostic.
 - Réseau de CI ; un seul jeu de pages (example.com, Wikipédia, Le Monde, BBC).
-- La part exacte des blocages `page.info` dans le ressenti « pages lentes » n'est pas isolée :
-  il faudra la mesure « après » correction.
+- La part exacte des blocages `page.info` dans le ressenti « pages lentes » n'est pas isolée
+  (voir la mesure proposée au §3.4).
+- Pas de référence de comparaison : aucun Chromium ou CEF « nu » (sans NIGHTFALL) mesuré dans les
+  mêmes conditions ; les temps ne peuvent donc pas être qualifiés de lents ou normaux dans
+  l'absolu.
+- Fluidité non mesurée : ni images par seconde, ni saccades au défilement ou pendant les
+  animations ; seuls la latence de quelques actions et le temps de reconstruction de la barre le
+  sont.
+- Coût d'exécution des scripts injectés dans les pages non mesuré (seule leur génération l'est).
+- Mémoire : valeurs absolues contaminées par la fuite des menus (§3.5).
