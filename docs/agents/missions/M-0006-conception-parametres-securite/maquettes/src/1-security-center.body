@@ -16,10 +16,24 @@
 <div class="row"><span class="dot"></span><div class="t"><div class="lbl">Sandbox Chromium</div><div class="desc">Conservée · débogage à distance interdit</div></div><span class="badge">fixe</span></div>
 <div class="row"><span class="dot o"></span><div class="t"><div class="lbl">Auto-Purge</div><div class="desc">Désactivée (facultative)</div></div><span class="chev">›</span></div>
 </div>
+<h2>Sites avec exceptions</h2>
+<div class="box">
+<div class="row"><span class="badge w">Shield désactivé</span><div class="t"><div class="lbl">banque-exemple.fr</div></div><span class="chev">›</span></div>
+<div class="row"><span class="badge i">Autorisations</span><div class="t"><div class="lbl">example-news.fr</div><div class="desc">Position bloquée · cookies effacés à la fermeture · zoom 125 %</div></div><span class="chev">›</span></div>
+<div class="row"><span class="badge w">HTTPS-First</span><div class="t"><div class="lbl">imprimante-bureau.fr</div><div class="desc">HTTP autorisé jusqu'à la fermeture</div></div><span class="chev">›</span></div>
+<div class="row"><span class="t" style="color:var(--arc)">Tous les sites (14)</span><span class="chev">›</span></div></div>
 <h2>Événements récents</h2>
 <div class="box ev">
 <div class="row"><span class="when">14:02</span><span class="badge w">Phishing</span><div class="t"><div class="lbl">Avertissement affiché sur paypa1-secure.com</div></div><span class="chev">›</span></div>
 <div class="row"><span class="when">Hier 21:40</span><span class="badge k">Code</span><div class="t"><div class="lbl">3 essais de code incorrects avant déverrouillage</div></div><span class="chev">›</span></div>
 <div class="row"><span class="t" style="color:var(--arc)">Tous les événements de sécurité</span><span class="chev">›</span></div>
+</div>
+<h2>Réglages avancés</h2>
+<div class="box prot">
+<div class="row" style="border-top:0"><div class="t"><div class="lbl">Filtres personnalisés</div><div class="desc">NIGHTFALL Shield › Avancé</div></div><span class="chev">›</span></div>
+<div class="row" style="border-top:0"><div class="t"><div class="lbl">DNS personnalisé</div><div class="desc">Sécurité › Connexions</div></div><span class="chev">›</span></div>
+<div class="row"><div class="t"><div class="lbl">Règles d'Auto-Purge</div><div class="desc">Sécurité › Urgence</div></div><span class="chev">›</span></div>
+<div class="row"><div class="t"><div class="lbl">Extensions</div><div class="desc">Sécurité › Extensions · aucune à risque</div></div><span class="chev">›</span></div>
+<div class="row"><div class="t"><div class="lbl">Outils de développement</div><div class="desc">Options avancées · désactivés</div></div><span class="chev">›</span></div>
 </div>
 <p class="note">Navigation sécurisée de Google : indisponible dans NIGHTFALL (non fournie par CEF, nécessite une clé d'API Google). Les sites malveillants connus sont bloqués par la liste « uBlock filters – Sites malveillants ».</p>

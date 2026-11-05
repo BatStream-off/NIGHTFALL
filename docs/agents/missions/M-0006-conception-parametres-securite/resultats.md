@@ -11,7 +11,7 @@
 
 ## 0. Résumé pour le Directeur
 
-1. **Inventaire complet** (§2) : 52 réglages et données enregistrés, 34 actions, 7 lieux
+1. **Inventaire complet** (§2) : 52 réglages et données enregistrés, 36 actions (dont la page Extensions), 7 lieux
    d'interface. Chacun reçoit une place unique dans la nouvelle organisation (§4).
 2. **Constats qui conditionnent la conception** (§3), vérifiés dans le code :
    - 4 doublons réels : changement de code et Recovery Key (Paramètres › LOCK **et** Security
@@ -22,22 +22,28 @@
      `phishing_warnings`, `wallpaper`, `shortcuts`…). `settings_set` (`api.rs:990-1019`) ne
      protège que 4 champs. Même défaut pour Shield : `security.js:saveShield` renvoie toute la
      configuration, y compris l'`allowlist` et les dates `updated` des listes.
-   - **Risque de perte de réglages** : `ShieldConfig` (`crates/nf-shield/src/lib.rs:43-52`) et
-     `VideoGuardConfig` (`crates/nf-videoguard/src/lib.rs:43-53`) n'ont pas `#[serde(default)]`
-     au niveau de la structure. Ajouter un champ sans `#[serde(default)]` ferait échouer la
-     lecture des réglages enregistrés, et `api.rs:756-760` (`if let Ok(Some(..))`) retomberait
-     **en silence** sur les valeurs par défaut : listes, filtres personnels et exceptions perdus.
+   - **Risque de perte de réglages** : `ShieldConfig` (`crates/nf-shield/src/lib.rs:43-52`),
+     `VideoGuardConfig` (`crates/nf-videoguard/src/lib.rs:43-53`), et surtout `PerfConfig`
+     (`crates/nf-perf/src/lib.rs:51-59`), `AutoPurgeRules` (`crates/nf-emergency/src/rules.rs:67-74`),
+     `SitePermission` et `Shortcut` (`state.rs:108-144`), **imbriquées dans `Settings`**, n'ont pas
+     `#[serde(default)]` au niveau de la structure (`Settings` l'a, mais cela ne couvre pas les
+     champs manquants des structures imbriquées). Un champ ajouté sans `#[serde(default)]` à
+     `perf` ferait échouer la lecture de **tout** `Settings` : `api.rs:753-755`
+     (`if let Ok(Some(..))`) garderait **en silence** les valeurs par défaut, et la sauvegarde
+     suivante écraserait tous les réglages de l'utilisateur. Même effet pour Shield et
+     VideoGuard (`api.rs:756-760`) : listes, filtres personnels et exceptions perdus.
      Règle de conception n° 1 de toutes les missions qui suivent.
    - Réglage enregistré **sans interface** : `VideoGuardConfig.min_duration` ; sans effet :
      `PerfConfig.battery_saver` (L-08) ; données sans gestion : zoom par site (`site_zoom`).
-3. **Organisation** (§4) : une entrée « Security Center » en tête de la barre latérale (état
-   des protections, protections actives, alertes, événements récents), puis les 13 sections
+3. **Organisation** (§4) : une entrée « Security Center » en tête de la barre latérale qui couvre
+   les 5 exigences du propriétaire (état des protections, protections actives, sites avec
+   exceptions, événements de sécurité, réglages avancés : table au §4), puis les 13 sections
    demandées, puis « À propos ». Les anciennes sections Démarrage, Langues, Mises à jour
    (→ Général), Mots de passe, NIGHTFALL LOCK, Emergency (→ Sécurité), Système (→ Performances
    et Options avancées), Réinitialiser (→ Options avancées) sont absorbées sans perte.
    `security.html` devient une redirection : menu, panneau Shield, Nouvel onglet et liens
    profonds (`#emergency`, `#lock`…) continuent de fonctionner.
-4. **Manques** (§6) : 40 lignes Chrome/Brave évaluées ; « demander où enregistrer » existe
+4. **Manques** (§6) : 47 lignes Chrome/Brave évaluées ; « demander où enregistrer » existe
    déjà (F-109) ; Navigation sécurisée de Google, saisie automatique, sous-titres instantanés,
    traduction et protection d'empreinte façon Brave sont déclarés non faisables ou non
    recommandés, avec la raison.
@@ -45,14 +51,18 @@
    réelle (origine exacte pour les autorisations, domaine pour Shield et VideoGuard, hôte pour le
    zoom) ; aucune migration destructive ; nouveaux champs tous `#[serde(default)]`, tests de
    chargement d'anciens JSON obligatoires.
-6. **Risque important à signaler** (§8, R1) : les exceptions par site écrites dans Chromium par
-   `set_content_setting` sont enregistrées par Chromium dans son fichier `Preferences` **en
-   clair**, hors de la base chiffrée : la liste de sites deviendrait lisible sans le code.
-   Aujourd'hui NIGHTFALL n'y écrit que des valeurs par défaut (sans adresse) et des réponses
-   temporaires. Les nouveaux types par site (JavaScript, images, son, cookies…) exigent soit
-   une écriture éphémère (déverrouillage → verrouillage/fermeture), soit un refus de ces
-   types. Prototype exigé avant la mission concernée ; décision du propriétaire si le
-   prototype échoue.
+6. **Risque important, déjà présent dans la 0.1.4** (§8, R1) : chaque décision d'autorisation
+   rendue à Chromium par `PermissionPromptCallback::cont(ACCEPT|DENY)` (`permissions.rs:212`
+   pour une réponse donnée dans le bandeau, `:286` pour une décision mémorisée appliquée
+   automatiquement) est transmise par CEF comme réponse **permanente** (`delegate_->Accept`,
+   `delegate_->Deny`, `libcef/browser/permission_prompt.cc:144-151`) ; Chromium l'enregistre
+   alors avec l'origine dans son fichier `Preferences`, **en clair**, hors de la base chiffrée
+   (`permissions.rs:9-11` le dit : « Chromium itself keeps the answers »). Seules les réponses
+   sans « Mémoriser » sont remises à zéro (`permission_resets`, `reset_temporary`) ; les
+   décisions mémorisées, elles, restent lisibles sans le code. Proposition : remettre à zéro la
+   copie de Chromium de **toutes** les décisions au verrouillage et à la fermeture (NIGHTFALL
+   répond lui-même à la demande suivante), et appliquer la même règle aux nouveaux types par
+   site (JavaScript, images, cookies…). Prototype exigé (M-E6) ; décision du propriétaire.
 7. **Découpage** (§9) : 9 missions d'exécution, ordonnées, avec fichiers et critères.
 
 ## 1. Méthode
@@ -210,25 +220,29 @@ remarque. « SC » = Security Center intégré. Lignes du registre entre crochet
 | A32 | « Continuer vers le site » HTTPS-First [F-037] | `https.proceed` | `insecure.html` | inchangé ; visible et révocable dans la fiche du site |
 | A33 | « Quitter ce site » anti-phishing [F-193] | `nav.back` | bandeau | inchangé ; journalisé (événement) |
 | A34 | Verrouiller [F-060, F-125] | `lock` | barre d'outils, menu | inchangé |
+| A35 | Page Extensions : liste et score de risque [F-081, F-138] | `extensions.list` (`api.rs:507`) | menu (`shell.js:583`) | Sécurité › Extensions (liste, risque) ; alerte du SC si une extension est à risque élevé ou critique ; entrée du menu conservée |
+| A36 | « Installer / gérer » (ouvre `chrome://extensions/`, non fonctionnel, L-01) [F-081] | `extensions.manage` (`api.rs:508-514`) | page Extensions | Sécurité › Extensions, avec la limite L-01 écrite à côté (rien n'est présenté comme fonctionnel) |
 
 Recoupement : les 31 champs de `Settings` (`state.rs:38-106`), les 2 de `UiPrefs`, les 5 de
 `ShieldConfig`, les 4 de `VideoGuardConfig`, les 3 de `PerfConfig`, les 3 d'`AutoPurgeRules`
 (ligne 14), les 2 d'`UpdatePrefs` et les clés `site_zoom`, `shield_total` sont tous dans la
-table ; les 13 sections de `settings.js` et les 6 cartes de `security.js` aussi.
+table ; les 13 sections de `settings.js`, les 6 cartes de `security.js` et les pages ouvertes
+depuis le menu qui portent des réglages ou des analyses (Extensions, A35-A36) aussi.
 
 ## 3. Constats sur l'existant (lecture du code)
 
 | # | Constat | Preuve | Effet sur la conception |
 |---|---|---|---|
-| C1 | Doublons Paramètres / Security Center | `settings.js:333` et `security.js:91` (phishing) ; `settings.js:463-488` et `security.js:96-104` (code, Recovery Key) | une seule place (§2.2 A6, A7, n° 9) |
+| C1 | Doublons Paramètres / Security Center | `settings.js:333` et `security.js:103` (phishing) ; `settings.js:463-488` et `security.js:107-116` (code, Recovery Key) | une seule place (§2.2 A6, A7, n° 9) |
 | C2 | Enregistrement par objet entier, copie possiblement périmée | `settings.js:64-71` envoie `S` ; `api.rs:993-1006` remplace `c.settings` ; seuls `auto_purge`, `site_permissions`, `permission_resets`, `download_dir` sont protégés | commande `settings.patch` (§5.2) |
 | C3 | Shield enregistré par objet entier | `security.js:26-33` reconstruit la configuration depuis l'instantané `ST` | `shield.patch` ciblé |
-| C4 | `ShieldConfig`, `VideoGuardConfig` sans `#[serde(default)]` de structure ; échec de lecture silencieux | `nf-shield/src/lib.rs:43`, `nf-videoguard/src/lib.rs:43`, `api.rs:756-760` | règle §7.3 |
+| C4 | `ShieldConfig`, `VideoGuardConfig` et les structures imbriquées dans `Settings` (`PerfConfig`, `AutoPurgeRules`, `SitePermission`, `Shortcut`) sans `#[serde(default)]` de structure ; échec de lecture silencieux de tout `Settings` | `nf-shield/src/lib.rs:43`, `nf-videoguard/src/lib.rs:43`, `nf-perf/src/lib.rs:51`, `nf-emergency/src/rules.rs:67`, `state.rs:108,140`, `api.rs:753-760` | règle §7.3 |
 | C5 | `min_duration` sans interface | `nf-videoguard/src/lib.rs:48`, absent de `security.js` | ajouté (n° 43) |
 | C6 | Zoom par site enregistré mais non gérable | `browsing.rs:92-117` | Navigation › Zoom par site |
 | C7 | `page.open` n'accepte qu'un `hash` alphanumérique avec « - », 40 caractères | `api.rs:208` | nouvelle commande `settings.openSite` (§5.3) |
 | C8 | Aucun journal d'événements de sécurité : seuls les signaux du démarrage existent | `security.rs:status_json`, `state.rs:Core.signals` | modèle §5.4 |
-| C9 | Les décisions mémorisées sont appliquées par NIGHTFALL dans le gestionnaire d'autorisations, sans écrire le site dans Chromium ; seules les valeurs par défaut (sans adresse) et les réponses temporaires le sont | `permissions.rs:decide`, `apply_defaults`, `answer` | risque R1 pour les nouveaux types |
+| C9 | Les décisions (bandeau et décisions mémorisées appliquées automatiquement) sont rendues à Chromium par `cb.cont(ACCEPT/DENY)`, que CEF transmet comme réponses permanentes : Chromium écrit l'origine en clair dans `Preferences`. Seules les réponses sans « Mémoriser » sont effacées (au verrouillage et au déverrouillage) ; les décisions mémorisées restent. Pour la caméra et le micro (`MediaAccessCallback::cont`, `permissions.rs:213,253`), l'enregistrement par Chromium n'est **pas vérifié** | `permissions.rs:9-11, 205-215, 253, 286` ; `libcef/browser/permission_prompt.cc:142-151` (dépôt CEF du 2026-11-02, plus récent que 156) | risque R1, déjà présent |
+| C11 | La page Extensions (liste, score de risque, bouton « Installer / gérer » non fonctionnel L-01) n'a aucune entrée dans les Paramètres | `shell.js:583`, `api.rs:507-514`, F-081, F-138 | Sécurité › Extensions |
 | C10 | Valeur par défaut `wallpaper: "city"` inconnue des pages (repli sur « Aurore ») | `state.rs:159`, `newtab.js:4-11` | hors périmètre, signalé |
 
 ## 4. Arborescence cible
@@ -241,7 +255,12 @@ Paramètres (settings.html)
 │   ├─ Aujourd'hui : éléments bloqués, segments sautés, événements
 │   ├─ Protections actives (10 lignes, chacune ouvre sa section) : LOCK, Shield, VideoGuard, Session Vault,
 │   │   HTTPS-First, Anti-phishing, DNS sécurisé, Cookies/GPC/WebRTC, Sandbox (fixe), Auto-Purge
-│   └─ Événements récents (3) → Sécurité › Événements de sécurité
+│   ├─ Sites avec exceptions : Shield désactivé ou réglé, HTTPS-First continué, décisions mémorisées,
+│   │   VideoGuard désactivé → chaque ligne ouvre la fiche du site ; « Tous les sites » → Autorisations des sites
+│   ├─ Événements récents (3) → Sécurité › Événements de sécurité
+│   └─ Réglages avancés (liens directs, aucun contrôle en double) : filtres personnalisés (Shield › Avancé),
+│       DNS personnalisé (Sécurité › Connexions), règles Auto-Purge (Sécurité › Urgence),
+│       outils de développement (Options avancées), extensions (Sécurité › Extensions)
 ├─ Général                              #general
 │   ├─ Au démarrage (Nouvel onglet / reprendre / pages choisies + « Utiliser les pages ouvertes »)
 │   ├─ Navigateur par défaut (nouveau, §6)
@@ -266,6 +285,7 @@ Paramètres (settings.html)
 │   ├─ Protections de navigation (anti-phishing ; note honnête Navigation sécurisée indisponible)
 │   ├─ Protection des sessions (Session Vault + limite)
 │   ├─ Mots de passe (gestionnaire, enregistrement L-13, réutilisation L-10 — nouveau)
+│   ├─ Extensions (liste et score de risque de la page Extensions ; limite L-01 dite telle quelle)
 │   ├─ Événements de sécurité          #securite/evenements
 │   └─ Urgence (niveau 1 lockdown, niveau 2 purge, niveau 3 Auto-Purge)
 ├─ NIGHTFALL Shield                     #shield
@@ -298,6 +318,16 @@ Paramètres (settings.html)
 └─ À propos de NIGHTFALL                #a-propos
 ```
 
+Couverture des 5 exigences du propriétaire pour le Security Center (demande §2) :
+
+| Exigence | Emplacement dans le Security Center | Gestion détaillée |
+|---|---|---|
+| État des protections | Alertes + état global (n / total, vérification de sécurité) | sections concernées |
+| Autorisations et exceptions par site | carte « Sites avec exceptions » | Autorisations des sites › fiche du site (§7) |
+| Événements de sécurité | carte « Événements récents » | Sécurité › Événements de sécurité (§5.4) |
+| Protections actives | carte « Protections actives » (10 lignes) | une section par protection |
+| Réglages avancés | carte « Réglages avancés » (liens) | Shield › Avancé, Sécurité › Connexions et Urgence, Options avancées, Sécurité › Extensions |
+
 Règles d'organisation :
 1. **Un réglage, un endroit.** Les autres lieux n'affichent qu'un état avec un lien (le SC, la
    ligne « Blocage des traqueurs ») ou un raccourci vers le même champ (engrenage de Nouvel
@@ -310,7 +340,7 @@ Règles d'organisation :
    sécurisée, correcteur Windows, langue d'interface, extensions).
 
 Maquettes (organisation et contenus ; style final : M-0005) :
-- `maquettes/1-security-center.png` : vue d'ensemble (alerte, état, protections actives, événements).
+- `maquettes/1-security-center.png` : vue d'ensemble (alerte, état, protections actives, sites avec exceptions, événements, réglages avancés).
 - `maquettes/2-section-confidentialite.png` : une section complète.
 - `maquettes/3-autorisations-site.png` : fiche d'un site (protections, autorisations, cookies, zoom, portées).
 - `maquettes/4-evenements.png` : événements de sécurité (filtres, durée de conservation, effacement).
@@ -337,8 +367,14 @@ Maquettes (organisation et contenus ; style final : M-0005) :
 - `shield.patch` : `enabled`, `block_popups`, `list {id, enabled}`, `custom_filters`,
   `allow {site}`, `disallow {site}`, `site {site, …}` ; ne renvoie jamais les dates de listes.
 - `videoguard.set` valide et borne (VG-60).
-- Après chaque écriture, un événement `settings_changed {keys}` est poussé à toutes les vues
-  ouvertes (`windows::push_event_all`), qui relisent : plus de copie périmée.
+- Après chaque écriture, un événement `settings_changed {keys}` est envoyé aux pages qui
+  affichent des réglages. `windows::push_event_all` (`windows.rs:1483`) ne suffit pas : il
+  passe par `send_to_ui_views` (`windows.rs:1307-1313`), qui n'atteint que les vues
+  d'interface (barre du haut, barre latérale, menu), pas les pages internes ouvertes dans un
+  onglet. Canal proposé : une fonction `push_event_internal_pages` qui parcourt les onglets dont
+  l'adresse commence par `nightfall://app/` et appelle `exec_in_tab` (`windows.rs:1505`, déjà
+  utilisé par `downloads.chooseFolder`) ; en complément, chaque page relit ses réglages sur
+  `visibilitychange` (onglet réactivé).
 
 ### 5.3 Liens profonds
 - Table d'alias des anciens identifiants : `demarrage`, `langues`, `mises-a-jour` → `general` ;
@@ -408,11 +444,11 @@ Effort : S (≤ 1 j), M (2-5 j), L (> 1 semaine). Risque : technique ou de régr
 | 28 | Importer favoris (fichier HTML) et mots de passe (CSV exporté par l'autre navigateur) | oui | oui | oui | `ImplBrowserHost::run_file_dialog` (B:12690) ; analyse en Rust | M | CSV en clair : inviter à le supprimer ; jamais de lecture directe des profils des autres navigateurs (chiffrement lié à l'appareil, droits) |
 | 29 | Exporter favoris HTML / mots de passe CSV (code exigé) | oui | oui | oui | idem | S | export en clair : avertissement |
 | 30 | Navigation sécurisée (Google Safe Browsing) | oui | oui (proxy) | — | **non** : service absent de CEF, exige une clé d'API Google (interdit : aucune clé) ; dit dans Sécurité ; liste « Sites malveillants » de uBlock déjà active (F-147) | — | — |
-| 31 | Navigateur par défaut | oui | oui | oui (navigateur principal) | aucune fonction CEF : Windows = enregistrement ProgID dans l'installateur Inno Setup + ouverture de `ms-settings:defaultapps` ; macOS = `LSSetDefaultHandlerForURLScheme` | M | installateur (F-180) |
+| 31 | Navigateur par défaut | oui | oui | oui (navigateur principal) | aucune fonction CEF : Windows = enregistrement ProgID dans l'installateur Inno Setup + ouverture de `ms-settings:defaultapps` ; macOS = `NSWorkspace setDefaultApplicationAtURL:toOpenURLsWithScheme:completionHandler:` (macOS 12+ ; `LSSetDefaultHandlerForURLScheme` est déprécié), le système demande confirmation | M | installateur (F-180) |
 | 32 | Avertir avant de fermer plusieurs onglets | non | oui | moyen | interface NIGHTFALL | S | F-007 |
 | 33 | Confirmation « Quitter la page ? » (L-03) | oui | oui | oui | `on_before_unload_dialog` (B:20227) | M | fermeture d'onglet (bug signalé par le propriétaire) : à traiter avec M-0002 |
 | 34 | Zoom par site : liste et retrait | oui | oui | oui | données existantes (`site_zoom`) | S | aucun |
-| 35 | Sites toujours actifs (économiseur de mémoire) | oui | oui | oui | nf-perf (`tabs_to_discard`) | S | aucun |
+| 35 | Sites toujours actifs (économiseur de mémoire) | oui | oui | oui | nf-perf (`tabs_to_discard`) ; liste dans un champ `#[serde(default)]` | S | **élevé si mal fait** : `PerfConfig` est imbriquée dans `Settings` sans `#[serde(default)]` (§7.3-1) ; test d'ancien JSON obligatoire |
 | 36 | Économiseur d'énergie (L-08) | oui | oui | moyen | pas d'API CEF pour limiter la fréquence d'images des navigateurs fenêtrés : **non** pour l'instant ; ne pas afficher | — | — |
 | 37 | Politique WebRTC à 4 valeurs | oui (stratégie) | oui | moyen | préférence `webrtc.ip_handling_policy` déjà écrite (`prefs.rs:75`) | S | faible |
 | 38 | Proxy propre à NIGHTFALL | non | non | faible | préférence `proxy` (dictionnaire) via `set_preference` (B:10787), non vérifiée | M | réseau |
@@ -422,6 +458,9 @@ Effort : S (≤ 1 j), M (2-5 j), L (> 1 semaine). Risque : technique ou de régr
 | 42 | Saisie automatique adresses / cartes | oui | oui | — | **non** : non fournie aux navigateurs de style Alloy (non vérifié en détail) | — | — |
 | 43 | Raccourcis clavier configurables | non | non | moyen | NIGHTFALL (`client.rs:on_pre_key_event`) ; lié à VG-44 et au bug H1 | M | sécurité (verrouillage) |
 | 44 | Tor, IPFS, portefeuille, récompenses | — | oui | non | hors objectifs | — | — |
+| 45 | Proposer d'enregistrer les mots de passe (L-13) | oui | oui | oui | détection du formulaire envoyé par un script de page (aucune fonction CEF dédiée) ; enregistrement par `vault.saveForPage` existant | M | jamais d'enregistrement sans clic ; le script de page est observable (comme VideoGuard, M-0004 §6.4) |
+| 46 | Désactiver l'optimiseur JavaScript (V8 JIT) par site ou par défaut | oui | non | moyen (sécurité renforcée) | `ContentSettingTypes::JAVASCRIPT_JIT` (S, valeur 67) avec `set_content_setting` ; effet réel à vérifier | S | performances ; R1 si par site |
+| 47 | Do Not Track | oui | non (retiré) | non | en-tête obsolète, augmente l'empreinte ; GPC (F-100) le remplace | — | — |
 
 ## 7. Autorisations et exceptions par site
 
@@ -443,9 +482,11 @@ nouveau magasin unique (option B ci-dessous).
 | **B (retenue)** | structures existantes inchangées + nouveaux champs à côté + agrégation en lecture | aucune migration, aucune donnée réécrite, retour à l'ancienne version sans perte des anciennes données | une agrégation à écrire et tester |
 
 Nouveaux champs (tous `#[serde(default)]`) :
-- `SitePermission.value: Option<String>` (`"allow" | "block" | "session"`) ; `allow` reste
-  écrit (`allow = value != "block"`) pour qu'une ancienne version comprenne. Lecture : `value`
-  s'il existe, sinon `allow`. Nouveaux `kind` : `javascript`, `images`, `sound`, `autoplay`,
+- `SitePermission.value: Option<String>` (`"allow" | "block" | "session"`), avec
+  `#[serde(default)]` **sur le champ** (`SitePermission` n'a pas de défaut de structure) ;
+  `allow` reste écrit avec `allow = (value == "allow")`, pour qu'une ancienne version ne
+  transforme jamais « session » ou « block » en autorisation. Lecture : `value` s'il existe,
+  sinon `allow`. Nouveaux `kind` : `javascript`, `images`, `sound`, `autoplay`,
   `cookies`, `insecure_content`, `sensors`, `midi`, `idle_detection`, `protocol_handlers`,
   `storage_access`, `local_network`, `keyboard_lock`, `pointer_lock`, `file_system`.
   `sanitize` refuse un `kind` inconnu sauf ceux-là ; une ancienne version qui lirait un `kind`
@@ -455,7 +496,10 @@ Nouveaux champs (tous `#[serde(default)]`) :
   du « Shield désactivé » ; `is_active_for` inchangé.
 - `VideoGuardConfig.disabled_sites: BTreeSet<String>` (domaine du site qui intègre le lecteur) ;
   chaîne : seulement si l'identifiant de chaîne est disponible sans dépendre du DOM (VG-41).
-- `Settings.cookie_mode: String` (défaut dérivé de `block_third_party_cookies`), `clear_on_exit: Vec<String>`
+- `Settings.cookie_mode: String`, valeur par défaut `""` (sentinelle) résolue dans `sanitize`
+  à partir de `block_third_party_cookies` (`true` → `"block_third_party"`, `false` → `"allow"`),
+  puis `block_third_party_cookies` tenu à jour à partir de `cookie_mode` à chaque
+  enregistrement (une ancienne version garde le bon comportement) ; `clear_on_exit: Vec<String>`
   (catégories), `security_events_days: u32` (30), `zoom` inchangé.
 - Exceptions HTTPS-First : restent de session (comme aujourd'hui) ; affichées et révocables.
 
@@ -465,10 +509,15 @@ qui écrit dans la bonne structure ; `sites.reset { site }` (retire décisions, 
 zoom ; efface les données seulement si demandé). L'interface affiche la portée de chaque ligne.
 
 ### 7.3 Compatibilité avec les réglages enregistrés (exigences)
-1. Ajouter `#[serde(default)]` au niveau de `ShieldConfig` et `VideoGuardConfig` (avec `impl Default`
-   déjà présentes) **avant** tout nouveau champ ; tests : JSON d'une 0.1.4 (au moins
-   `{"enabled":true,"block_popups":true,"lists":[…],"custom_filters":"x","allowlist":["a.fr"]}`
-   et `nf-videoguard/src/lib.rs:282`) → chargés à l'identique.
+1. Ajouter `#[serde(default)]` au niveau de **toute structure enregistrée ou imbriquée dans une
+   structure enregistrée** : `ShieldConfig`, `VideoGuardConfig`, `PerfConfig`, `AutoPurgeRules`
+   (toutes ont une `impl Default`) ; pour `SitePermission`, `Shortcut` et `FilterList`,
+   `#[serde(default)]` sur chaque champ ajouté. À faire **avant** tout nouveau champ. Tests :
+   JSON d'une 0.1.4 → chargés à l'identique, au moins :
+   `{"enabled":true,"block_popups":true,"lists":[…],"custom_filters":"x","allowlist":["a.fr"]}` ;
+   `nf-videoguard/src/lib.rs:282` ; un JSON `app` dont `perf` n'a que ses 3 champs actuels et
+   `auto_purge` ses 3 champs, lu par un code qui a un champ de plus dans chacune
+   → `Settings` chargé sans perte (aucun retour aux valeurs par défaut).
 2. Remplacer les `if let Ok(Some(..))` de `api.rs:753-760` par une lecture qui **journalise**
    l'échec et conserve la valeur brute (clé `<nom>.illisible`) au lieu de l'écraser à la
    prochaine sauvegarde.
@@ -482,18 +531,32 @@ zoom ; efface les données seulement si demandé). L'interface affiche la porté
    `deny_unknown_fields`) mais perdus à la première sauvegarde : à écrire dans les notes de version.
 
 ### 7.4 Application dans Chromium
-- Autorisations à invite (n° 6 du §6) : décidées par NIGHTFALL dans `on_show_permission_prompt`,
-  sans écrire le site dans Chromium (comme aujourd'hui).
-- Types sans invite (JavaScript, images, son, lecture auto, cookies, contenu mixte) : Chromium
+- Existant (0.1.4) : NIGHTFALL décide dans `on_show_permission_prompt` et
+  `on_request_media_access_permission`, puis répond par `cb.cont(...)` ; pour les invites,
+  CEF transmet une réponse permanente (`permission_prompt.cc:144-151`) et Chromium enregistre
+  l'origine en clair (C9). Les réponses sans « Mémoriser » sont remises à zéro
+  (`reset_temporary`, appelée au verrouillage et après le déverrouillage, `api.rs:785,821`) ;
+  les décisions mémorisées ne le sont jamais.
+- Cible : la copie de Chromium n'est plus qu'un **cache de session**. Au verrouillage
+  (`lock_now`) et à la fermeture (`prepare_window_close`, `windows.rs:632`), `reset_chromium`
+  (`permissions.rs:132-140`) est appelée pour **toutes** les décisions (`site_permissions` et
+  `permission_resets`) ; au déverrouillage rien n'est réécrit : la demande suivante d'un site
+  repasse par `decide()`, qui répond sans bandeau (comportement identique pour l'utilisateur).
+  Limite : après un arrêt brutal, les entrées restent jusqu'au déverrouillage suivant (la liste
+  est dans la base chiffrée, illisible avant) ; c'est à dire honnêtement.
+- Types sans invite (JavaScript, JIT, images, lecture auto, cookies, contenu mixte) : Chromium
   doit connaître la règle → `set_content_setting(url, url, type, valeur)` au déverrouillage,
-  et retour à `DEFAULT` au verrouillage et à la fermeture, pour limiter la présence de la liste
-  de sites dans `Preferences` (R1). Son : préférer `set_audio_muted` (aucune écriture).
+  et retour à `DEFAULT` au verrouillage et à la fermeture, même règle. Son : préférer
+  `set_audio_muted` (aucune écriture dans Chromium).
+- À vérifier par le prototype : autres données de Chromium portant des origines en clair
+  (par exemple les réglages internes `SITE_ENGAGEMENT`, `MEDIA_ENGAGEMENT`, valeurs 17 et 29) ;
+  si elles existent, elles sont signalées au propriétaire (mission séparée).
 
 ## 8. Risques
 
 | # | Risque | Niveau | Mesure |
 |---|---|---|---|
-| R1 | Exceptions par site écrites en clair par Chromium (`Preferences`) ; un arrêt brutal les laisse sur le disque | **important** (vie privée) | prototype : écrire, verrouiller, lire `Preferences` ; si la suppression n'est pas fiable, ne proposer que des défauts globaux pour ces types ; **décision du propriétaire** |
+| R1 | **Déjà présent** : les décisions d'autorisation mémorisées sont écrites en clair par Chromium (`Preferences`) avec l'origine ; les nouveaux types par site ajouteraient d'autres origines ; un arrêt brutal les laisse sur le disque jusqu'au déverrouillage suivant | **important** (vie privée) | M-E6 : remise à zéro de la copie Chromium au verrouillage et à la fermeture, vérifiée en lisant `Preferences` ; si ce n'est pas fiable, ne garder que des défauts globaux pour les nouveaux types ; **décision du propriétaire** |
 | R2 | Perte silencieuse des réglages Shield/VideoGuard en ajoutant un champ | important | §7.3, premier lot (M-E1) |
 | R3 | Écrasement par copie périmée | moyen | `settings.patch`, événement `settings_changed` |
 | R4 | Registre : symboles déplacés (`security.js`) font échouer `preserve.py` | moyen | mise à jour du registre par le Directeur dans la même PR |
@@ -503,29 +566,61 @@ zoom ; efface les données seulement si demandé). L'interface affiche la porté
 ## 9. Découpage en missions d'exécution
 
 Ordre : M-E1 → M-E2 → (M-E3, M-E4, M-E5 en parallèle, fichiers distincts) → M-E6 → M-E7 → M-E8, M-E9.
+**Chevauchement avec M-0005** : M-E2 touche `app/ui/settings*`, `shell.js` (menu, panneau
+Shield) et `newtab.js`, que la réalisation issue de M-0005 (interface, thèmes ; fichiers
+autorisés `app/**`) modifiera aussi. Le Directeur doit les séquencer (charte §8) ; proposé :
+M-0005 pose d'abord les jetons et composants, M-E2 se rebase ensuite et ne change que
+l'organisation et les contenus.
 Toutes : `preserve.py` vert, CI complète verte, auto-test fini sur example.com avec `SELFTEST OK`,
 captures de l'interface simulée (`ci/ui_mock_server.py`) jointes, aucun réglage existant perdu.
 
 | Mission | Contenu | Fichiers | Critères d'acceptation vérifiables |
 |---|---|---|---|
-| **M-E1** Fondations de compatibilité (Sonnet ; Opus en audit) | `#[serde(default)]` de structure (Shield, VideoGuard) ; lecture tolérante (§7.3-2) ; `settings.patch`, `shield.patch` ; événement `settings_changed` | `crates/nf-shield/src/lib.rs`, `crates/nf-videoguard/src/lib.rs`, `app/src/nf/api.rs`, `state.rs` | tests Rust : JSON 0.1.4 de Shield et VideoGuard chargés à l'identique ; JSON illisible → valeur conservée et ligne de journal ; `settings.patch` d'un champ ne modifie aucun autre champ (test sur tous les champs) ; champ hors liste blanche refusé ; auto-test : patch puis relecture |
+| **M-E1** Fondations de compatibilité (Sonnet ; Opus en audit) | `#[serde(default)]` de structure sur `ShieldConfig`, `VideoGuardConfig`, `PerfConfig`, `AutoPurgeRules` (§7.3-1) ; lecture tolérante (§7.3-2) ; `settings.patch`, `shield.patch` ; événement `settings_changed` par `push_event_internal_pages` (§5.2) | `crates/nf-shield/src/lib.rs`, `crates/nf-videoguard/src/lib.rs`, `crates/nf-perf/src/lib.rs`, `crates/nf-emergency/src/rules.rs`, `app/src/nf/api.rs`, `state.rs`, `windows.rs` | tests Rust : JSON 0.1.4 de Shield et VideoGuard chargés à l'identique ; **ancien JSON `app` dont `perf` n'a que 3 champs et `auto_purge` 3 champs, lu avec un champ ajouté à chacune → chargé sans perte** ; JSON illisible → valeur conservée et ligne de journal ; `settings.patch` d'un champ ne modifie aucun autre champ (test sur tous les champs) ; champ hors liste blanche refusé ; auto-test : un patch fait depuis une page est reçu (`settings_changed`) par la page Paramètres ouverte dans un autre onglet |
 | **M-E2** Nouvelle coque des Paramètres (Sonnet) | barre latérale cible, sections en fichiers séparés, déplacement **sans changement de comportement** de toutes les lignes §2.2, suppression des doublons, alias de liens profonds, `security.html` → redirection, menu et panneau Shield | `app/ui/settings*`, `app/ui/settings/*.js`, `security.*`, `shell.js`, `newtab.js`, `app/src/nf/assets.rs` | test Playwright : chaque ligne de §2.2 (nos 1-52, A1-A34) trouvée dans sa nouvelle section ; chaque ancien `#id` ouvre la bonne section ; `security.html#emergency` → Urgence ; recherche « code », « phishing » : une seule ligne chacune ; F-086, F-087, F-190, F-196 vérifiés ; registre mis à jour (colonne « Où ») |
 | **M-E3** Security Center intégré (Opus : sécurité) | vue d'ensemble, alertes, vérification de sécurité (§5.5), événements (§5.4) avec table chiffrée, filtres, conservation, effacement, purge | `app/ui/settings/security-center.js`, `crates/nf-storage`, `app/src/nf/security.rs`, points d'émission (`client.rs`, `https_first.rs`, `downloads.rs`, `permissions.rs`, `api.rs`) | tests Rust : stockage, conservation, borne de 2 000, aucune URL complète (test sur une adresse avec requête) ; rien en privé ; purge `browsing_data` vide la table ; auto-test : avertissement HTTPS-First → 1 événement lu par `security.events` |
 | **M-E4** Autorisations et fiche du site (Opus) | `sites.*`, `settings.openSite`, fiche du site, nouveaux types à invite (§6 n° 6), son via `set_audio_muted`, zoom par site | `app/src/nf/permissions.rs`, `api.rs`, `browsing.rs`, `app/ui/settings/sites.js` | tests Rust : agrégation (une origine et un domaine affichés avec leur portée) ; `SitePermission` ancien sans `value` → même décision ; `decide` inchangé pour les 8 anciens types (tests existants verts) ; nouveaux bits traduits ; auto-test : bloquer la position d'un site par `sites.set` → refus sans invite |
 | **M-E5** Shield et VideoGuard par site (Sonnet ; dépend de M-0003/M-0004) | `site_overrides`, niveau strict, cosmétique/scriptlets/pop-ups par site, exceptions VideoGuard, section VideoGuard (VG-60), `min_duration` exposé | `crates/nf-shield`, `crates/nf-videoguard`, `client.rs`, `app/ui/settings/shield.js`, `videoguard.js` | tests Rust : cosmétique désactivée par site → aucune feuille injectée ; ancien JSON sans `site_overrides` → comportement identique ; `min_duration` borné 0-30 ; auto-test Shield existant vert |
-| **M-E6** Prototype R1 puis types sans invite (Opus) | prototype : `set_content_setting(JAVASCRIPT)` par site, verrouillage, lecture de `Preferences` ; si fiable : JavaScript, images, lecture auto, cookies par site | `permissions.rs`, `prefs.rs`, `selftest.rs` | auto-test : JavaScript bloqué pour un site local → script non exécuté ; après verrouillage et fermeture, `Preferences` ne contient pas l'hôte (lecture du fichier dans l'auto-test) ; sinon rapport « non fiable » et arrêt pour décision |
+| **M-E6** R1 : copie Chromium éphémère, puis types sans invite (Opus) | remise à zéro de toutes les décisions dans Chromium au verrouillage et à la fermeture (§7.4) ; prototype `set_content_setting(JAVASCRIPT)` par site ; si fiable : JavaScript, JIT, images, lecture auto, cookies par site | `permissions.rs`, `prefs.rs`, `api.rs`, `windows.rs`, `selftest.rs` | auto-test : une décision **mémorisée** (position autorisée pour un site local) et une règle JavaScript par site ; après `lock_now`, puis après fermeture normale, `Preferences` (lu par l'auto-test après écriture des préférences sur disque) ne contient **aucune** des origines ; après déverrouillage, la demande du site est accordée sans bandeau ; JavaScript bloqué → script non exécuté ; relevé des autres données de Chromium portant l'origine (signalées, non corrigées) ; si une étape n'est pas fiable : rapport « non fiable » et arrêt pour décision |
 | **M-E7** Confidentialité (Sonnet) | mode cookies à 3 états, effacer à la fermeture, données par site, préchargement, WebRTC à 4 valeurs | `prefs.rs`, `browsing_data.rs`, `windows.rs`, `app/ui/settings/privacy.js` | tests Rust des préférences (`preferences_follow_settings` étendu) ; auto-test : effacer à la fermeture des cookies → cookie absent au relancement simulé ; « Non appliqué » affiché si Chromium refuse |
-| **M-E8** Général, Recherche, Accessibilité, Navigation (Sonnet) | « pages ouvertes », moteurs avec mots-clés (migration douce de `search_custom_*`), suggestions en ligne désactivées par défaut, police minimale, polices, accessibilité de l'interface, avertir avant de fermer plusieurs onglets, sites toujours actifs, certificats, migration facultative des préférences de Nouvel onglet | `state.rs`, `omnibox.rs`, `prefs.rs`, `nf-perf`, `app/ui/settings/*.js` | tests Rust : ancien `search_custom_url` → moteur de la liste, même URL de recherche ; mot-clé `w chat` → recherche Wikipédia ; aucune requête de suggestion sans consentement (test) |
-| **M-E9** Import/export et navigateur par défaut (Sonnet) | import HTML de favoris, CSV de mots de passe, export, navigateur par défaut Windows/macOS | `nf-storage`, `nf-vault`, `api.rs`, `packaging/windows/nightfall.iss`, `mac.rs` | tests Rust : fichiers d'exemple de Chrome, Firefox, Brave importés ; CSV mal formé refusé sans import partiel ; export exige le code ; CI : installateur déclare le ProgID |
+| **M-E8** Général, Recherche, Accessibilité, Navigation (Sonnet) | « pages ouvertes », moteurs avec mots-clés (migration douce de `search_custom_*`), suggestions en ligne désactivées par défaut, police minimale, polices, accessibilité de l'interface, avertir avant de fermer plusieurs onglets, sites toujours actifs, certificats, migration facultative des préférences de Nouvel onglet | `state.rs`, `omnibox.rs`, `prefs.rs`, `nf-perf`, `app/ui/settings/*.js` | tests Rust : ancien `search_custom_url` → moteur de la liste, même URL de recherche ; mot-clé `w chat` → recherche Wikipédia ; aucune requête de suggestion sans consentement ; « pages ouvertes » → `startup_pages` égal aux onglets http(s) de la fenêtre (pages internes exclues) ; police minimale traduite en préférence et « Non appliqué » si refusée (test de `profile_prefs`) ; `tabs_to_discard` ne retient jamais un site « toujours actif » ; ancien JSON `perf` chargé (test M-E1 conservé) ; avertissement de fermeture : interface simulée (≥ 2 onglets → boîte, 1 onglet → aucune) ; « Gérer les certificats » appelle la commande système (test d'API sans ouverture réelle) ; migration Nouvel onglet : valeurs du stockage local reprises une fois puis lues depuis les réglages (test Playwright) ; focus visible et `prefers-reduced-motion` vérifiés sur captures |
+| **M-E9** Import/export et navigateur par défaut (Sonnet) | import HTML de favoris, CSV de mots de passe, export, navigateur par défaut Windows/macOS | `nf-storage`, `nf-vault`, `api.rs`, `packaging/windows/nightfall.iss`, `mac.rs` | tests Rust : fichiers d'exemple de Chrome, Firefox, Brave importés (dossiers imbriqués conservés, doublons non recréés) ; CSV mal formé refusé sans import partiel ; mots de passe importés seulement pour des origines http(s) valides ; export des mots de passe exige le code (code faux → refus) ; aucun fichier temporaire en clair dans le profil ; CI Windows : l'installation silencieuse déclare le ProgID et les associations http/https (clés lues après installation) ; macOS : appel système vérifié manuellement avec capture (NON VÉRIFIABLE en CI : le système demande confirmation) ; aucune modification du navigateur par défaut sans clic |
 
 ## 10. Décisions demandées au propriétaire (via le Directeur)
-1. R1 : accepter que des exceptions par site (JavaScript, images, cookies…) soient écrites
-   temporairement dans les fichiers de Chromium, ou limiter ces types à des réglages globaux.
+1. R1 (exposition **déjà présente** dans la 0.1.4) : les décisions d'autorisation mémorisées
+   sont écrites en clair par Chromium avec l'origine du site. Choix : (a) recommandé : copie
+   Chromium remise à zéro au verrouillage et à la fermeture (M-E6), avec la limite de l'arrêt
+   brutal dite dans l'interface, et même règle pour les nouveaux types par site ; (b) garder
+   l'état actuel et l'écrire dans l'interface ; (c) en plus de (a), limiter les nouveaux types
+   (JavaScript, images, cookies…) à des réglages globaux.
 2. Suggestions de recherche en ligne : les proposer (désactivées par défaut) ou jamais.
 3. Navigateur par défaut et import/export CSV : à inclure dans la 0.1.5 ou plus tard.
 4. Durée de conservation par défaut des événements de sécurité (proposé : 30 jours).
+5. Règle 7 : M-E2 retire les contrôles en double du Security Center (changement de code,
+   Recovery Key, anti-phishing) et remplace `security.html` par une redirection. Aucune
+   fonctionnalité ne disparaît (chacune reste dans les Paramètres, mêmes commandes), mais des
+   éléments d'interface sont supprimés et le registre doit être mis à jour : **accord écrit
+   du propriétaire requis** avant M-E2, consigné dans « Suppressions approuvées » de sa fiche.
 
 ## 11. Hors périmètre (vu, non traité)
 - `Settings::default().wallpaper = "city"` n'existe plus dans les pages (`newtab.js:4-11`) :
   repli sur « Aurore » ; valeur par défaut à aligner.
 - `security.js` n'a aucune étiquette accessible sur ses cases (`sw`) ; repris de toute façon par M-E2/M-E3.
+
+## 12. Tentative 2 : traitement de l'audit 1 (REFUSÉ, 4 MAJEUR, 7 MINEUR)
+
+Chaque point a été vérifié dans le code avant correction.
+
+| Point | Vérification | Correction |
+|---|---|---|
+| MAJEUR 1 : `PerfConfig`, `AutoPurgeRules` sans défaut de structure, imbriquées dans `Settings` | confirmé : `nf-perf/src/lib.rs:51-59`, `nf-emergency/src/rules.rs:67-74`, `api.rs:753-755` | §0, C4, §6 n°35, §7.3-1, M-E1 (test d'ancien JSON `app`) |
+| MAJEUR 2 : décisions mémorisées déjà écrites par Chromium | confirmé : `permissions.rs:212,286` (`cb.cont`), `permission_prompt.cc:144-151` (`Accept`/`Deny`), `permissions.rs:9-11` | §0 point 6, C9, §7.4, R1, §10.1, M-E6 |
+| MAJEUR 3 : page Extensions absente | confirmé : `shell.js:583`, `api.rs:507-514` | C11, A35-A36, Sécurité › Extensions, alerte et lien du Security Center |
+| MAJEUR 4 : 5 exigences du Security Center | confirmé : « autorisations et exceptions par site » et « réglages avancés » absents de la vue d'ensemble | §4 (arbre + table exigence → emplacement), maquette 1 refaite |
+| MINEUR : `push_event_all` n'atteint pas les onglets | confirmé : `windows.rs:1483-1487`, `1307-1313` | §5.2 : `push_event_internal_pages` via `exec_in_tab` + relecture sur `visibilitychange` |
+| MINEUR : références `security.js` | confirmé : `:103`, `:107-116` | C1 |
+| MINEUR : `allow = (value == "allow")` | retenu | §7.2 |
+| MINEUR : sentinelle `cookie_mode` | retenu | §7.2 |
+| MINEUR : critères de M-E8 et M-E9 | complétés | §9 |
+| MINEUR : lignes §6 manquantes, compte, API macOS dépréciée | ajout n°45-47, « 47 lignes », `NSWorkspace setDefaultApplicationAtURL:…` | §0, §6 |
+| MINEUR : règle 7 et chevauchement M-0005 | retenu | §10.5, §9 |
