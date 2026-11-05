@@ -288,9 +288,19 @@ après fermeture de 20 onglets). Au démarrage (lock screen) : 7 processus, 356 
 Cause (établie par la mesure, mécanisme supposé) : `popup_close` (`windows.rs:1412-1426`) détruit
 l'overlay **avant** `close_browser(1)` ; d'après la documentation de CEF, `DoClose` n'est plus
 appelé quand la vue hôte est déjà détruite, et le navigateur n'est jamais fermé
-(`on_before_close` jamais reçu). Correction proposée : fermer le navigateur d'abord, détruire
-l'overlay dans `on_before_close` (ou attendre sa fermeture) ; risque moyen (cycle de vie CEF,
-code délicat) ; critère : `vivants_ui` stable après 20 menus.
+(`on_before_close` jamais reçu). **Correction (révisée par le Directeur après l'audit 2) :**
+l'ordre « fermer le navigateur puis détruire l'overlay » **n'est pas sûr tel quel** : `do_close`
+renvoie 0 pour tout navigateur d'interface (`client.rs:287-299`) ; quand `DoClose` renvoie faux,
+CEF envoie la fermeture standard à la fenêtre parente (`cef_life_span_handler.h:189-194`), et
+`can_close` (`windows.rs:227-229`) fermerait **toute la fenêtre NIGHTFALL et ses onglets**. Le
+chemin des onglets, qui libère correctement (`close_tab_inner`), diffère sur deux points :
+`remove_child_view` plus `mark_closing` avant `close_browser`, contre `overlay.destroy()` sans
+`mark_closing` pour les menus. Correction à réaliser (mission L0, M-0008) : marquer le navigateur
+du menu comme « en fermeture » (`mark_closing`) avant `close_browser`, faire répondre `do_close`
+en conséquence pour les vues d'interface marquées (comme pour les onglets), détacher la vue sans
+détruire l'overlay avant `on_before_close` ; **risque élevé** (fermeture de la fenêtre entière et
+perte des onglets si mal fait) ; critères : `vivants_ui` stable après 20 menus **et** fenêtre
+toujours ouverte avec ses onglets.
 
 Mémoire par onglet (Windows, USS, différences seulement) : 1 → 10 → 20 onglets Wikipédia :
 920 → 1 977 → 3 024 Mo (≈ 105 Mo par onglet), retour à 903 Mo après fermeture (pas de fuite côté
@@ -370,3 +380,22 @@ en rebasant les corrections dessus (le scénario se lance seul dans la CI).
   sont.
 - Coût d'exécution des scripts injectés dans les pages non mesuré (seule leur génération l'est).
 - Mémoire : valeurs absolues contaminées par la fuite des menus (§3.5).
+
+## 8. Corrections du Directeur après l'audit indépendant n° 2
+
+Autorisées par le propriétaire (journal du 2026-11-05). Faits revérifiés dans le code et les
+journaux cités par l'audit.
+
+| Point | Correction |
+|---|---|
+| MAJ-1 risque `DoClose` | §3.5 réécrit (ci-dessus) ; risque porté à « élevé » ; critère « fenêtre toujours ouverte » ajouté, repris dans la fiche M-0008 |
+| MAJ-2 inventaire incomplet | **Non testés par cette mission**, à couvrir par les missions L0/L2 : mode onglets verticaux (dont la croix, qui s'active au `click` et non au `mousedown`, `shell.js:273-287`) ; bannières (autorisation, page qui ne répond pas, plantage, hameçonnage, `shell.js:315-358`) ; menu de suggestions ; menu contextuel de page ; écrans de création du code et de la Recovery Key ; `#b-zoom` (masqué, jamais cliqué) ; Imprimer, Enregistrer la page, Verrouillage d'urgence et les 5 dernières entrées du menu (hors de la zone visible). « 238 éléments sur 30 écrans » n'est donc **pas** un inventaire complet de `shell`. La croix des onglets verticaux est ajoutée aux critères de M-0008 |
+| MAJ-3 mémoire après N onglets | **Critère 4 non rempli pour la mémoire** : un seul passage par plateforme, valeurs absolues contaminées par les menus fuités, pas de valeur par onglet sur macOS. Mesure propre (profil neuf, 1 → 10 → 20 onglets, ≥ 5 répétitions, médiane et quartiles, deux OS) reportée au lot L6, après la correction de la fuite (M-0008) |
+| MIN-1 | « Second clic macOS 0/5 » : conséquence de la course (aucun menu ouvert), pas un second échec |
+| MIN-2 | Maximum 48,21 ms : page **wikipedia** ; maximum bbc : 36,46 ms |
+| MIN-3 | Reconstruction Shield macOS au tour 2 : 449, 239, 188 ms ; fermeture native macOS au tour 2 : `dernier_ms=105` |
+| MIN-4 | Base mémoire macOS : `apres_fermeture_30s` 87 → 107 processus, 8 213 → 10 744 Mo (+20 pour 20 menus) |
+| MIN-5 | §3.6 : seul le titre de la **fenêtre** est perdu (l'historique n'enregistre jamais les pages internes, `client.rs:192`) ; « pendant que `add_tab_at` tient `WINDOWS` » est **supposé** |
+| MIN-6 | Accueil : `navigate` et `omnibox.pick` (`api.rs:171, 181`) passent aussi par `navigate_active` ; saisir une adresse `nightfall://` depuis une page web est probablement refusé aussi (**supposé**, non testé) ; « Accueil du menu » est **déduit** du code |
+| MIN-7 | La PR #25 ne sera pas intégrée telle quelle : l'instrumentation sera reprise à la demande (`workflow_dispatch`) |
+| MIN-8 | macOS : dérives fortes non montrées (ex. `example_http sans_shield` 464 ms, `dns_off` 413 ms contre 223 ms par défaut) : le banc macOS n'est pas fiable, même en relatif, sans alternance et répétitions supplémentaires |
