@@ -211,7 +211,7 @@ mod tests {
             let css = css(&p);
             // Derived secondary texts stay readable on every surface.
             let var = |name: &str| {
-                let i = css.find(&format!("--c-{name}:")).unwrap() + name.len() + 4;
+                let i = css.find(&format!("--c-{name}:")).unwrap() + name.len() + 5;
                 parse_hex(&css[i..i + 7]).unwrap()
             };
             for surf in ["bg", "surface", "raised"] {
