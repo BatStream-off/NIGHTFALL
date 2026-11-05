@@ -41,7 +41,7 @@ fn now() -> i64 {
 }
 
 /// Commands allowed before unlock.
-const PRE_UNLOCK: &[&str] = &["state", "setup", "unlock", "unlock.recovery", "recovery.confirm", "ui.activity", "ui.expand", "popup.close"];
+const PRE_UNLOCK: &[&str] = &["state", "setup", "unlock", "unlock.recovery", "recovery.confirm", "ui.activity", "ui.expand", "popup.close", "win.minimize", "win.maximize", "win.close"];
 
 pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
     let unlocked = core().is_unlocked();
@@ -66,6 +66,17 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         }
         "ui.activity" => {
             super::idle::touch();
+            ok()
+        }
+        // Window buttons of the integrated title bar (prototype M-0005):
+        // only the window's own top interface view may use them, also on
+        // the lock screen (the frameless window has no other buttons).
+        "win.minimize" | "win.maximize" | "win.close" => {
+            if !matches!(caller.kind, BrowserKind::Ui { side: false, .. }) {
+                return err("interdit");
+            }
+            let cmd = cmd.to_string();
+            on_ui(move || super::titlebar::command(w, &cmd));
             ok()
         }
         "ui.expand" => {
@@ -610,6 +621,8 @@ fn state_json(w: u32) -> Value {
         "splash": c.prefs.splash_enabled,
         "verticalTabs": c.settings.vertical_tabs,
         "showHome": c.settings.show_home_button,
+        "frameless": super::titlebar::FRAMELESS,
+        "platform": super::titlebar::platform(),
         "windowId": w,
         "private": private,
         "version": nf_core::VERSION,

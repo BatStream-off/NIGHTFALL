@@ -35,6 +35,10 @@ async function init() {
   if (!st.ok) { msg('Erreur interne : ' + (st.error || '')); show('lock', true); return; }
   document.body.classList.toggle('vertical', !!st.verticalTabs);
   document.body.classList.toggle('no-home', st.showHome === false);
+  if (st.frameless && MODE !== 'popup') {
+    document.body.classList.add('frameless', 'os-' + st.platform);
+    if (MODE === 'top') setupWindowControls();
+  }
   if (MODE === 'side') { show('side', st.unlocked); return; }
   if (MODE === 'popup') { if (st.unlocked) openPopupView(); else api('popup.close'); return; }
   if (!st.unlocked) {
@@ -45,6 +49,29 @@ async function init() {
     showLock();
   } else {
     showChrome();
+  }
+}
+
+// Integrated title bar (prototype M-0005): window buttons drawn on Windows,
+// a draggable band over the splash and lock screens.
+function setupWindowControls() {
+  show('dragband', true);
+  if (st.platform !== 'windows') return;
+  show('winctl', true);
+  $('#w-min').addEventListener('click', () => api('win.minimize'));
+  $('#w-max').addEventListener('click', () => api('win.maximize'));
+  $('#w-close').addEventListener('click', () => api('win.close'));
+}
+
+function applyWinState(ev) {
+  document.body.classList.toggle('maximized', !!ev.maximized);
+  document.body.classList.toggle('fullscreen', !!ev.fullscreen);
+  document.body.classList.toggle('inactive', ev.active === false);
+  const max = $('#w-max');
+  if (max) {
+    max.firstElementChild.firstElementChild.setAttribute('href', ev.maximized ? '#i-win-restore' : '#i-win-max');
+    max.title = ev.maximized ? 'Restaurer' : 'Agrandir';
+    max.setAttribute('aria-label', max.title);
   }
 }
 
@@ -94,6 +121,8 @@ function lockView(view) {
 async function showLock() {
   show('chrome', false);
   show('lock', true);
+  document.body.classList.add('locked');
+  show('dragband', document.body.classList.contains('frameless'));
   st = await api('state');
   msg(st.lastError || '');
   $('#tagline').textContent = st.tagline || '';
@@ -164,6 +193,8 @@ function showChrome() {
   shortcutTitles();
   show('lock', false);
   show('chrome', true);
+  document.body.classList.remove('locked');
+  show('dragband', false);
   show('private-badge', PRIVATE);
   api('tabs');
   refreshPageInfo();
@@ -782,6 +813,9 @@ window.nfEvent = (ev) => {
   switch (ev.type) {
     case 'update':
       applyUpdateState(ev.status);
+      break;
+    case 'winstate':
+      if (MODE !== 'popup') applyWinState(ev);
       break;
     case 'tabs':
       tabs = ev.tabs || [];
