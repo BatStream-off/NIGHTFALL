@@ -1001,7 +1001,7 @@ fn step_titlebar() {
     let r = super::titlebar::report(1);
     state::log(&format!("selftest: barre de titre {r}"));
     if !super::titlebar::FRAMELESS {
-        return step_final_menu();
+        return step_measure();
     }
     if r["draggable"].as_u64().unwrap_or(0) == 0 || r["dragPoint"].is_null() || r["noDragPoint"].is_null() {
         return fail(&format!("barre de titre : zones de déplacement absentes {r}"));
@@ -1027,6 +1027,35 @@ fn step_titlebar() {
             if r["maximized"] != false {
                 return fail("barre de titre : la fenêtre n'a pas été restaurée");
             }
+            step_measure();
+        });
+    });
+}
+
+/// Measures (L6): start-up, a page load, memory of the whole process tree.
+/// Logged as one line « MESURES {json} » read back from the CI logs.
+static MEASURE_T0: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+fn step_measure() {
+    step("mesures (démarrage, chargement, mémoire)");
+    *MEASURE_T0.lock().unwrap() = Some(std::time::Instant::now());
+    let _ = call("tab.new", json!({ "url": "https://example.com/?nf-mesure" }));
+    wait_for("chargement mesuré", 60, || active_tab_loaded("https://example.com/?nf-mesure"), || {
+        let load_ms = MEASURE_T0.lock().unwrap().map(|t| t.elapsed().as_millis() as u64).unwrap_or(0);
+        // Let the renderer settle before reading memory.
+        on_ui_delayed(1500, move || {
+            let tabs = windows::tabs_state(1)["tabs"].as_array().map(|a| a.len()).unwrap_or(0);
+            let (procs, bytes) = nf_perf::process_tree_memory(std::process::id());
+            let m = json!({
+                "platform": super::titlebar::platform(),
+                "firstWindowMs": windows::FIRST_WINDOW_MS.load(std::sync::atomic::Ordering::Relaxed),
+                "pageLoadMs": load_ms,
+                "tabs": tabs,
+                "processes": procs,
+                "memoryMiB": bytes / (1024 * 1024),
+                "shieldRules": state::shield().rules_loaded(),
+            });
+            state::log(&format!("MESURES {m}"));
             step_final_menu();
         });
     });

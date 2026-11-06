@@ -41,6 +41,37 @@ impl MemorySnapshot {
     }
 }
 
+/// Memory of a process and all its descendants (Chromium's renderer, GPU
+/// and utility processes): (number of processes, resident bytes).
+pub fn process_tree_memory(root: u32) -> (usize, u64) {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate};
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_memory());
+    let root = Pid::from_u32(root);
+    let procs = sys.processes();
+    let in_tree = |mut pid: Pid| -> bool {
+        for _ in 0..16 {
+            if pid == root {
+                return true;
+            }
+            match procs.get(&pid).and_then(|p| p.parent()) {
+                Some(parent) => pid = parent,
+                None => return false,
+            }
+        }
+        false
+    };
+    let mut count = 0;
+    let mut bytes = 0;
+    for (pid, p) in procs {
+        if in_tree(*pid) {
+            count += 1;
+            bytes += p.memory();
+        }
+    }
+    (count, bytes)
+}
+
 /// Read system memory from the OS.
 pub fn memory_snapshot() -> MemorySnapshot {
     let mut sys = sysinfo::System::new();

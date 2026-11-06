@@ -495,7 +495,17 @@ pub fn create_window(private: bool, urls: Vec<String>) {
     });
 }
 
+/// Time from process start to the first window, in ms (0 = not yet).
+pub static FIRST_WINDOW_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn on_window_created(id: u32, window: Window) {
+    if FIRST_WINDOW_MS.load(Ordering::Relaxed) == 0 {
+        if let Some(t0) = super::PROCESS_START.get() {
+            let ms = t0.elapsed().as_millis().max(1) as u64;
+            FIRST_WINDOW_MS.store(ms, Ordering::Relaxed);
+            super::state::log(&format!("mesure : première fenêtre après {ms} ms"));
+        }
+    }
     let unlocked = core().is_unlocked();
     with_window(id, |ctx| {
         let win_layout = window.set_to_box_layout(Some(&BoxLayoutSettings { horizontal: 1, cross_axis_alignment: AxisAlignment::STRETCH, ..Default::default() }));

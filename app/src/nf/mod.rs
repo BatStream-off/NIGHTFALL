@@ -133,7 +133,11 @@ fn startup_core(paths: ProfilePaths) -> Result<(), String> {
     Ok(())
 }
 
+/// Start of the browser process (measures in the log and the self test).
+pub static PROCESS_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 pub fn run_main(main_args: &MainArgs, cmd_line: &CommandLine, sandbox_info: *mut u8) {
+    PROCESS_START.get_or_init(std::time::Instant::now);
     let switch = CefString::from("type");
     let is_browser_process = cmd_line.has_switch(Some(&switch)) != 1;
 
