@@ -366,6 +366,10 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         "data.import" | "data.export" => data_transfer(caller, cmd, body),
         "system.proxySettings" => open_proxy_settings(),
         "system.defaultBrowser" => open_default_browser_settings(),
+        "win.closeConfirmed" => {
+            on_ui(move || windows::close_window_confirmed(w));
+            ok()
+        }
         "system.certificates" => open_certificates(),
         "https.proceed" => {
             // "Continuer vers le site" on the HTTPS-First warning page.

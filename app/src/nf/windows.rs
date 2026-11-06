@@ -232,6 +232,9 @@ wrap_window_delegate! {
         }
 
         fn can_close(&self, _window: Option<&mut Window>) -> i32 {
+            if ask_before_close(self.window_id) {
+                return 0;
+            }
             prepare_window_close(self.window_id);
             1
         }
@@ -1811,6 +1814,41 @@ pub fn close_private_windows() {
             w.close();
         }
     }
+}
+
+thread_local! {
+    /// Windows whose closing the user confirmed (several tabs).
+    static CLOSE_CONFIRMED: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Set while quitting the whole application: no question per window.
+pub static QUITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Paramètres › Navigation › « Demander avant de fermer plusieurs onglets »:
+/// true when the closing waits for the user's answer (dropdown in the window).
+fn ask_before_close(window_id: u32) -> bool {
+    if QUITTING.load(Ordering::SeqCst) || CLOSE_CONFIRMED.with(|c| c.borrow().contains(&window_id)) {
+        return false;
+    }
+    let (warn, unlocked) = {
+        let c = core();
+        (c.settings.warn_close_tabs, c.is_unlocked())
+    };
+    let tabs = with_window(window_id, |c| c.tabs.len()).unwrap_or(0);
+    if !warn || !unlocked || tabs < 2 {
+        return false;
+    }
+    let width = with_window(window_id, |c| c.window.as_ref().map(|w| w.bounds().width)).flatten().unwrap_or(800);
+    let x = (width / 2 - 170).max(0);
+    super::ui_thread::on_ui_delayed(0, move || popup_open(window_id, &format!("closeconfirm-{tabs}"), Rect { x, y: 40, width: 1, height: 1 }, 340, 150));
+    true
+}
+
+/// The user confirmed: close without asking again.
+pub fn close_window_confirmed(window_id: u32) {
+    CLOSE_CONFIRMED.with(|c| c.borrow_mut().push(window_id));
+    popup_close(window_id);
+    close_window(window_id);
 }
 
 pub fn close_window(window_id: u32) {

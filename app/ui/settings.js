@@ -860,6 +860,8 @@ function sNavigation() {
     group('Lecture des médias',
       row({ label: 'Bloquer la lecture automatique', desc: 'Les vidéos et les sons ne démarrent qu\'après un clic ou une touche sur la page. S\'applique au prochain lancement.', keywords: 'autoplay video son lecture automatique',
         ctl: [restart, sw(() => P.autoplay_block, (v) => { P.autoplay_block = v; }, { after: restart.nfUpdate })] })),
+    group('Fenêtres',
+      toggle('Demander avant de fermer plusieurs onglets', 'Quand une fenêtre qui a au moins deux onglets va se fermer, NIGHTFALL demande confirmation. Quitter NIGHTFALL ne demande rien.', () => S.warn_close_tabs, (v) => { S.warn_close_tabs = v; }, { keywords: 'fermer fenetre onglets confirmation' })),
     group('Zoom',
       row({ label: 'Zoom par défaut', desc: 'Se règle dans Apparence et thèmes › Pages web.', onclick: () => show('apparence'), keywords: 'agrandir taille' }),
       row({ label: 'Zoom propre à certains sites', desc: 'Ces sites gardent le zoom que vous leur avez donné.', ctl: clearZooms, keywords: 'zoom site retirer' }),

@@ -95,6 +95,7 @@ define_class!(
         /// Session Vault), then the message loop ends.
         #[unsafe(method(terminate:))]
         unsafe fn terminate(&self, _sender: &AnyObject) {
+            super::windows::QUITTING.store(true, std::sync::atomic::Ordering::SeqCst);
             for id in super::windows::window_ids() {
                 super::windows::close_window(id);
             }

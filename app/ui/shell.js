@@ -507,6 +507,7 @@ async function openPopupView() {
   else if (kind === 'zoom') zoomPanel(inner);
   else if (kind === 'suggest') await suggestPanel(inner);
   else if (kind === 'tabmenu') tabMenuPanel(inner, name);
+  else if (kind === 'closeconfirm') closeConfirmPanel(inner, name);
   else menuPanel(inner);
   fitPopup();
   new ResizeObserver(() => fitPopup()).observe(inner);
@@ -515,6 +516,15 @@ async function openPopupView() {
   if (kind !== 'find' && kind !== 'suggest') window.addEventListener('blur', () => { if (Date.now() - loadedAt > 300) closeSelf(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (kind === 'find') api('find.close'); else closeSelf(); } });
   api('tabs'); // up-to-date counters (blocked items) for this window
+}
+
+// ---- « close several tabs? » (Paramètres › Navigation)
+function closeConfirmPanel(p, name) {
+  const n = Number(name.split('-')[1]) || 2;
+  const go = el('button', { class: 'primary', text: `Fermer les ${n} onglets`, onclick: () => api('win.closeConfirmed') });
+  p.append(el('div', { class: 'cc-text', text: `Fermer la fenêtre et ses ${n} onglets ?` }),
+    el('div', { class: 'cc-actions' }, el('button', { text: 'Annuler', onclick: () => closeSelf() }), go));
+  setTimeout(() => go.focus(), 30);
 }
 
 // ---- find in page

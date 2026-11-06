@@ -306,6 +306,9 @@ body.frameless.os-macos .side-head img { display: none; }
 body.vertical:not(.locked) #winctl { height: 52px; }
 #winctl button { width: 46px; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--icon); display: grid; place-items: center; transition: background .12s, color .12s; }
 #winctl button svg { width: 16px; height: 16px; stroke-width: 1.4; }
+.p-closeconfirm { padding: 16px 16px 12px; }
+.p-closeconfirm .cc-text { font-size: 14px; color: var(--c-text); margin-bottom: 16px; }
+.p-closeconfirm .cc-actions { display: flex; justify-content: flex-end; gap: 8px; }
 #winctl button:hover, #winctl button.hover { background: var(--hover); color: #fff; }
 #winctl button:active { background: var(--press); transform: none; }
 #winctl button.close:hover { background: #c42b3c; color: #fff; }

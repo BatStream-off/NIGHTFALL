@@ -73,6 +73,8 @@ pub struct Settings {
 
     // ---- appearance
     pub show_home_button: bool,
+    /// Ask before closing a window that has several tabs.
+    pub warn_close_tabs: bool,
     /// Default page zoom, in percent (applied by Chromium to every page
     /// without a zoom of its own).
     pub default_zoom: u32,
@@ -219,6 +221,7 @@ impl Default for Settings {
             startup_mode: String::new(),
             startup_pages: Vec::new(),
             show_home_button: true,
+            warn_close_tabs: false,
             default_zoom: 100,
             font_size: 16,
             min_font_size: 0,
