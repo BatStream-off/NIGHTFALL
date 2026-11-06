@@ -75,6 +75,7 @@ pub fn status_json() -> serde_json::Value {
             "enabled": sh_cfg.enabled,
             "blockPopups": sh_cfg.block_popups,
             "rules": shield.rules_loaded(),
+            "integrityErrors": shield.integrity_errors(),
             "listsCached": shield.has_cached_lists(),
             "lists": sh_cfg.lists,
             "allowlist": sh_cfg.allowlist,
@@ -82,7 +83,7 @@ pub fn status_json() -> serde_json::Value {
             "stats": stats,
         },
         "videoguard": {
-            "config": c.videoguard,
+            "config": c.videoguard.with_all_categories(),
             "categories": nf_videoguard::CATEGORIES,
             "attribution": nf_videoguard::ATTRIBUTION,
         },

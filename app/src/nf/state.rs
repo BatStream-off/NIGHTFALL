@@ -51,6 +51,8 @@ pub struct Settings {
     pub devtools_enabled: bool,
     pub phishing_warnings: bool,
     pub wallpaper: String,
+    /// Theme in use and the user's own themes (see `theme.rs`).
+    pub theme: super::theme::ThemeSettings,
     pub shortcuts: Vec<Shortcut>,
     pub perf: nf_perf::PerfConfig,
     pub auto_purge: AutoPurgeRules,
@@ -146,6 +148,7 @@ pub struct Shortcut {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            theme: Default::default(),
             search_engine: "duckduckgo".into(),
             search_custom_name: String::new(),
             search_custom_url: String::new(),

@@ -38,6 +38,11 @@ pub struct FilterList {
     /// scriptlets (uBO grants this to its own lists only).
     #[serde(default)]
     pub trusted: bool,
+    /// SHA-256 of the cached list as written by NIGHTFALL (kept in the
+    /// encrypted settings): a cached file changed by anything else is
+    /// refused instead of being loaded, trusted scriptlets included.
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 /// Saved encrypted in the profile: a field missing from an older (or newer)
@@ -74,6 +79,7 @@ fn default_lists() -> Vec<FilterList> {
         enabled,
         updated: None,
         trusted,
+        sha256: None,
     };
     const UBO: &str = "https://ublockorigin.github.io/uAssets/filters/";
     vec![
@@ -128,6 +134,10 @@ pub struct Shield {
     config: RwLock<ShieldConfig>,
     stats: Mutex<ShieldStats>,
     rules_loaded: Mutex<usize>,
+    /// One engine build at a time, in call order (the last configuration wins).
+    build: Mutex<()>,
+    /// Cached lists refused at the last build (changed outside NIGHTFALL).
+    integrity_errors: Mutex<Vec<String>>,
 }
 
 /// Registrable domain of a URL ("" when unparsable).
@@ -167,15 +177,31 @@ pub fn request_type_from_cef(resource_type: i32) -> &'static str {
 
 impl Shield {
     pub fn new(cache_dir: impl Into<PathBuf>, config: ShieldConfig) -> Self {
-        let s = Self {
+        let s = Self::new_unbuilt(cache_dir, config);
+        s.rebuild();
+        s
+    }
+
+    /// Shield with an empty engine: nothing is read from disk. NIGHTFALL
+    /// builds the engine after unlock, in the background (no page can load
+    /// before unlock), which keeps the start-up fast and never loads the
+    /// cached lists before the settings holding their fingerprints are open.
+    pub fn new_unbuilt(cache_dir: impl Into<PathBuf>, config: ShieldConfig) -> Self {
+        Self {
             cache_dir: cache_dir.into(),
             engine: RwLock::new(Arc::new(Engine::default())),
             config: RwLock::new(config),
             stats: Mutex::new(ShieldStats::default()),
             rules_loaded: Mutex::new(0),
-        };
-        s.rebuild();
-        s
+            build: Mutex::new(()),
+            integrity_errors: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Cached lists refused at the last build because their content no
+    /// longer matches the fingerprint recorded at download.
+    pub fn integrity_errors(&self) -> Vec<String> {
+        self.integrity_errors.lock().map(|e| e.clone()).unwrap_or_default()
     }
 
     fn list_path(&self, id: &str) -> PathBuf {
@@ -185,11 +211,24 @@ impl Shield {
 
     /// Rebuild the engine from cached lists + custom filters.
     pub fn rebuild(&self) {
+        let _one_at_a_time = self.build.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = self.config();
         let mut set = FilterSet::new(false);
         let mut count = 0;
+        let mut refused = Vec::new();
+        let mut first_seen: Vec<(String, String)> = Vec::new();
         for l in cfg.lists.iter().filter(|l| l.enabled) {
             if let Ok(text) = std::fs::read_to_string(self.list_path(&l.id)) {
+                let digest = sha256_hex(text.as_bytes());
+                match &l.sha256 {
+                    Some(expected) if *expected != digest => {
+                        refused.push(format!("{} : contenu modifié hors de NIGHTFALL, liste ignorée jusqu'au prochain téléchargement", l.name));
+                        continue;
+                    }
+                    // Cached before fingerprints existed: recorded now.
+                    None => first_seen.push((l.id.clone(), digest)),
+                    _ => {}
+                }
                 count += text.lines().filter(|x| !x.trim().is_empty() && !x.starts_with('!')).count();
                 let mut opts = ParseOptions::default();
                 if l.trusted {
@@ -206,6 +245,17 @@ impl Shield {
         engine.use_resources(scriptlets::resources());
         *self.engine.write().unwrap() = Arc::new(engine);
         *self.rules_loaded.lock().unwrap() = count;
+        if !first_seen.is_empty() {
+            let mut c = self.config.write().unwrap();
+            for (id, digest) in first_seen {
+                if let Some(l) = c.lists.iter_mut().find(|l| l.id == id && l.sha256.is_none()) {
+                    l.sha256 = Some(digest);
+                }
+            }
+        }
+        if let Ok(mut e) = self.integrity_errors.lock() {
+            *e = refused;
+        }
     }
 
     pub fn rules_loaded(&self) -> usize {
@@ -219,6 +269,12 @@ impl Shield {
     pub fn set_config(&self, cfg: ShieldConfig) {
         *self.config.write().unwrap() = cfg;
         self.rebuild();
+    }
+
+    /// Replace the configuration without building the engine; the caller
+    /// then calls `rebuild` (from a background thread).
+    pub fn set_config_later(&self, cfg: ShieldConfig) {
+        *self.config.write().unwrap() = cfg;
     }
 
     pub fn set_enabled(&self, enabled: bool) {
@@ -376,12 +432,12 @@ impl Shield {
         let lists = self.config().lists;
         let mut updated = Vec::new();
         for l in lists.iter().filter(|l| l.enabled) {
-            match download(&l.url) {
+            match download(&l.url).map(|text| preprocess(&text, &l.url, &mut |u: &str| download(u))) {
                 Ok(text) => {
                     if let Err(e) = nf_core::paths::write_private(&self.list_path(&l.id), text.as_bytes()) {
                         errors.push(format!("{}: {e}", l.name));
                     } else {
-                        updated.push(l.id.clone());
+                        updated.push((l.id.clone(), sha256_hex(text.as_bytes())));
                     }
                 }
                 Err(e) => errors.push(e.to_string()),
@@ -390,8 +446,9 @@ impl Shield {
         {
             let mut cfg = self.config.write().unwrap();
             for l in cfg.lists.iter_mut() {
-                if updated.contains(&l.id) {
+                if let Some((_, digest)) = updated.iter().find(|(id, _)| *id == l.id) {
                     l.updated = Some(now);
+                    l.sha256 = Some(digest.clone());
                 }
             }
         }
@@ -417,22 +474,259 @@ impl Shield {
     }
 }
 
+/// Largest list accepted (the biggest well-known lists are about 14 MB;
+/// `ureq`'s own `into_string` stops at 10 MiB).
+const MAX_LIST_BYTES: u64 = 32 * 1024 * 1024;
+
 fn download(url: &str) -> Result<String, ShieldError> {
+    use std::io::Read;
     let resp = ureq::get(url)
         .set("User-Agent", "NIGHTFALL-Shield/0.1 (+https://github.com/BatStream-off/NIGHTFALL)")
         .timeout(std::time::Duration::from_secs(60))
         .call()
         .map_err(|e| ShieldError::Download(url.into(), e.to_string()))?;
-    let text = resp.into_string().map_err(|e| ShieldError::Download(url.into(), e.to_string()))?;
-    if !text.contains('\n') || text.len() < 100 {
+    let mut bytes = Vec::new();
+    resp.into_reader()
+        .take(MAX_LIST_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| ShieldError::Download(url.into(), e.to_string()))?;
+    if bytes.len() as u64 > MAX_LIST_BYTES {
+        return Err(ShieldError::Download(url.into(), "liste trop grande (plus de 32 Mio)".into()));
+    }
+    let text = String::from_utf8(bytes).map_err(|_| ShieldError::Download(url.into(), "liste illisible (pas du texte UTF-8)".into()))?;
+    if !looks_like_filter_list(&text) {
         return Err(ShieldError::Download(url.into(), "liste vide ou invalide".into()));
     }
     Ok(text)
 }
 
+/// A filter list has at least a few lines that are neither empty nor comments.
+fn looks_like_filter_list(text: &str) -> bool {
+    text.len() >= 100 && text.lines().filter(|l| { let t = l.trim(); !t.is_empty() && !t.starts_with('!') && !t.starts_with('[') }).take(3).count() >= 3
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// uBlock Origin pre-parsing directives, evaluated as uBO does in a
+/// Chromium-based browser: `!#if` / `!#else` / `!#endif` blocks, and
+/// `!#include file` (same directory as the list, only in active blocks,
+/// not nested). Lines of inactive blocks are dropped.
+pub fn preprocess(text: &str, list_url: &str, fetch: &mut dyn FnMut(&str) -> Result<String, ShieldError>) -> String {
+    preprocess_inner(text, list_url, fetch, 0)
+}
+
+fn preprocess_inner(text: &str, list_url: &str, fetch: &mut dyn FnMut(&str) -> Result<String, ShieldError>, depth: u8) -> String {
+    let mut out = String::with_capacity(text.len());
+    // Each open `!#if`: (active before the block, condition value, in `!#else`).
+    let mut stack: Vec<(bool, bool, bool)> = Vec::new();
+    let mut active = true;
+    for line in text.lines() {
+        let t = line.trim_end();
+        if let Some(cond) = t.strip_prefix("!#if ") {
+            let v = eval_condition(cond.trim());
+            stack.push((active, v, false));
+            active = active && v;
+            continue;
+        }
+        if t == "!#else" {
+            if let Some(top) = stack.last_mut() {
+                top.2 = true;
+                active = top.0 && !top.1;
+            }
+            continue;
+        }
+        if t == "!#endif" {
+            if let Some((before, _, _)) = stack.pop() {
+                active = before;
+            }
+            continue;
+        }
+        if !active {
+            continue;
+        }
+        if let Some(file) = t.strip_prefix("!#include ") {
+            let file = file.trim();
+            if depth == 0 && is_safe_include(file) {
+                if let Some(url) = sibling_url(list_url, file) {
+                    if let Ok(sub) = fetch(&url) {
+                        let sub = preprocess_inner(&sub, &url, fetch, depth + 1);
+                        out.push_str(&sub);
+                        if !sub.is_empty() && !sub.ends_with('\n') {
+                            out.push('\n');
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// Only a plain file name or sub-path in the list's own directory.
+fn is_safe_include(file: &str) -> bool {
+    !file.is_empty() && !file.contains("..") && !file.contains("://") && !file.starts_with('/') && !file.contains('\\')
+}
+
+fn sibling_url(list_url: &str, file: &str) -> Option<String> {
+    let base = url::Url::parse(list_url).ok()?;
+    let u = base.join(file).ok()?;
+    (u.scheme() == "https" && u.host_str() == base.host_str()).then(|| u.to_string())
+}
+
+/// Tokens true for NIGHTFALL (Chromium engine, user style sheets injected).
+fn condition_token(tok: &str) -> bool {
+    matches!(tok, "true" | "env_chromium" | "cap_user_stylesheet")
+}
+
+/// `!#if` expression: tokens, `!`, `&&`, `||` and parentheses.
+fn eval_condition(expr: &str) -> bool {
+    let toks: Vec<String> = {
+        let mut v = Vec::new();
+        let mut cur = String::new();
+        let mut chars = expr.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '(' | ')' | '!' => {
+                    if !cur.is_empty() { v.push(std::mem::take(&mut cur)); }
+                    v.push(c.to_string());
+                }
+                '&' | '|' => {
+                    if !cur.is_empty() { v.push(std::mem::take(&mut cur)); }
+                    if chars.peek() == Some(&c) { chars.next(); }
+                    v.push(format!("{c}{c}"));
+                }
+                c if c.is_whitespace() => {
+                    if !cur.is_empty() { v.push(std::mem::take(&mut cur)); }
+                }
+                c => cur.push(c),
+            }
+        }
+        if !cur.is_empty() { v.push(cur); }
+        v
+    };
+    let mut pos = 0;
+    let r = parse_or(&toks, &mut pos);
+    // Malformed expression: inactive (uBO behaves the same way).
+    if pos != toks.len() { false } else { r.unwrap_or(false) }
+}
+
+fn parse_or(t: &[String], p: &mut usize) -> Option<bool> {
+    let mut v = parse_and(t, p)?;
+    while t.get(*p).map(String::as_str) == Some("||") {
+        *p += 1;
+        let r = parse_and(t, p)?;
+        v = v || r;
+    }
+    Some(v)
+}
+
+fn parse_and(t: &[String], p: &mut usize) -> Option<bool> {
+    let mut v = parse_not(t, p)?;
+    while t.get(*p).map(String::as_str) == Some("&&") {
+        *p += 1;
+        let r = parse_not(t, p)?;
+        v = v && r;
+    }
+    Some(v)
+}
+
+fn parse_not(t: &[String], p: &mut usize) -> Option<bool> {
+    match t.get(*p).map(String::as_str) {
+        Some("!") => {
+            *p += 1;
+            parse_not(t, p).map(|v| !v)
+        }
+        Some("(") => {
+            *p += 1;
+            let v = parse_or(t, p)?;
+            if t.get(*p).map(String::as_str) != Some(")") {
+                return None;
+            }
+            *p += 1;
+            Some(v)
+        }
+        Some(tok) if tok != ")" && tok != "&&" && tok != "||" => {
+            *p += 1;
+            Some(condition_token(tok))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preprocess_if_else_and_include() {
+        let text = "a\n!#if env_firefox\nfirefox-only\n!#include ff.txt\n!#else\nnot-firefox\n!#endif\n!#if !env_safari && (env_chromium || env_edge)\nchromium\n!#include sub.txt\n!#endif\n!#include ../evil.txt\nz\n";
+        let mut asked = Vec::new();
+        let mut fetch = |u: &str| -> Result<String, ShieldError> {
+            asked.push(u.to_string());
+            Ok("included\n!#if env_mobile\nmobile\n!#endif\n!#include nested.txt\n".to_string())
+        };
+        let out = preprocess(text, "https://lists.test/filters/main.txt", &mut fetch);
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines, vec!["a", "not-firefox", "chromium", "included", "z"]);
+        // Only the include of the active block, never `..`, never nested.
+        assert_eq!(asked, vec!["https://lists.test/filters/sub.txt".to_string()]);
+    }
+
+    #[test]
+    fn condition_expressions() {
+        assert!(eval_condition("env_chromium"));
+        assert!(!eval_condition("env_firefox"));
+        assert!(eval_condition("!env_mobile"));
+        assert!(eval_condition("env_firefox || env_chromium"));
+        assert!(!eval_condition("env_chromium && env_mv3"));
+        assert!(eval_condition("!(env_safari || env_mobile) && cap_user_stylesheet"));
+        assert!(!eval_condition("(env_chromium"));
+        assert!(!eval_condition("unknown_token"));
+    }
+
+    #[test]
+    fn cached_list_changed_outside_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let lists = vec![FilterList { id: "l1".into(), name: "L1".into(), url: "https://x.test/l1.txt".into(), enabled: true, updated: None, trusted: false, sha256: None }];
+        let cfg = ShieldConfig { lists, ..Default::default() };
+        std::fs::write(dir.path().join("l1.txt"), "||ads.test^\n").unwrap();
+        let s = Shield::new(dir.path(), cfg);
+        let page = "https://site.test/";
+        assert!(s.should_block("https://ads.test/a.js", page, "script", page));
+        // First build records the fingerprint.
+        let recorded = s.config().lists[0].sha256.clone();
+        assert_eq!(recorded, Some(sha256_hex(b"||ads.test^\n")));
+        // Someone rewrites the cached file: refused at the next build.
+        std::fs::write(dir.path().join("l1.txt"), "||other.test^\n").unwrap();
+        s.rebuild();
+        assert!(!s.should_block("https://other.test/a.js", page, "script", page));
+        assert!(!s.should_block("https://ads.test/a.js", page, "script", page));
+        assert_eq!(s.integrity_errors().len(), 1);
+    }
+
+    #[test]
+    fn unbuilt_shield_reads_nothing_until_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = ShieldConfig { custom_filters: "||ads.test^\n".into(), ..Default::default() };
+        let s = Shield::new_unbuilt(dir.path(), cfg);
+        let page = "https://site.test/";
+        assert!(!s.should_block("https://ads.test/a.js", page, "script", page));
+        s.rebuild();
+        assert!(s.should_block("https://ads.test/a.js", page, "script", page));
+    }
+
+    #[test]
+    fn filter_list_validation() {
+        assert!(!looks_like_filter_list("<html>\n</html>"));
+        assert!(!looks_like_filter_list("! only comments\n! here\n"));
+        assert!(looks_like_filter_list(&format!("! Title\n{}", "||a.test^\n||b.test^\n||c.test^\n".repeat(10))));
+    }
 
     fn shield_with(filters: &str) -> (tempfile::TempDir, Shield) {
         let dir = tempfile::tempdir().unwrap();

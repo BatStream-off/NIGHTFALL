@@ -56,7 +56,7 @@ body { overflow: hidden; }
 
 /* Switch (checkbox with role=switch) */
 input.sw { width: 40px; height: 22px; appearance: none; background: var(--steel-2); border-radius: 99px; position: relative; cursor: pointer; border: 0; padding: 0; flex: none; transition: background .15s; }
-input.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #c3cde0; transition: transform .15s; }
+input.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--c-text); transition: transform .15s; }
 input.sw:checked { background: var(--hex); }
 input.sw:checked::after { transform: translateX(18px); background: #fff; }
 input.sw:disabled { opacity: .45; cursor: default; }
@@ -118,3 +118,43 @@ mark { background: rgba(92, 214, 230, .25); color: inherit; border-radius: 3px; 
   #nav button { justify-content: center; padding: 0; }
   .st-content, .st-top { padding-left: 20px; padding-right: 20px; }
 }
+
+/* ---- Themes (Apparence) */
+.themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
+.th-card { display: flex; flex-direction: column; gap: 6px; }
+.th-pick { display: flex; flex-direction: column; align-items: stretch; gap: 8px; height: auto; padding: 8px; border-radius: var(--r-lg); background: var(--c-raised); border: 1px solid var(--c-line); text-align: left; }
+.th-pick:hover { border-color: var(--c-line-strong); background: var(--c-overlay); }
+.th-card.on .th-pick { border-color: var(--c-accent-2); box-shadow: 0 0 0 1px var(--c-accent-2); }
+.th-prev { position: relative; display: block; height: 64px; border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--c-line); }
+.th-bar { position: absolute; left: 0; right: 0; top: 0; height: 20px; }
+.th-tab { position: absolute; left: 8px; top: 4px; width: 46px; height: 16px; border-top: 2px solid; border-radius: 4px 4px 0 0; filter: brightness(1.25); }
+.th-line { position: absolute; left: 10px; top: 32px; width: 60%; height: 5px; border-radius: 3px; opacity: .85; }
+.th-btn { position: absolute; left: 10px; bottom: 9px; width: 34px; height: 10px; border-radius: 3px; }
+.th-name { font-size: var(--t-13, 13px); font-weight: 500; color: var(--c-text); }
+.th-acts { display: flex; gap: 2px; flex-wrap: wrap; min-height: 24px; }
+.th-acts button.small { height: 24px; padding: 0 8px; font-size: 12px; color: var(--c-text-2); }
+.th-acts button.danger { color: var(--danger); }
+.th-new { flex-direction: column; height: 104px; border-style: dashed; color: var(--c-text-2); background: transparent; }
+.th-new span:first-child { font-size: 22px; line-height: 1; }
+.theme-editor { margin-top: 16px; padding: 16px; border-radius: var(--r-lg); background: var(--c-raised); border: 1px solid var(--c-line); }
+.theme-editor h3 { margin: 0 0 4px; }
+.th-namefield { display: flex; align-items: center; gap: 12px; margin: 12px 0; color: var(--c-text); }
+.th-namefield span { width: 60px; }
+.th-namefield input { max-width: 320px; }
+.th-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.th-field { display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px; border-radius: var(--r-md); border: 1px solid var(--c-line); color: var(--c-text); cursor: pointer; }
+.th-field input[type=color] { width: 36px; height: 36px; padding: 2px; border-radius: var(--r-sm); flex: none; cursor: pointer; }
+.th-field span { display: flex; flex-direction: column; }
+.th-field small { color: var(--c-text-2); font-size: 12px; }
+.th-err { color: var(--danger); margin: 0 0 12px; }
+.th-sw { display: inline-flex; gap: 2px; }
+.th-sw i { width: 10px; height: 10px; border-radius: 2px; }
+
+/* ---- Security Center */
+.sc-head { display: flex; align-items: center; gap: 18px; margin: 4px 0 20px; padding: 18px 20px; border-radius: var(--r-lg); background: var(--c-raised); border: 1px solid var(--c-line); }
+.sc-score { font-size: 34px; font-weight: 600; line-height: 1; color: var(--c-accent-2); min-width: 72px; }
+.sc-head .lbl { font-weight: 600; color: var(--c-text); }
+.sc-head .desc { color: var(--c-text-2); font-size: 13px; }
+.srow.alert .lbl { color: var(--warn); }
+.stack-ctl { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; width: 100%; }
+.stack-ctl textarea { width: 100%; }

@@ -14,7 +14,7 @@ Le code de NIGHTFALL est publié sous **MPL-2.0** (voir `LICENSE`). Le budget du
 | Chakra Petch (police) | SIL OFL 1.1 | Titres et chiffres de l'interface, sous-ensemble intégré (`app/ui/fonts/`) | Licence jointe (`OFL-ChakraPetch.txt`) |
 | electron/rcedit | MIT | Outil de compilation en CI (icône de nightfall.exe), non distribué | Aucune |
 | SponsorBlock (API et données) | CC BY-NC-SA 4.0 | Interrogée à l'exécution par NIGHTFALL VideoGuard | Attribution, **usage non commercial** |
-| Extension SponsorBlock | LGPL-3.0 | Non utilisée (client réécrit en Rust) | Aucune |
+| Extension SponsorBlock | GPL-3.0 ou ultérieure (LGPL-3.0 avant 2020) | Non utilisée : client écrit pour NIGHTFALL, aucun code repris | Aucune |
 | SQLCipher, OpenSSL (intégrés via rusqlite) | BSD-3-Clause / Apache-2.0 | Base de données chiffrée | Mentions de licence |
 | Crates Rust | MIT, Apache-2.0, BSD, ISC, MPL-2.0, Zlib, Unicode | Diverses | Vérifiées par `cargo-deny` (`deny.toml`) |
 

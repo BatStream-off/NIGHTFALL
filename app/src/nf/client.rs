@@ -89,6 +89,33 @@ wrap_client! {
         fn context_menu_handler(&self) -> Option<ContextMenuHandler> {
             Some(super::browsing::NfContextMenu::new(self.kind.clone()))
         }
+
+        // Interface views only: their `app-region: drag` areas move the
+        // frameless window (integrated title bar, see titlebar.rs).
+        fn drag_handler(&self) -> Option<DragHandler> {
+            match *self.kind {
+                ClientKind::Ui { window_id, .. } => Some(NfUiDrag::new(window_id)),
+                ClientKind::Tab { .. } => None,
+            }
+        }
+    }
+}
+
+wrap_drag_handler! {
+    struct NfUiDrag {
+        window_id: u32,
+    }
+
+    impl DragHandler {
+        fn on_draggable_regions_changed(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>, regions: Option<&[DraggableRegion]>) {
+            // Only the main frame of an interface page defines the regions.
+            if frame.map(|f| f.is_main() == 0).unwrap_or(false) {
+                return;
+            }
+            if let Some(b) = browser {
+                super::titlebar::on_regions_changed(self.window_id, b, regions.unwrap_or(&[]));
+            }
+        }
     }
 }
 
