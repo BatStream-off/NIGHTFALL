@@ -1,3 +1,19 @@
+**0.3.0** (en préparation, PR #37 et #38)
+- **Interface :** couleurs et dégradés superflus retirés, raccourcis du Nouvel onglet sur une surface commune, emoji remplacés par des icônes, Security Center plus lisible.
+- **Paramètres en centre de contrôle :** Security Center puis 13 sections (Général, Apparence et thèmes, Confidentialité, Sécurité, NIGHTFALL Shield, VideoGuard, Autorisations des sites, Téléchargements, Navigation, Moteurs de recherche, Performances, Accessibilité, Options avancées). L'ancienne page Security Center séparée redirige vers les Paramètres.
+- **Nouveaux réglages :**
+  - moteurs par mot-clé (« @w chat ») et moteurs ajoutés par vous ; suggestions du moteur pendant la frappe, désactivées par défaut ;
+  - import et export des favoris (HTML) et des mots de passe (CSV, export protégé par le code) ;
+  - navigateur par défaut (Windows et macOS) : les liens des autres applications s'ouvrent dans NIGHTFALL, après le code s'il est verrouillé ;
+  - effacer l'historique et les cookies à la fermeture ; préchargement des pages désactivé par défaut ;
+  - taille de police minimale, réduction des animations, blocage de la lecture automatique, zooms par site ;
+  - sites toujours actifs (jamais mis en veille), gestionnaire de certificats ;
+  - autorisations : 9 types de plus (capteurs, MIDI, réseau local…) et fiche par site.
+- **Événements de sécurité :** journal chiffré de 30 jours (sites sans HTTPS, phishing, téléchargements à risque, codes incorrects, verrouillage d'urgence), nom du site seulement.
+- **Windows 11 :** Snap Layouts au survol du bouton Agrandir.
+- **NIGHTFALL Shield :** réponses neutres pour les règles `$redirect` (moins de pages cassées) ; 8 scriptlets de plus.
+- **Mesures :** démarrage, chargement et mémoire relevés à chaque build.
+
 **0.2.0**
 - **Nouveau design « Crépuscule » :**
   - barre de titre intégrée au header : sous Windows, boutons réduire, agrandir et fermer dans la barre d'onglets ; sur macOS, boutons natifs intégrés ;
