@@ -39,6 +39,7 @@ async function brightShare(page) {
   await check('verrouillage', `http://127.0.0.1:${PORT_LOCKED}/shell.html?mode=top&w=1&private=0`, { width: 1280, height: 820 }, 3500);
   await check('barre-d-outils', `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=top&w=1&private=0`, { width: 1280, height: 88 }, 1500);
   await check('nouvel-onglet', `http://127.0.0.1:${PORT_UNLOCKED}/newtab.html`, { width: 1280, height: 760 }, 1000);
+  await check('nouvel-onglet-petit', `http://127.0.0.1:${PORT_UNLOCKED}/newtab.html`, { width: 760, height: 560 }, 1000);
   await check('menu', `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=popup&w=1&private=0&panel=menu`, { width: 340, height: 720 }, 1000);
   await check('menu-onglet', `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=popup&w=1&private=0&panel=tabmenu-2-ro`, { width: 290, height: 380 }, 1000);
   await check('recherche-page', `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=popup&w=1&private=0&panel=find`, { width: 400, height: 50 }, 1000);
