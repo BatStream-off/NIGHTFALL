@@ -713,6 +713,7 @@ fn prepare_window_close(id: u32) {
         // Chromium's copy of the remembered permission decisions does not
         // outlive the session (given back at the next unlock).
         super::permissions::forget_remembered_in_chromium();
+        super::browsing_data::clear_on_close();
     }
     // Collect first, close after: closing calls back into NIGHTFALL.
     let hosts: Vec<BrowserHost> = with_window(id, |ctx| {

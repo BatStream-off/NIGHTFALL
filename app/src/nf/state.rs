@@ -99,6 +99,11 @@ pub struct Settings {
     /// Chromium's page preloading and DNS prefetching (off: no request
     /// is made to a site before you open it).
     pub network_prediction: bool,
+    /// When the last window closes: history and download list erased.
+    pub clear_on_close_history: bool,
+    /// When the last window closes: cookies erased (not sealed in the
+    /// Session Vault), so every site is signed out.
+    pub clear_on_close_cookies: bool,
 
     // ---- site permissions
     /// Permission kind id -> "ask" | "block" (missing = ask).
@@ -225,6 +230,8 @@ impl Default for Settings {
             secure_dns: "system".into(),
             secure_dns_custom: String::new(),
             network_prediction: false,
+            clear_on_close_history: false,
+            clear_on_close_cookies: false,
             permission_defaults: BTreeMap::new(),
             site_permissions: Vec::new(),
             permission_resets: Vec::new(),
@@ -666,6 +673,7 @@ mod tests {
         assert!(!p.splash_enabled && p.hardware_acceleration && !p.autoplay_block);
         // Settings added in 0.3: absent from older profiles, safe defaults.
         assert_eq!((s.min_font_size, s.reduce_motion, s.network_prediction), (0, false, false));
+        assert!(!s.clear_on_close_history && !s.clear_on_close_cookies && s.search_engines_custom.is_empty());
     }
 
     #[test]
