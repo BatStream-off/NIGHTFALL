@@ -1,4 +1,4 @@
-**0.3.0** (en préparation, PR #37 et #38)
+**0.3.0**
 - **Interface :** couleurs et dégradés superflus retirés, raccourcis du Nouvel onglet sur une surface commune, emoji remplacés par des icônes, Security Center plus lisible.
 - **Paramètres en centre de contrôle :** Security Center puis 13 sections (Général, Apparence et thèmes, Confidentialité, Sécurité, NIGHTFALL Shield, VideoGuard, Autorisations des sites, Téléchargements, Navigation, Moteurs de recherche, Performances, Accessibilité, Options avancées). L'ancienne page Security Center séparée redirige vers les Paramètres.
 - **Nouveaux réglages :**
