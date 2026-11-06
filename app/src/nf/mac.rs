@@ -9,7 +9,7 @@ use objc2::{
     sel, ClassType, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_app_kit::{NSApp, NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSEvent};
-use objc2_foundation::{ns_string, NSBundle, NSObjectNSThreadPerformAdditions};
+use objc2_foundation::{ns_string, NSArray, NSBundle, NSObjectNSThreadPerformAdditions, NSURL};
 use std::{cell::Cell, ptr};
 
 define_class! {
@@ -44,6 +44,14 @@ define_class! {
                 super::windows::create_window(false, Vec::new());
             }
             Bool::NO
+        }
+
+        /// Links opened from other applications (NIGHTFALL chosen as the
+        /// default browser in System Settings).
+        #[unsafe(method(application:openURLs:))]
+        unsafe fn application_open_urls(&self, _sender: &NSApplication, urls: &NSArray<NSURL>) {
+            let list: Vec<String> = urls.iter().filter_map(|u| u.absoluteString().map(|s| s.to_string())).collect();
+            super::app::open_urls_when_ready(list);
         }
 
         #[unsafe(method(applicationSupportsSecureRestorableState:))]
@@ -87,6 +95,7 @@ define_class!(
         /// Session Vault), then the message loop ends.
         #[unsafe(method(terminate:))]
         unsafe fn terminate(&self, _sender: &AnyObject) {
+            super::windows::QUITTING.store(true, std::sync::atomic::Ordering::SeqCst);
             for id in super::windows::window_ids() {
                 super::windows::close_window(id);
             }

@@ -21,7 +21,7 @@ function renderFolder(parentId, depth) {
   const box = el('div', { style: depth ? 'margin-left:18px' : '' });
   for (const f of DATA.folders.filter((x) => (x.parent_id ?? null) === parentId)) {
     box.append(el('div', { class: 'row', style: 'margin:10px 0 4px' },
-      el('b', { class: 'grow', text: '📁 ' + f.title }),
+      el('b', { class: 'grow folder', text: f.title }),
       el('button', { class: 'ghost', text: 'Sous-dossier', onclick: async () => { const t = prompt('Nom du sous-dossier'); if (t) { await api('bookmarks.folder.add', { parent: f.id, title: t }); load(); } } }),
       el('button', { class: 'ghost', text: 'Renommer', onclick: async () => { const t = prompt('Nouveau nom', f.title); if (t) { await api('bookmarks.folder.rename', { id: f.id, title: t }); load(); } } }),
       el('button', { class: 'ghost', text: 'Supprimer', onclick: async () => { if (confirm('Supprimer ce dossier et son contenu ?')) { await api('bookmarks.folder.delete', { id: f.id }); load(); } } })));
@@ -47,7 +47,7 @@ async function load() {
   const r = await api('bookmarks.list');
   if (!check(r)) return;
   DATA = r;
-  if (!r.bookmarks.length && !r.folders.length) { tree.append(el('div', { class: 'empty', text: 'Aucun favori. Utilisez ☆ dans la barre d\'adresse ou Ctrl+D.' })); return; }
+  if (!r.bookmarks.length && !r.folders.length) { tree.append(el('div', { class: 'empty', text: 'Aucun favori. Utilisez l\'étoile de la barre d\'adresse ou Ctrl+D.' })); return; }
   tree.append(renderFolder(null, 0));
 }
 

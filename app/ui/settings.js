@@ -36,6 +36,15 @@ const KIND_NAMES = {
   downloads: ['Téléchargements multiples', 'Plusieurs fichiers téléchargés à la suite'],
   window_management: ['Gestion des fenêtres', 'Ouverture et placement de fenêtres sur vos écrans'],
   local_fonts: ['Polices installées', 'Liste des polices de votre ordinateur'],
+  sensors: ['Capteurs de mouvement', 'Accéléromètre, gyroscope : peuvent servir à vous identifier'],
+  midi: ['Appareils MIDI', 'Instruments et contrôleurs de musique'],
+  idle_detection: ['Détection d\'inactivité', 'Savoir si vous utilisez l\'ordinateur'],
+  protocol_handlers: ['Gestionnaires de liens', 'Ouvrir des liens mailto:, webcal:… avec le site'],
+  storage_access: ['Accès aux cookies intégrés', 'Un site intégré dans un autre demande ses propres cookies'],
+  file_system: ['Modification de fichiers', 'Enregistrer dans des fichiers de votre ordinateur'],
+  local_network: ['Réseau local', 'Appareils de votre réseau : imprimante, box, objets connectés'],
+  keyboard_lock: ['Capture du clavier', 'Plein écran de jeux et bureaux à distance'],
+  pointer_lock: ['Capture de la souris', 'Jeux et applications 3D'],
 };
 
 // ------------------------------------------------------------------ helpers
@@ -396,12 +405,43 @@ function sSearch() {
   });
   custom.hidden = S.search_engine !== 'custom';
   custom.nfDep = () => sel.value === 'custom';
-  return [group('',
-    row({ label: 'Moteur de recherche utilisé dans la barre d\'adresse', desc: 'Ce que vous tapez et qui n\'est pas une adresse est envoyé à ce moteur.', ctl: sel, keywords: 'duckduckgo google brave qwant startpage ecosia bing' }),
-    custom)];
+  const sugg = toggle('Suggestions de recherche du moteur', 'Pendant la frappe, ce que vous tapez dans la barre d\'adresse est envoyé au moteur choisi pour obtenir ses suggestions (jamais dans une fenêtre privée, jamais pour une adresse). Désactivé, rien ne quitte l\'ordinateur avant Entrée. Disponible avec DuckDuckGo, Brave Search, Ecosia, Google et Bing.', () => S.search_suggestions, (v) => { S.search_suggestions = v; }, { keywords: 'suggestions autocompletion saisie' });
+
+  // Keywords: built-in engines and the user's own.
+  const kwList = el('ul', { class: 'slist' });
+  const renderKw = () => {
+    kwList.textContent = '';
+    for (const k of INFO.engineKeywords || []) kwList.append(el('li', {}, el('span', { class: 'kbd', text: '@' + k.keyword }), el('span', { class: 'grow', text: k.name })));
+    S.search_engines_custom.forEach((e, i) => kwList.append(el('li', {}, el('span', { class: 'kbd', text: '@' + e.keyword }),
+      el('div', { class: 'grow' }, el('div', { text: e.name }), el('div', { class: 'sub', text: e.url })),
+      iconButton('s-x', 'Retirer ' + e.name, async () => { S.search_engines_custom.splice(i, 1); await save('Moteur retiré'); renderKw(); }))));
+  };
+  renderKw();
+  const kName = el('input', { placeholder: 'Nom (ex. : MDN)', 'aria-label': 'Nom du moteur' });
+  const kKey = el('input', { placeholder: 'Mot-clé (ex. : mdn)', 'aria-label': 'Mot-clé', style: 'max-width:160px' });
+  const kUrl = el('input', { type: 'url', placeholder: 'https://developer.mozilla.org/fr/search?q=%s', 'aria-label': 'Adresse du moteur (%s = recherche)' });
+  const addKw = button('Ajouter', async () => {
+    const e = { name: kName.value.trim(), keyword: kKey.value.trim().replace(/^@/, '').toLowerCase(), url: kUrl.value.trim() };
+    if (!e.name || !/^[a-z0-9]{1,12}$/.test(e.keyword)) { note('Mot-clé : 1 à 12 lettres ou chiffres', true); return; }
+    if (!/^https:\/\//i.test(e.url) || !e.url.includes('%s')) { note('L\'adresse doit commencer par https:// et contenir %s', true); return; }
+    if ((INFO.engineKeywords || []).some((k) => k.keyword === e.keyword) || S.search_engines_custom.some((k) => k.keyword === e.keyword)) { note('Ce mot-clé est déjà utilisé', true); return; }
+    S.search_engines_custom.push(e);
+    if (await save('Moteur ajouté')) { kName.value = ''; kKey.value = ''; kUrl.value = ''; renderKw(); }
+  });
+  return [
+    group('',
+      row({ label: 'Moteur de recherche utilisé dans la barre d\'adresse', desc: 'Ce que vous tapez et qui n\'est pas une adresse est envoyé à ce moteur.', ctl: sel, keywords: 'duckduckgo google brave qwant startpage ecosia bing' }),
+      custom),
+    group('Suggestions', sugg),
+    group('Mots-clés',
+      row({ label: 'Rechercher avec un autre moteur', desc: 'Tapez @ suivi du mot-clé, une espace, puis votre recherche. Exemple : « @w chat » cherche « chat » dans Wikipédia.', keywords: 'mot cle raccourci moteur arobase' }),
+      el('div', {}, kwList),
+      row({ label: 'Ajouter un moteur', desc: 'Adresse https de la page de résultats, où %s est remplacé par votre recherche.', stack: true, below: el('div', { class: 'inline-form' }, kName, kKey, kUrl, addKw), keywords: 'ajouter moteur personnalise' })),
+  ];
 }
 
-function sPrivacy() {
+// DNS over HTTPS: provider list plus the NextDNS id or custom address.
+function dnsRow() {
   const dnsCustom = el('input', { 'aria-label': 'Identifiant NextDNS ou adresse DoH', value: S.secure_dns_custom });
   const dnsForm = el('div', { class: 'inline-form' }, dnsCustom, button('Enregistrer', async () => {
     S.secure_dns_custom = dnsCustom.value.trim();
@@ -421,19 +461,123 @@ function sPrivacy() {
     await save();
   });
   dnsHint();
+  return row({ label: 'DNS sécurisé', desc: 'Chiffre les requêtes DNS (DNS over HTTPS). Avec un fournisseur choisi, les sites ne s\'ouvrent que si ce fournisseur répond.', prefs: ['dns_over_https.mode', 'dns_over_https.templates'], keywords: 'doh dns over https cloudflare quad9 mullvad nextdns resolveur',
+    ctl: dnsSel, below: dnsForm });
+}
+
+function sPrivacy() {
   return [
     group('',
       row({ label: 'Effacer les données de navigation', desc: 'Historique, téléchargements, cookies, cache…', onclick: clearDataDialog, chev: 's-reset', keywords: 'supprimer vider nettoyer historique cookies cache' }),
-      row({ label: 'NIGHTFALL Shield', desc: 'Blocage des publicités, traqueurs et pop-ups, listes de filtres, exceptions : Security Center.', onclick: () => openSection('security'), keywords: 'bloqueur publicite traqueurs adblock' })),
+      row({ label: 'Blocage des publicités et des traqueurs', desc: 'Assuré par NIGHTFALL Shield : listes de filtres, exceptions, filtres personnalisés.', onclick: () => show('shield'), keywords: 'bloqueur publicite traqueurs adblock' })),
     group('Cookies et suivi',
       toggle('Bloquer les cookies tiers', 'Empêche les sites intégrés (publicités, réseaux sociaux) de vous suivre d\'un site à l\'autre. Quelques connexions intégrées peuvent ne plus fonctionner.', () => S.block_third_party_cookies, (v) => { S.block_third_party_cookies = v; }, { prefs: ['profile.cookie_controls_mode'], keywords: 'traçage pistage' }),
-      toggle('Envoyer le signal Global Privacy Control', 'Indique aux sites que vous refusez la vente et le partage de vos données (en-tête Sec-GPC et navigator.globalPrivacyControl). Les sites ne sont pas tous tenus de le respecter.', () => S.global_privacy_control, (v) => { S.global_privacy_control = v; }, { keywords: 'gpc do not track dnt' })),
-    group('Sécurité',
+      toggle('Envoyer le signal Global Privacy Control', 'Indique aux sites que vous refusez la vente et le partage de vos données (en-tête Sec-GPC et navigator.globalPrivacyControl). Les sites ne sont pas tous tenus de le respecter.', () => S.global_privacy_control, (v) => { S.global_privacy_control = v; }, { keywords: 'gpc do not track dnt' }),
+      toggle('Protection de l\'adresse IP (WebRTC)', 'Les sites ne voient pas votre adresse IP locale lors des appels audio ou vidéo dans le navigateur.', () => S.webrtc_ip_protection, (v) => { S.webrtc_ip_protection = v; }, { prefs: ['webrtc.ip_handling_policy'], keywords: 'fuite ip webrtc vpn' })),
+    group('À la fermeture de NIGHTFALL',
+      toggle('Effacer l\'historique et la liste des téléchargements', 'Quand la dernière fenêtre se ferme. Vos favoris et les fichiers téléchargés sont conservés.', () => S.clear_on_close_history, (v) => { S.clear_on_close_history = v; }, { keywords: 'effacer fermeture historique automatiquement' }),
+      toggle('Effacer les cookies', 'Quand la dernière fenêtre se ferme : vous serez déconnecté de tous les sites. Avec le Session Vault, aucune copie chiffrée n\'est gardée.', () => S.clear_on_close_cookies, (v) => { S.clear_on_close_cookies = v; }, { keywords: 'effacer fermeture cookies deconnecter' })),
+    group('Préchargement',
+      toggle('Précharger les pages', 'Chromium peut ouvrir à l\'avance des connexions et résoudre les adresses des liens d\'une page pour accélérer leur ouverture. Désactivé, aucun site ne reçoit de requête avant que vous l\'ouvriez.', () => S.network_prediction, (v) => { S.network_prediction = v; }, { prefs: ['net.network_prediction_options'], keywords: 'prefetch prechargement dns preconnexion' })),
+  ];
+}
+
+// ---- Sécurité: LOCK, sessions, connections, browsing protections,
+// passwords and the emergency system (formerly the security.html page).
+const PURGE = [
+  ['sessions', 'Cookies, sessions et jetons locaux'],
+  ['browsing_data', 'Historique, favoris, réglages, historique des téléchargements'],
+  ['passwords', 'Mots de passe'],
+  ['extensions', 'Extensions et leurs données'],
+  ['shield_cache', 'Listes de filtres'],
+  ['everything', 'Tout, y compris les clés (réinitialisation complète)'],
+];
+
+function checkList(items, isOn, onChange) {
+  return el('div', { class: 'checks' }, items.map(([id, label]) => {
+    const cb = el('input', { type: 'checkbox', value: id });
+    cb.checked = !!isOn(id);
+    if (onChange) cb.addEventListener('change', () => onChange(id, cb.checked));
+    return el('label', { class: 'check' }, cb, el('span', { text: label }));
+  }));
+}
+
+function emergencyGroups() {
+  return asyncSection((st) => {
+    const ap = JSON.parse(JSON.stringify(st.autoPurge));
+    const saveRules = async () => check(await api('autopurge.set', { rules: ap }), 'Règles enregistrées');
+    const pin = el('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', placeholder: 'Code NIGHTFALL', 'aria-label': 'Code NIGHTFALL' });
+    const confirmWord = el('input', { placeholder: 'Tapez PURGER', 'aria-label': 'Confirmation : tapez PURGER' });
+    const boxes = checkList(PURGE, () => false);
+    const purge = button('Purger', async () => {
+      const categories = [...boxes.querySelectorAll('input:checked')].map((c) => c.value);
+      const r = await api('emergency.purge', { pin: pin.value, confirm: confirmWord.value, categories });
+      pin.value = '';
+      check(r, r && r.restart ? 'Purge programmée : NIGHTFALL va se fermer et terminera la purge au prochain lancement.' : 'Purge effectuée');
+    }, 'danger');
+    const apEnabled = apiSwitch(ap.enabled, async (v) => { ap.enabled = v; return saveRules(); }, 'Activer l\'Auto-Purge');
+    const apCats = checkList(PURGE.filter(([id]) => id !== 'everything'), (id) => ap.categories.includes(id), async (id, on) => {
+      ap.categories = on ? [...new Set([...ap.categories, id])] : ap.categories.filter((c) => c !== id);
+      await saveRules();
+    });
+    return [el('div', { id: 'emergency' }), group('Urgence',
+      row({ label: 'Niveau 1 · Verrouillage d\'urgence', desc: 'Masque immédiatement les onglets, ferme les fenêtres privées, chiffre les sessions et exige le code. Raccourci : Ctrl+Maj+F12 (Cmd+Maj+F12 sur Mac).', keywords: 'emergency lockdown urgence panique',
+        ctl: button('Verrouiller maintenant', () => api('emergency.lockdown'), 'danger') }),
+      row({ label: 'Niveau 2 · Purge des données', desc: 'Destruction des clés puis suppression des fichiers du profil NIGHTFALL choisis. Vos téléchargements et vos fichiers personnels ne sont jamais touchés. L\'effacement physique absolu sur SSD, dans les sauvegardes ou les dossiers synchronisés ne peut pas être garanti.', stack: true, keywords: 'purge effacer urgence detruire',
+        below: el('div', { class: 'stack-ctl' }, boxes, el('div', { class: 'inline-form' }, pin, confirmWord, purge)) }),
+      row({ label: 'Niveau 3 · Auto-Purge', desc: `Déclenchée seulement si au moins ${Math.max(2, ap.min_independent_critical)} signaux critiques indépendants sont confirmés (signature invalide, magasin de clés altéré, lancement en mode débogage, injection de module, 10 échecs du code ou plus). Un signal isolé ne provoque qu'un verrouillage. Aucune page web ni extension ne peut la déclencher. Désactivée par défaut.`, ctl: apEnabled, keywords: 'auto purge automatique signaux' }),
+      el('div', { class: 'srow stack' }, el('div', { class: 'txt' }, el('div', { class: 'desc', text: 'Données détruites par l\'Auto-Purge :' }), apCats)))];
+  });
+}
+
+const EVENT_KINDS = {
+  https_warning: 'Site sans HTTPS',
+  phishing_warning: 'Avertissement anti-phishing',
+  dangerous_download: 'Téléchargement à risque',
+  wrong_code: 'Code incorrect',
+  lockdown: 'Verrouillage d\'urgence',
+};
+
+function eventRow(e) {
+  const when = new Date(e.at * 1000).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  return el('li', {}, el('div', { class: 'grow' }, el('div', { text: (EVENT_KINDS[e.kind] || e.kind) + (e.site ? ' · ' + e.site : '') }), e.detail ? el('div', { class: 'sub', text: e.detail }) : null),
+    el('span', { class: 'figure muted', text: when }));
+}
+
+function eventsGroup() {
+  const list = el('ul', { class: 'slist' });
+  const clear = button('Tout effacer', async () => { if (check(await api('security.events.clear'), 'Événements effacés')) render(); });
+  const render = async () => {
+    const r = await api('security.events', { limit: 200 });
+    const evs = (r && r.ok && r.events) || [];
+    list.textContent = '';
+    clear.hidden = !evs.length;
+    if (!evs.length) { list.append(el('li', { class: 'empty', text: 'Aucun événement ces 30 derniers jours.' })); return; }
+    evs.forEach((e) => list.append(eventRow(e)));
+  };
+  render();
+  return [el('div', { id: 'events' }), group('Événements de sécurité',
+    row({ label: 'Ce que NIGHTFALL a signalé ou bloqué', desc: 'Sites sans HTTPS, avertissements anti-phishing, téléchargements à risque, codes incorrects, verrouillages d\'urgence. Chiffrés avec vos données, gardés 30 jours, jamais en navigation privée ; seul le nom du site est conservé, jamais l\'adresse complète.', ctl: clear, keywords: 'journal evenements historique securite alertes' }),
+    el('div', {}, list))];
+}
+
+function sSecurity() {
+  const lock = sLock();
+  return [
+    ...lock,
+    group('Protection des sessions',
+      toggle('Session Vault', 'Au verrouillage et à la fermeture, les cookies (y compris HttpOnly) sont chiffrés avec votre clé NIGHTFALL et retirés de Chromium, puis restaurés au déverrouillage. Aucun navigateur ne protège totalement des sessions face à un logiciel malveillant déjà installé sur l\'ordinateur.', () => S.session_vault, (v) => { S.session_vault = v; }, { keywords: 'cookies chiffres sessions coffre' })),
+    group('Connexions',
       toggle('HTTPS-First', 'Passe automatiquement les sites en HTTPS et vous avertit avant d\'ouvrir un site qui ne le prend pas en charge. Les adresses locales (box, imprimante) ne sont pas concernées. Désactivé, les adresses http:// s\'ouvrent sans chiffrement.', () => S.https_first, (v) => { S.https_first = v; }, { keywords: 'https only securise chiffre http' }),
+      dnsRow(),
+      row({ label: 'Gérer les certificats', desc: 'NIGHTFALL utilise les certificats du système. Ouvre ' + (INFO.platform === 'macos' ? 'Trousseaux d\'accès.' : 'le gestionnaire de certificats de Windows.'), keywords: 'certificat ssl tls autorite racine',
+        ctl: button('Ouvrir', async () => { check(await api('system.certificates')); }) })),
+    group('Protections de navigation',
       toggle('Avertissements anti-phishing', 'Analyse locale des adresses : homographes, imitations de vos sites et de services connus, sous-domaines trompeurs.', () => S.phishing_warnings, (v) => { S.phishing_warnings = v; }, { keywords: 'hameconnage fraude' }),
-      toggle('Protection de l\'adresse IP (WebRTC)', 'Les sites ne voient pas votre adresse IP locale lors des appels audio ou vidéo dans le navigateur.', () => S.webrtc_ip_protection, (v) => { S.webrtc_ip_protection = v; }, { prefs: ['webrtc.ip_handling_policy'], keywords: 'fuite ip webrtc vpn' }),
-      row({ label: 'DNS sécurisé', desc: 'Chiffre les requêtes DNS (DNS over HTTPS). Avec un fournisseur choisi, les sites ne s\'ouvrent que si ce fournisseur répond.', prefs: ['dns_over_https.mode', 'dns_over_https.templates'], keywords: 'doh dns over https cloudflare quad9 mullvad nextdns resolveur',
-        ctl: dnsSel, below: dnsForm })),
+      row({ label: 'Navigation sécurisée de Google', desc: 'Non disponible : ce service de Google n\'est pas fourni aux navigateurs construits sur CEF et exigerait d\'envoyer des données à Google. La liste « Sites malveillants » de Shield et l\'analyse anti-phishing locale la remplacent en partie.', cls: 'disabled', keywords: 'safe browsing google malware' })),
+    group('Mots de passe', sPasswords().flatMap((g) => [...g.querySelectorAll('.srow')])),
+    ...eventsGroup(),
+    ...emergencyGroups(),
   ];
 }
 
@@ -474,9 +618,69 @@ function sPermissions() {
   renderList();
   const decisions = row({ label: 'Décisions mémorisées', desc: 'Sans « Mémoriser », votre réponse vaut jusqu\'au prochain verrouillage. Dans une fenêtre privée, rien n\'est mémorisé.', ctl: clearAll, keywords: 'sites autorises bloques exceptions' });
   return [
+    sitesGroup(),
     group('Comportement par défaut', defaults),
-    group('Par site', decisions, el('div', {}, list)),
+    group('Décisions par site', decisions, el('div', {}, list)),
   ];
+}
+
+// ---- One place per site: everything NIGHTFALL keeps for it (Shield
+// exception, remembered permissions, zoom, always active), each removable.
+function siteKey(h) { return String(h || '').replace(/^www\./, ''); }
+
+function sitesGroup() {
+  const list = el('ul', { class: 'slist' });
+  const search = el('input', { type: 'search', placeholder: 'Rechercher un site', 'aria-label': 'Rechercher un site' });
+  let sites = new Map();
+  const collect = async () => {
+    const [st, z] = await Promise.all([loadSecurity(), api('zoom.list')]);
+    sites = new Map();
+    const get = (h) => { const k = siteKey(h); if (!sites.has(k)) sites.set(k, { host: k, shield: null, perms: [], zoom: null, keep: null }); return sites.get(k); };
+    for (const d of (st && st.shield.allowlist) || []) get(d).shield = d;
+    for (const p of S.site_permissions) get(host(p.origin) || p.origin).perms.push(p);
+    for (const s of (z && z.ok && z.sites) || []) get(s.host).zoom = s;
+    for (const h of S.perf.keep_active_sites || []) get(h).keep = h;
+    render();
+  };
+  const render = () => {
+    const q = norm(search.value.trim());
+    list.textContent = '';
+    const rows = [...sites.values()].filter((s) => !q || norm(s.host).includes(q)).sort((a, b) => a.host.localeCompare(b.host));
+    if (!rows.length) { list.append(el('li', { class: 'empty', text: sites.size ? 'Aucun site ne correspond.' : 'Aucun site n\'a de réglage propre.' })); return; }
+    for (const s of rows) {
+      const parts = [];
+      if (s.shield) parts.push('Shield désactivé');
+      if (s.perms.length) parts.push(s.perms.length + ' autorisation(s)');
+      if (s.zoom) parts.push('zoom ' + s.zoom.percent + ' %');
+      if (s.keep) parts.push('toujours actif');
+      const li = el('li', { class: 'clickable', tabindex: '0', role: 'button' }, el('div', { class: 'grow' }, el('div', { text: s.host }), el('div', { class: 'sub', text: parts.join(' · ') })), icon('s-open', 'chev'));
+      const open = () => siteDialog(s, collect);
+      li.addEventListener('click', open);
+      li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      list.append(li);
+    }
+  };
+  search.addEventListener('input', render);
+  collect();
+  return group('Sites', row({ label: 'Réglages propres à chaque site', desc: 'Exceptions de Shield, autorisations mémorisées, zoom et sites toujours actifs, regroupés par site.', ctl: search, keywords: 'site exceptions fiche' }), el('div', {}, list));
+}
+
+function siteDialog(s, refresh) {
+  const body = el('div', { class: 'site-sheet' });
+  const line = (label, value, remove) => body.append(el('div', { class: 'srow' }, el('div', { class: 'txt' }, el('div', { class: 'lbl', text: label }), el('div', { class: 'desc', text: value })),
+    remove ? el('div', { class: 'ctl' }, button('Retirer', async () => { if (await remove()) { closeDialog(); refresh(); } })) : null));
+  if (s.shield) line('NIGHTFALL Shield', 'Désactivé sur ce site', () => saveShieldCfg((c) => { c.allowlist = c.allowlist.filter((x) => x !== s.shield); }, 'Shield réactivé sur ' + s.host));
+  for (const p of s.perms) {
+    const name = (KIND_NAMES[p.kind] || [p.kind])[0];
+    line(name, (p.allow ? 'Autorisé' : 'Bloqué') + ' · ' + p.origin, async () => {
+      const ok = check(await api('permissions.forget', { origin: p.origin, kind: p.kind }), 'Décision retirée');
+      if (ok) S.site_permissions = S.site_permissions.filter((x) => !(x.origin === p.origin && x.kind === p.kind));
+      return ok;
+    });
+  }
+  if (s.zoom) line('Zoom', s.zoom.percent + ' %', async () => check(await api('zoom.forget', { host: s.zoom.host }), 'Zoom retiré'));
+  if (s.keep) line('Économiseur de mémoire', 'Toujours actif', async () => { S.perf.keep_active_sites = S.perf.keep_active_sites.filter((h) => h !== s.keep); return save('Site retiré'); });
+  openDialog(s.host, body, [button('Fermer', closeDialog, 'primary')]);
 }
 
 function sPasswords() {
@@ -539,24 +743,142 @@ function sLanguages() {
   ];
 }
 
-function sSystem() {
-  const restart = el('span', { class: 'badge warn', text: 'Redémarrage nécessaire' });
-  const updateRestart = () => { restart.hidden = P.hardware_acceleration === INFO.hardwareAccelerationAtStart; };
-  updateRestart();
+function restartBadge(isSame) {
+  const b = el('span', { class: 'badge warn', text: 'Redémarrage nécessaire' });
+  b.hidden = isSame();
+  b.nfUpdate = () => { b.hidden = isSame(); };
+  return b;
+}
+
+function sPerformance() {
+  const restart = restartBadge(() => P.hardware_acceleration === INFO.hardwareAccelerationAtStart);
   const after = el('select', { 'aria-label': 'Délai avant la mise en veille d\'un onglet' }, [15, 30, 60, 120].map((m) => el('option', { value: m, text: m < 60 ? `après ${m} min` : `après ${m / 60} h` })));
   after.value = String([15, 30, 60, 120].includes(S.perf.discard_after_minutes) ? S.perf.discard_after_minutes : 30);
   after.disabled = !S.perf.discard_enabled;
   after.addEventListener('change', async () => { S.perf.discard_after_minutes = Number(after.value); await save(); });
+  const keepList = el('ul', { class: 'slist' });
+  S.perf.keep_active_sites = S.perf.keep_active_sites || [];
+  const renderKeep = () => {
+    keepList.textContent = '';
+    if (!S.perf.keep_active_sites.length) keepList.append(el('li', { class: 'empty', text: 'Aucun site : tous peuvent être mis en veille.' }));
+    S.perf.keep_active_sites.forEach((h, i) => keepList.append(el('li', {}, el('span', { class: 'grow', text: h }),
+      iconButton('s-x', 'Retirer ' + h, async () => { S.perf.keep_active_sites.splice(i, 1); await save(); renderKeep(); }))));
+  };
+  renderKeep();
+  const keepInput = el('input', { placeholder: 'mail.exemple.fr', 'aria-label': 'Site à garder actif' });
+  const addKeep = async () => {
+    const v = keepInput.value.trim();
+    if (!v) return;
+    S.perf.keep_active_sites.push(v);
+    await save('Site ajouté');
+    const g = await api('settings.get');
+    if (g.ok) S.perf.keep_active_sites = g.settings.perf.keep_active_sites;
+    keepInput.value = '';
+    renderKeep();
+  };
+  keepInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addKeep(); });
   return [
-    group('',
-      row({ label: 'Utiliser l\'accélération matérielle', desc: 'Utilise la carte graphique pour afficher les pages et les vidéos. À désactiver en cas d\'affichage défaillant. S\'applique au prochain lancement.', keywords: 'gpu carte graphique',
-        ctl: [restart, sw(() => P.hardware_acceleration, (v) => { P.hardware_acceleration = v; }, { after: updateRestart })] }),
+    group('Mémoire',
       row({ label: 'Économiseur de mémoire', desc: 'Quand la mémoire manque, met en veille les onglets inactifs depuis le délai choisi (5 min si la mémoire est presque épuisée), jamais l\'onglet actif, épinglé ou privé. Ils se rechargent d\'un clic.', keywords: 'ram performance veille onglets',
         ctl: [after, sw(() => S.perf.discard_enabled, (v) => { S.perf.discard_enabled = v; }, { after: (v) => { after.disabled = !v; } })] }),
+      row({ label: 'Sites toujours actifs', desc: 'Jamais mis en veille, sous-domaines compris (messagerie, musique, outils de travail).', stack: true, below: el('div', { class: 'stack-ctl' }, keepList, el('div', { class: 'inline-form' }, keepInput, button('Ajouter', addKeep))), keywords: 'veille exception toujours actif' })),
+    group('Affichage',
+      row({ label: 'Utiliser l\'accélération matérielle', desc: 'Utilise la carte graphique pour afficher les pages et les vidéos. À désactiver en cas d\'affichage défaillant. S\'applique au prochain lancement.', keywords: 'gpu carte graphique',
+        ctl: [restart, sw(() => P.hardware_acceleration, (v) => { P.hardware_acceleration = v; }, { after: restart.nfUpdate })] })),
+  ];
+}
+
+function sAdvanced() {
+  return [
+    group('Réseau',
       row({ label: 'Paramètres proxy', desc: 'NIGHTFALL utilise le proxy configuré dans votre système.', keywords: 'proxy reseau vpn',
         ctl: button('Ouvrir les paramètres du système', async () => { check(await api('system.proxySettings')); }) })),
     group('Développement',
       toggle('Outils de développement (Ctrl+Maj+I)', 'Désactivés par défaut : ils peuvent lire les données des pages, y compris les sessions.', () => S.devtools_enabled, (v) => { S.devtools_enabled = v; }, { keywords: 'devtools inspecteur console' })),
+    ...sReset().map((g) => { g.querySelector('.st-box').before(el('h2', { text: 'Réinitialiser' })); return g; }),
+  ];
+}
+
+// ---- Import and export (bookmarks HTML, passwords CSV)
+window.nfTransferDone = (ev) => {
+  const r = ev.result || {};
+  if (r.cancelled) return;
+  if (!r.ok) { note(r.error || 'Opération impossible', true); return; }
+  if (ev.export) { note(ev.what === 'bookmarks' ? `${r.count} favori(s) exporté(s)` : `${r.count} mot(s) de passe exporté(s). Le fichier est en clair : supprimez-le dès qu'il a servi.`); return; }
+  const s = r.stats || {};
+  if (ev.what === 'bookmarks') note(`${s.added} favori(s) importé(s) dans le dossier « Favoris importés »` + (s.skipped ? `, ${s.skipped} doublon(s) ignoré(s)` : ''));
+  else note(`${s.added} mot(s) de passe importé(s)` + (s.duplicates ? `, ${s.duplicates} déjà présent(s)` : '') + (s.skipped ? `, ${s.skipped} ligne(s) d'applications ignorée(s)` : '') + '. Supprimez maintenant le fichier CSV : il contient vos mots de passe en clair.');
+};
+
+function exportPasswordsDialog() {
+  const pin = el('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', placeholder: 'Code NIGHTFALL', 'aria-label': 'Code NIGHTFALL' });
+  const go = button('Exporter', async () => {
+    go.disabled = true;
+    const r = await api('data.export', { what: 'passwords', pin: pin.value });
+    pin.value = '';
+    go.disabled = false;
+    if (!r || !r.ok) { note((r && r.error) || 'Export impossible', true); return; }
+    closeDialog();
+  }, 'danger');
+  pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
+  openDialog('Exporter les mots de passe', el('div', {},
+    el('p', { class: 'muted', text: 'Le fichier CSV contiendra tous vos mots de passe en clair, lisibles par n\'importe quel programme ou personne ayant accès au fichier. Gardez-le le moins longtemps possible et supprimez-le après usage.' }),
+    pin), [button('Annuler', closeDialog), go]);
+}
+
+function sGeneral() {
+  const run = (cmd, what) => async () => { const r = await api(cmd, { what }); if (!r || !r.ok) note((r && r.error) || 'Opération impossible', true); };
+  return [...sStartup(),
+    group('Navigateur par défaut',
+      row({ label: 'Faire de NIGHTFALL le navigateur par défaut', desc: INFO.platform === 'macos' ? 'Ouvre Réglages Système › Bureau et Dock : choisissez NIGHTFALL dans « Navigateur web par défaut ». Les liens des autres applications s\'ouvriront alors dans NIGHTFALL, après le code s\'il est verrouillé.' : 'Ouvre Paramètres › Applications › Applications par défaut de Windows : choisissez NIGHTFALL pour HTTP et HTTPS. Les liens des autres applications s\'ouvriront alors dans NIGHTFALL, après le code s\'il est verrouillé.', keywords: 'defaut principal liens',
+        ctl: button('Ouvrir les réglages du système', async () => { check(await api('system.defaultBrowser')); }) })),
+    group('Importer et exporter',
+      row({ label: 'Favoris', desc: 'Fichier HTML exporté par Chrome, Brave, Edge, Firefox ou Safari. Les favoris importés sont rangés dans un dossier « Favoris importés » ; rien d\'existant n\'est modifié.', keywords: 'importer exporter favoris marque-pages chrome firefox brave',
+        ctl: [button('Importer…', run('data.import', 'bookmarks')), button('Exporter…', run('data.export', 'bookmarks'))] }),
+      row({ label: 'Mots de passe', desc: 'Fichier CSV exporté par un autre navigateur ou gestionnaire. NIGHTFALL ne lit jamais directement les profils des autres navigateurs. L\'export demande votre code.', keywords: 'importer exporter mots de passe csv identifiants',
+        ctl: [button('Importer…', run('data.import', 'passwords')), button('Exporter…', exportPasswordsDialog)] })),
+    ...sLanguages(), ...sUpdates()];
+}
+
+function sNavigation() {
+  const restart = restartBadge(() => P.autoplay_block === INFO.autoplayBlockAtStart);
+  const zooms = el('ul', { class: 'slist' });
+  const clearZooms = button('Tout retirer', async () => { if (check(await api('zoom.forget', {}), 'Zooms retirés')) renderZooms(); });
+  const renderZooms = async () => {
+    const r = await api('zoom.list');
+    const sites = (r && r.ok && r.sites) || [];
+    zooms.textContent = '';
+    clearZooms.hidden = !sites.length;
+    if (!sites.length) { zooms.append(el('li', { class: 'empty', text: 'Aucun site n\'a de zoom propre. Le zoom choisi sur un site (Ctrl + molette, Ctrl + +) est retenu pour ce site.' })); return; }
+    for (const z of sites) {
+      zooms.append(el('li', {}, el('span', { class: 'grow', text: z.host }), el('span', { class: 'figure muted', text: z.percent + ' %' }),
+        iconButton('s-x', 'Retirer le zoom de ' + z.host, async () => { if (check(await api('zoom.forget', { host: z.host }), 'Zoom retiré')) renderZooms(); })));
+    }
+  };
+  renderZooms();
+  return [
+    group('Lecture des médias',
+      row({ label: 'Bloquer la lecture automatique', desc: 'Les vidéos et les sons ne démarrent qu\'après un clic ou une touche sur la page. S\'applique au prochain lancement.', keywords: 'autoplay video son lecture automatique',
+        ctl: [restart, sw(() => P.autoplay_block, (v) => { P.autoplay_block = v; }, { after: restart.nfUpdate })] })),
+    group('Fenêtres',
+      toggle('Demander avant de fermer plusieurs onglets', 'Quand une fenêtre qui a au moins deux onglets va se fermer, NIGHTFALL demande confirmation. Quitter NIGHTFALL ne demande rien.', () => S.warn_close_tabs, (v) => { S.warn_close_tabs = v; }, { keywords: 'fermer fenetre onglets confirmation' })),
+    group('Zoom',
+      row({ label: 'Zoom par défaut', desc: 'Se règle dans Apparence et thèmes › Pages web.', onclick: () => show('apparence'), keywords: 'agrandir taille' }),
+      row({ label: 'Zoom propre à certains sites', desc: 'Ces sites gardent le zoom que vous leur avez donné.', ctl: clearZooms, keywords: 'zoom site retirer' }),
+      el('div', {}, zooms))
+  ];
+}
+
+function sAccessibility() {
+  return [
+    group('Texte des pages',
+      row({ label: 'Taille de police minimale', desc: 'Aucun texte des pages web n\'est affiché plus petit.', prefs: ['webkit.webprefs.minimum_font_size'], keywords: 'lisibilite petit texte malvoyant',
+        ctl: select([[0, 'Aucune']].concat([9, 10, 12, 14, 16, 18, 20, 24].map((n) => [n, n + ' px'])), S.min_font_size || 0, async (v) => { S.min_font_size = Number(v); await save(); }) }),
+      row({ label: 'Taille de police et zoom', desc: 'Se règlent dans Apparence et thèmes › Pages web.', onclick: () => show('apparence'), keywords: 'agrandir texte' })),
+    group('Interface de NIGHTFALL',
+      toggle('Réduire les animations', 'Supprime les animations et les transitions des pages de NIGHTFALL (Paramètres, Nouvel onglet, historique…). Le réglage « Réduire les animations » du système est aussi respecté.', () => S.reduce_motion, (v) => { S.reduce_motion = v; }, { after: () => window.nfReloadTheme && window.nfReloadTheme(), keywords: 'mouvement vertige transition' }),
+      row({ label: 'Thème à fort contraste', desc: 'Le thème « Aube » (clair) et l\'éditeur de thèmes, qui refuse tout texte sous un contraste de 4,5:1, se trouvent dans Apparence et thèmes.', onclick: () => show('apparence'), keywords: 'contraste clair lisible' }),
+      row({ label: 'Navigation au clavier', desc: 'Tab et Maj+Tab parcourent les commandes, avec un contour visible. Dans les Paramètres : « / » pour chercher, flèches dans la barre latérale.', keywords: 'clavier focus tabulation raccourcis' })),
   ];
 }
 
@@ -612,7 +934,20 @@ function asyncSection(build) {
   return [box];
 }
 
-function badge(ok, text) { return el('span', { class: 'badge ' + (ok ? 'ok' : 'warn'), text }); }
+// State of a protection: a small lit window, the mark of the skyline, then
+// the word. Seven outlined badges in a row read as noise; a light does not.
+// `solo`: the row has no link arrow, so the state keeps its place in the column.
+function badge(ok, text, solo) { return el('span', { class: 'state' + (ok ? '' : ' warn') + (solo ? ' solo' : ''), text }); }
+
+function recentEvents() {
+  const list = el('ul', { class: 'slist' });
+  api('security.events', { limit: 3 }).then((r) => {
+    const evs = (r && r.ok && r.events) || [];
+    if (!evs.length) list.append(el('li', { class: 'empty', text: 'Aucun événement ces 30 derniers jours.' }));
+    evs.forEach((e) => list.append(eventRow(e)));
+  });
+  return group('Événements récents', el('div', {}, list), row({ label: 'Tous les événements', onclick: () => show('securite', 'events') }));
+}
 
 function sSecurityCenter() {
   return asyncSection((st) => {
@@ -622,13 +957,13 @@ function sSecurityCenter() {
     for (const e of st.shield.integrityErrors || []) alerts.push(['Liste refusée : ' + e, 'shield']);
     for (const g of st.signals || []) alerts.push(['Signal de sécurité : ' + g, null]);
     if (!st.lock.autoLockMinutes && !st.lock.lockOnSleep) alerts.push(['NIGHTFALL ne se verrouille jamais tout seul (ni après inactivité, ni à la mise en veille).', 'lock']);
-    if (!st.phishingWarnings) alerts.push(['Les avertissements anti-phishing sont désactivés.', 'confidentialite']);
+    if (!st.phishingWarnings) alerts.push(['Les avertissements anti-phishing sont désactivés.', 'securite']);
     const protections = [
       ['NIGHTFALL LOCK', true, st.lock.backend + (st.lock.autoLockMinutes ? ' · verrouillage après ' + st.lock.autoLockMinutes + ' min' : ''), 'lock'],
       ['NIGHTFALL Shield', st.shield.enabled && st.shield.rules > 0, st.shield.enabled ? (st.shield.rules > 0 ? st.shield.rules.toLocaleString('fr-FR') + ' règles' : 'listes en attente') : 'désactivé', 'shield'],
       ['VideoGuard', st.videoguard.config.enabled, st.videoguard.config.enabled ? 'actif sur YouTube' : 'désactivé', 'videoguard'],
       ['Session Vault', st.sessionVault, st.sessionVault ? 'cookies chiffrés au verrouillage' : 'désactivé', 'lock'],
-      ['Anti-phishing (analyse locale)', st.phishingWarnings, st.phishingWarnings ? 'actif' : 'désactivé', 'confidentialite'],
+      ['Anti-phishing (analyse locale)', st.phishingWarnings, st.phishingWarnings ? 'actif' : 'désactivé', 'securite'],
       ['Sandbox et isolation des sites de Chromium', st.chromium.sandbox, st.chromium.sandbox ? 'conservées' : 'désactivée (build de test)', null],
       ['Débogage à distance', true, 'interdit', null],
     ];
@@ -644,14 +979,15 @@ function sSecurityCenter() {
         el('div', {}, el('div', { class: 'lbl', text: alerts.length ? alerts.length + (alerts.length > 1 ? ' points demandent votre attention' : ' point demande votre attention') : 'Toutes les protections sont en place' }),
           el('div', { class: 'desc', text: (blocked.total_blocked || 0).toLocaleString('fr-FR') + ' requêtes et ' + (blocked.popups_blocked || 0) + ' pop-ups bloquées depuis le démarrage' }))),
       alerts.length ? group('Alertes', alerts.map(([t, sec]) => row({ label: t, cls: 'alert', onclick: sec ? () => show(sec) : null }))) : null,
-      group('Protections actives', protections.map(([name, good, detail, sec]) => row({ label: name, desc: detail, ctl: badge(good, good ? 'actif' : 'à vérifier'), onclick: sec ? () => show(sec) : null }))),
+      group('Protections actives', protections.map(([name, good, detail, sec]) => row({ label: name, desc: detail, ctl: badge(good, good ? 'actif' : 'à vérifier', !sec), onclick: sec ? () => show(sec) : null }))),
+      recentEvents(),
       group('Sites avec exceptions',
         exceptions,
         row({ label: 'Autorisations mémorisées (caméra, micro, position…)', desc: 'Décisions « Mémoriser » par site.', onclick: () => show('autorisations') })),
       group('Réglages avancés',
         row({ label: 'Filtres personnalisés et listes de filtres', onclick: () => show('shield') }),
-        row({ label: 'Auto-Purge, Emergency Lockdown et effacement d\'urgence', desc: 'Dans la page Security Center complète.', onclick: () => openSection('security', 'emergency') }),
-        row({ label: 'Outils de développement', onclick: () => show('systeme') })),
+        row({ label: 'Verrouillage d\'urgence, purge des données et Auto-Purge', onclick: () => show('securite', 'emergency') }),
+        row({ label: 'Outils de développement', onclick: () => show('avance') })),
     ];
   });
 }
@@ -724,8 +1060,6 @@ function sLock() {
     group('Code et récupération',
       row({ label: 'Changer de code', desc: '6 à 12 chiffres.', stack: true, below: change, keywords: 'pin mot de passe' }),
       row({ label: 'Nouvelle Recovery Key', desc: 'Génère une nouvelle clé de récupération ; l\'ancienne cessera de fonctionner.', stack: true, below: el('div', {}, rk, rkOut), keywords: 'cle de secours recuperation' })),
-    group('Urgence',
-      row({ label: 'NIGHTFALL Emergency System', desc: 'Verrouillage d\'urgence, purge des données, Auto-Purge : Security Center.', onclick: () => openSection('security', 'emergency'), keywords: 'lockdown purge urgence' })),
   ];
 }
 
@@ -794,9 +1128,9 @@ function sUpdates() {
   };
   refresh();
   return [
-    group('',
+    group('Mises à jour',
       el('div', { class: 'srow wrap' }, el('div', { class: 'upd' }, el('img', { src: 'emblem.png', alt: '' }), el('div', { class: 'grow' }, version, status, prog)), el('div', { class: 'ctl' }, signed, notes, install, checkBtn))),
-    group('Automatique',
+    group('Mises à jour automatiques',
       row({ label: 'Rechercher automatiquement les mises à jour', desc: 'NIGHTFALL vérifie régulièrement si une nouvelle version est publiée.', ctl: autoCheck, keywords: 'automatique version' }),
       row({ label: 'Installer automatiquement au redémarrage', desc: 'Une mise à jour téléchargée s\'installe à la prochaine fermeture de NIGHTFALL.', ctl: autoInstall, keywords: 'automatique version' })),
   ];
@@ -812,34 +1146,43 @@ function sReset() {
 
 function sAbout() {
   return [group('',
-    el('div', { class: 'srow' }, el('div', { class: 'upd grow' }, el('img', { src: 'emblem.png', alt: '' }), el('div', {}, el('div', { class: 'lbl', text: 'NIGHTFALL Browser ' + (INFO.version || '') }), el('div', { class: 'desc', text: 'Browse Beyond the Darkness.' })))),
+    el('div', { class: 'srow' }, el('div', { class: 'upd grow' }, el('img', { src: 'emblem.png', alt: '' }), el('div', {}, el('div', { class: 'lbl', text: 'NIGHTFALL Browser ' + (INFO.version || '') }), el('div', { class: 'desc', text: 'Browse Beyond the Darkness' })))),
     row({ label: 'Mises à jour', desc: 'Version installée et recherche de mises à jour.', onclick: () => show('mises-a-jour'), chev: 's-update' }),
     row({ label: 'À propos, composants et licences', desc: 'Chromium (CEF), adblock-rust, polices, licences.', onclick: () => openSection('about'), keywords: 'licence credits open source' }))];
 }
 
 const SECTIONS = [
   { id: 'security', title: 'Security Center', icon: 's-center', build: sSecurityCenter },
-  { id: 'demarrage', title: 'Démarrage', icon: 's-start', build: sStartup },
-  { id: 'apparence', title: 'Apparence', icon: 's-look', build: sAppearance },
-  { id: 'recherche', title: 'Moteur de recherche', icon: 's-search', build: sSearch },
-  { id: 'confidentialite', title: 'Confidentialité et sécurité', icon: 's-privacy', build: sPrivacy },
+  { id: 'general', title: 'Général', icon: 's-general', build: sGeneral, sep: true },
+  { id: 'apparence', title: 'Apparence et thèmes', icon: 's-look', build: sAppearance },
+  { id: 'confidentialite', title: 'Confidentialité', icon: 's-privacy', build: sPrivacy },
+  { id: 'securite', title: 'Sécurité', icon: 's-secure', build: sSecurity },
   { id: 'shield', title: 'NIGHTFALL Shield', icon: 's-shield', build: sShield },
   { id: 'videoguard', title: 'VideoGuard', icon: 's-video', build: sVideoGuard },
   { id: 'autorisations', title: 'Autorisations des sites', icon: 's-perm', build: sPermissions },
-  { id: 'mots-de-passe', title: 'Mots de passe', icon: 's-key', build: sPasswords },
   { id: 'telechargements', title: 'Téléchargements', icon: 's-down', build: sDownloads },
-  { id: 'langues', title: 'Langues', icon: 's-lang', build: sLanguages },
-  { id: 'systeme', title: 'Système', icon: 's-system', build: sSystem },
-  { id: 'lock', title: 'NIGHTFALL LOCK', icon: 's-lock', build: sLock, sep: true },
-  { id: 'mises-a-jour', title: 'Mises à jour', icon: 's-update', build: sUpdates },
-  { id: 'reinitialiser', title: 'Réinitialiser les paramètres', icon: 's-reset', build: sReset, sep: true },
-  { id: 'a-propos', title: 'À propos de NIGHTFALL', icon: 's-about', build: sAbout },
+  { id: 'navigation', title: 'Navigation', icon: 's-nav', build: sNavigation },
+  { id: 'recherche', title: 'Moteurs de recherche', icon: 's-search', build: sSearch },
+  { id: 'performances', title: 'Performances', icon: 's-perf', build: sPerformance },
+  { id: 'accessibilite', title: 'Accessibilité', icon: 's-access', build: sAccessibility },
+  { id: 'avance', title: 'Options avancées', icon: 's-advanced', build: sAdvanced },
+  { id: 'a-propos', title: 'À propos de NIGHTFALL', icon: 's-about', build: sAbout, sep: true },
 ];
+
+// Addresses of older versions (menus, bookmarks, other pages): section and
+// optional anchor where that content lives now.
+const ALIASES = {
+  demarrage: ['general'], langues: ['general'], 'mises-a-jour': ['general'],
+  lock: ['securite'], 'mots-de-passe': ['securite'], emergency: ['securite', 'emergency'],
+  systeme: ['performances'], reinitialiser: ['avance'], 'security-center': ['security'],
+};
 
 // ------------------------------------------------------------------ navigation & search
 let current = SECTIONS[0].id;
 
-function show(id, focusHeading) {
+function show(id, anchor, focusHeading) {
+  if (typeof anchor === 'boolean') { focusHeading = anchor; anchor = null; }
+  if (ALIASES[id]) [id, anchor = anchor] = [ALIASES[id][0], ALIASES[id][1] || anchor];
   if (!SECTIONS.some((s) => s.id === id)) id = SECTIONS[0].id;
   current = id;
   if ($('#q').value) { $('#q').value = ''; filter(); }
@@ -850,6 +1193,15 @@ function show(id, focusHeading) {
   const sec = SECTIONS.find((s) => s.id === id);
   document.title = sec.title + ' · Paramètres · NIGHTFALL';
   if (focusHeading) { const h = document.querySelector(`.st-section[data-id="${id}"] h1`); if (h) h.focus({ preventScroll: true }); }
+  if (anchor) scrollToAnchor(anchor);
+}
+
+// Anchors inside a section (e.g. #emergency in Sécurité); content filled
+// by security.status may arrive a little later.
+function scrollToAnchor(anchor, tries = 0) {
+  const t = document.getElementById(anchor);
+  if (t && !t.closest('[hidden]')) { t.scrollIntoView({ block: 'start' }); return; }
+  if (tries < 20) setTimeout(() => scrollToAnchor(anchor, tries + 1), 100);
 }
 
 function highlight(r, q) {
@@ -914,6 +1266,7 @@ async function load() {
   const r = await api('settings.get');
   if (!r || !r.ok) { $('#root').append(el('p', { class: 'muted', text: 'Impossible de lire les paramètres : ' + ((r && r.error) || 'erreur') })); return; }
   S = r.settings;
+  S.search_engines_custom = S.search_engines_custom || [];
   P = r.prefs;
   INFO = r;
   render();

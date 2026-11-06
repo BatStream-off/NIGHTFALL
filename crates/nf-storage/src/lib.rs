@@ -7,6 +7,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::path::Path;
 
+pub mod bookmark_io;
+pub mod events;
+
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
     #[error("base de données : {0}")]
@@ -175,6 +178,7 @@ impl Storage {
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
             .map_err(|_| StorageError::WrongKey)?;
         conn.execute_batch(SCHEMA)?;
+        conn.execute_batch(events::SCHEMA)?;
         conn.execute(
             "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '1')",
             [],

@@ -21,6 +21,18 @@ fn to_string(s: &CefStringUserfree) -> String {
     CefString::from(s).to_string()
 }
 
+/// Neutral answer of a Shield `$redirect` (empty script, transparent
+/// image…), served instead of the blocked request.
+pub fn neutral_response(mime: &str, body: Vec<u8>) -> Option<ResourceHandler> {
+    let stream = Arc::new(Mutex::new(ByteStream::new(body)));
+    let mut handler = ByteReadHandler::new(stream);
+    let reader = stream_reader_create_for_handler(Some(&mut handler))?;
+    let mut headers = CefStringMultimap::new();
+    headers.append("Cache-Control", "no-store");
+    headers.append("Access-Control-Allow-Origin", "*");
+    Some(StreamResourceHandler::new(200, "OK".into(), mime.into(), Some(headers), Some(reader)))
+}
+
 fn respond(status: i32, mime: &str, body: Vec<u8>, csp: bool) -> Option<ResourceHandler> {
     let stream = Arc::new(Mutex::new(ByteStream::new(body)));
     let mut handler = ByteReadHandler::new(stream);
@@ -134,7 +146,12 @@ wrap_scheme_handler_factory! {
                 let css = {
                     let c = state::core();
                     let t = if c.is_unlocked() { super::theme::active_theme(&c.settings.theme) } else { super::theme::Theme::default() };
-                    super::theme::css(&t)
+                    let mut css = super::theme::css(&t);
+                    // Accessibilité > Réduire les animations.
+                    if c.is_unlocked() && c.settings.reduce_motion {
+                        css.push_str(super::theme::REDUCED_MOTION_CSS);
+                    }
+                    css
                 };
                 return respond(200, "text/css", css.into_bytes(), false);
             }

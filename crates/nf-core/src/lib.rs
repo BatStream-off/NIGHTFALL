@@ -10,7 +10,7 @@ pub use paths::ProfilePaths;
 /// Product name shown in the UI and used for directories.
 pub const PRODUCT_NAME: &str = "NIGHTFALL";
 /// Tagline displayed on the splash screen.
-pub const TAGLINE: &str = "Browse Beyond the Darkness.";
+pub const TAGLINE: &str = "Browse Beyond the Darkness";
 /// Version of the application (workspace version).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

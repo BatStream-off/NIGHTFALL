@@ -329,7 +329,8 @@ function renderSide() {
   for (const t of tabs) {
     const node = el('div', { class: 'vtab' + (t.active ? ' active' : '') + (t.loading ? ' loading' : ''), title: t.url, 'data-id': t.id },
       tabIcon(t),
-      el('span', { class: 't-title', text: (t.pinned ? '📌 ' : '') + (t.title || 'Nouvel onglet') }),
+      t.pinned ? el('span', { class: 't-pin', 'aria-label': 'Épinglé' }, svgIcon('pin')) : null,
+      el('span', { class: 't-title', text: t.title || 'Nouvel onglet' }),
       tabSound(t),
       closeButton(t, 'Fermer l\'onglet'),
     );
@@ -506,6 +507,7 @@ async function openPopupView() {
   else if (kind === 'zoom') zoomPanel(inner);
   else if (kind === 'suggest') await suggestPanel(inner);
   else if (kind === 'tabmenu') tabMenuPanel(inner, name);
+  else if (kind === 'closeconfirm') closeConfirmPanel(inner, name);
   else menuPanel(inner);
   fitPopup();
   new ResizeObserver(() => fitPopup()).observe(inner);
@@ -514,6 +516,15 @@ async function openPopupView() {
   if (kind !== 'find' && kind !== 'suggest') window.addEventListener('blur', () => { if (Date.now() - loadedAt > 300) closeSelf(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (kind === 'find') api('find.close'); else closeSelf(); } });
   api('tabs'); // up-to-date counters (blocked items) for this window
+}
+
+// ---- « close several tabs? » (Paramètres › Navigation)
+function closeConfirmPanel(p, name) {
+  const n = Number(name.split('-')[1]) || 2;
+  const go = el('button', { class: 'primary', text: `Fermer les ${n} onglets`, onclick: () => api('win.closeConfirmed') });
+  p.append(el('div', { class: 'cc-text', text: `Fermer la fenêtre et ses ${n} onglets ?` }),
+    el('div', { class: 'cc-actions' }, el('button', { text: 'Annuler', onclick: () => closeSelf() }), go));
+  setTimeout(() => go.focus(), 30);
 }
 
 // ---- find in page
@@ -778,7 +789,7 @@ function moveSuggestion(delta) {
   if (!n) return;
   sugg.selected = (sugg.selected + delta + n) % n;
   const it = sugg.items[sugg.selected];
-  $('#address').value = it.type === 'history' || it.type === 'bookmark' ? it.url : sugg.typed;
+  $('#address').value = it.type === 'history' || it.type === 'bookmark' ? it.url : it.remote ? it.title : sugg.typed;
   api('omnibox.render', { items: sugg.items, selected: sugg.selected });
 }
 
@@ -869,6 +880,19 @@ window.nfEvent = (ev) => {
       break;
     case 'suggest':
       if (MODE === 'popup') renderSuggestions(ev);
+      break;
+    case 'winmaxhover':
+      // Snap Layouts: the pointer is over the maximise button (Windows).
+      if ($('#w-max')) $('#w-max').classList.toggle('hover', !!ev.on);
+      break;
+    case 'omnibox_remote':
+      // The search engine's suggestions (setting on, normal windows only),
+      // added under the local ones while the same text is still typed.
+      if (MODE === 'top' && ev.text === sugg.typed && document.activeElement === $('#address')) {
+        const have = new Set(sugg.items.map((x) => x.title));
+        const extra = (ev.items || []).filter((x) => !have.has(x.title));
+        if (extra.length) { sugg.items = sugg.items.concat(extra).slice(0, 12); if (sugg.selected < 0) sugg.selected = 0; showSuggest(); }
+      }
       break;
     case 'omnibox_picked':
       if (MODE === 'top') { sugg.open = false; sugg.seq++; const a = $('#address'); a.value = ev.url || a.value; a.blur(); }

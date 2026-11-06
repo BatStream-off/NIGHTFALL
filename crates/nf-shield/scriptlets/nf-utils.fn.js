@@ -119,6 +119,20 @@ function nfUtils() {
       else fn();
     },
     // Run fn now and whenever the DOM changes (throttled).
+    // Shared by set-local-storage-item and set-session-storage-item: only
+    // short, harmless values are written (never page-controlled text).
+    storageItem(store, key, raw) {
+      if (!key || !store) return;
+      try {
+        if (raw === '$remove$') { store.removeItem(key); return; }
+        const fixed = { undefined: 'undefined', false: 'false', true: 'true', null: 'null', "''": '', emptyArr: '[]', emptyObj: '{}', yes: 'yes', no: 'no', on: 'on', off: 'off', accepted: 'accepted', rejected: 'rejected', '[]': '[]', '{}': '{}' };
+        let v;
+        if (Object.prototype.hasOwnProperty.call(fixed, raw)) v = fixed[raw];
+        else if (/^-?\d{1,5}$/.test(raw || '') && Math.abs(Number(raw)) <= 32767) v = String(Number(raw));
+        else return;
+        if (store.getItem(key) !== v) store.setItem(key, v);
+      } catch (e) {}
+    },
     watch(fn) {
       let pending = false;
       const run = () => { pending = false; try { fn(); } catch (e) {} };

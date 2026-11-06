@@ -17,6 +17,22 @@ pub enum ClientKind {
 
 static BLOCKED: OnceLock<Mutex<HashMap<i32, u64>>> = OnceLock::new();
 
+/// Shield redirects waiting for their resource handler, by request id.
+static REDIRECTS: OnceLock<Mutex<HashMap<u64, (String, Vec<u8>)>>> = OnceLock::new();
+
+fn redirect_map() -> std::sync::MutexGuard<'static, HashMap<u64, (String, Vec<u8>)>> {
+    let m = REDIRECTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut g = match m.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    // Requests cancelled before their handler was asked for: never grows.
+    if g.len() > 500 {
+        g.clear();
+    }
+    g
+}
+
 fn blocked_map() -> std::sync::MutexGuard<'static, HashMap<i32, u64>> {
     let m = BLOCKED.get_or_init(|| Mutex::new(HashMap::new()));
     match m.lock() {
@@ -245,6 +261,12 @@ fn on_navigation(window_id: u32, tab_id: u32, private: bool, url: &str) {
     });
     if let Some(w) = &warning {
         windows::push_event(window_id, &serde_json::json!({ "type": "warning", "tab": tab_id, "message": w }));
+        super::security::record_event("phishing_warning", url, w, private);
+    }
+    // HTTPS-First warning page shown for a site without HTTPS.
+    if let Some(hash) = url.strip_prefix(super::https_first::WARNING_PAGE).and_then(|r| r.strip_prefix('#')) {
+        let http: String = url::form_urlencoded::parse(format!("u={hash}").as_bytes()).next().map(|(_, v)| v.into_owned()).unwrap_or_default();
+        super::security::record_event("https_warning", &http, "Site sans HTTPS : avertissement affiché", private);
     }
     if is_web && !private {
         if let Some(s) = core().storage() {
@@ -768,11 +790,25 @@ wrap_resource_request_handler! {
             let id = browser.identifier();
             let page = state::browser_info(id).map(|i| i.url).unwrap_or_default();
             let source = frame.map(|f| cef_to_string(&f.url())).filter(|s| !s.is_empty()).unwrap_or_else(|| page.clone());
-            if state::shield().should_block(&url, &source, rtype, &page) {
-                *blocked_map().entry(id).or_default() += 1;
-                return ReturnValue::CANCEL;
+            match state::shield().decide(&url, &source, rtype, &page) {
+                nf_shield::Decision::Allow => {}
+                nf_shield::Decision::Block => {
+                    *blocked_map().entry(id).or_default() += 1;
+                    return ReturnValue::CANCEL;
+                }
+                nf_shield::Decision::Redirect { mime, body } => {
+                    // Answered by resource_handler below with neutral content.
+                    *blocked_map().entry(id).or_default() += 1;
+                    redirect_map().insert(request.identifier(), (mime, body));
+                }
             }
             ReturnValue::CONTINUE
+        }
+
+        fn resource_handler(&self, _browser: Option<&mut Browser>, _frame: Option<&mut Frame>, request: Option<&mut Request>) -> Option<ResourceHandler> {
+            let request = request?;
+            let (mime, body) = redirect_map().remove(&request.identifier())?;
+            super::scheme::neutral_response(&mime, body)
         }
     }
 }
