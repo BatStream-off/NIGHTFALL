@@ -59,11 +59,14 @@ pub struct PerfConfig {
     pub discard_after_minutes: i64,
     /// On battery: reduce animations and defer background work.
     pub battery_saver: bool,
+    /// Sites never put to sleep (host names, e.g. `mail.example.com`;
+    /// sub-domains included).
+    pub keep_active_sites: Vec<String>,
 }
 
 impl Default for PerfConfig {
     fn default() -> Self {
-        Self { discard_enabled: true, discard_after_minutes: 30, battery_saver: true }
+        Self { discard_enabled: true, discard_after_minutes: 30, battery_saver: true, keep_active_sites: Vec::new() }
     }
 }
 
@@ -77,6 +80,16 @@ pub struct TabActivity {
     pub editing_form: bool,
     pub private: bool,
     pub discarded: bool,
+    /// Host of the tab's page (for `keep_active_sites`).
+    pub host: String,
+}
+
+impl PerfConfig {
+    /// Is this host (or a parent domain of it) in the always-active list?
+    pub fn keeps_active(&self, host: &str) -> bool {
+        let host = host.trim_end_matches('.').to_ascii_lowercase();
+        !host.is_empty() && self.keep_active_sites.iter().any(|s| host == *s || host.ends_with(&format!(".{s}")))
+    }
 }
 
 /// Tabs to unload now, least recently used first.
@@ -90,7 +103,7 @@ pub fn tabs_to_discard(tabs: &[TabActivity], pressure: Pressure, cfg: &PerfConfi
     };
     let mut candidates: Vec<&TabActivity> = tabs
         .iter()
-        .filter(|t| !t.is_active && !t.pinned && !t.audible && !t.editing_form && !t.private && !t.discarded)
+        .filter(|t| !t.is_active && !t.pinned && !t.audible && !t.editing_form && !t.private && !t.discarded && !cfg.keeps_active(&t.host))
         .filter(|t| now - t.last_active >= min_idle)
         .collect();
     candidates.sort_by_key(|t| t.last_active);
@@ -112,7 +125,7 @@ mod tests {
     use super::*;
 
     fn tab(id: u32, idle_min: i64) -> TabActivity {
-        TabActivity { id, last_active: 10_000 - idle_min * 60, is_active: false, pinned: false, audible: false, editing_form: false, private: false, discarded: false }
+        TabActivity { id, last_active: 10_000 - idle_min * 60, is_active: false, pinned: false, audible: false, editing_form: false, private: false, discarded: false, host: format!("site{id}.example") }
     }
 
     #[test]
@@ -149,6 +162,19 @@ mod tests {
         assert_eq!(d, vec![2, 4]);
         let d = tabs_to_discard(&tabs, Pressure::Critical, &PerfConfig::default(), 10_000);
         assert_eq!(d, vec![2, 4, 1, 3]);
+    }
+
+    #[test]
+    fn always_active_sites_stay_awake() {
+        let mut tabs = vec![tab(1, 600), tab(2, 600), tab(3, 600)];
+        tabs[0].host = "mail.example.org".into();
+        tabs[1].host = "example.org".into();
+        let cfg = PerfConfig { keep_active_sites: vec!["example.org".into()], ..PerfConfig::default() };
+        assert_eq!(tabs_to_discard(&tabs, Pressure::Critical, &cfg, 10_000), vec![3]);
+        assert!(!cfg.keeps_active("notexample.org") && !cfg.keeps_active(""));
+        // Older saved settings: no list, nothing kept awake.
+        let old: PerfConfig = serde_json::from_str(r#"{"discard_enabled":true,"discard_after_minutes":15,"battery_saver":false}"#).unwrap();
+        assert!(old.keep_active_sites.is_empty() && old.discard_after_minutes == 15);
     }
 
     #[test]

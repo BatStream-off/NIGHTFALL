@@ -384,6 +384,15 @@ impl Settings {
             ok
         });
         self.search_engines_custom.truncate(30);
+        let mut sites: Vec<String> = Vec::new();
+        for s in &self.perf.keep_active_sites {
+            let h = s.trim().trim_start_matches("https://").trim_start_matches("http://").split('/').next().unwrap_or("").trim_start_matches("*.").trim_end_matches('.').to_ascii_lowercase();
+            if !h.is_empty() && h.len() <= 253 && h.contains('.') && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') && !sites.contains(&h) {
+                sites.push(h);
+            }
+        }
+        sites.truncate(100);
+        self.perf.keep_active_sites = sites;
         if !MIN_FONT_SIZES.contains(&self.min_font_size) {
             self.min_font_size = 0;
         }
@@ -778,8 +787,10 @@ mod tests {
         assert_eq!((s.default_zoom, s.font_size), (100, 16));
         assert_eq!(s.accept_languages, "de-DE,fr,en-US");
         s.min_font_size = 7;
+        s.perf.keep_active_sites = vec!["https://Mail.Example.org/inbox".into(), "*.docs.example".into(), "pas un site".into(), "mail.example.org".into()];
         s.sanitize();
         assert_eq!(s.min_font_size, 0);
+        assert_eq!(s.perf.keep_active_sites, vec!["mail.example.org", "docs.example"]);
         assert_eq!(s.secure_dns, "system");
         assert_eq!(s.permission_defaults.len(), 1);
         assert_eq!(s.download_dir, None);

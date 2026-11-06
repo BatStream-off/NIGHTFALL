@@ -560,7 +560,9 @@ function sSecurity() {
       toggle('Session Vault', 'Au verrouillage et à la fermeture, les cookies (y compris HttpOnly) sont chiffrés avec votre clé NIGHTFALL et retirés de Chromium, puis restaurés au déverrouillage. Aucun navigateur ne protège totalement des sessions face à un logiciel malveillant déjà installé sur l\'ordinateur.', () => S.session_vault, (v) => { S.session_vault = v; }, { keywords: 'cookies chiffres sessions coffre' })),
     group('Connexions',
       toggle('HTTPS-First', 'Passe automatiquement les sites en HTTPS et vous avertit avant d\'ouvrir un site qui ne le prend pas en charge. Les adresses locales (box, imprimante) ne sont pas concernées. Désactivé, les adresses http:// s\'ouvrent sans chiffrement.', () => S.https_first, (v) => { S.https_first = v; }, { keywords: 'https only securise chiffre http' }),
-      dnsRow()),
+      dnsRow(),
+      row({ label: 'Gérer les certificats', desc: 'NIGHTFALL utilise les certificats du système. Ouvre ' + (INFO.platform === 'macos' ? 'Trousseaux d\'accès.' : 'le gestionnaire de certificats de Windows.'), keywords: 'certificat ssl tls autorite racine',
+        ctl: button('Ouvrir', async () => { check(await api('system.certificates')); }) })),
     group('Protections de navigation',
       toggle('Avertissements anti-phishing', 'Analyse locale des adresses : homographes, imitations de vos sites et de services connus, sous-domaines trompeurs.', () => S.phishing_warnings, (v) => { S.phishing_warnings = v; }, { keywords: 'hameconnage fraude' }),
       row({ label: 'Navigation sécurisée de Google', desc: 'Non disponible : ce service de Google n\'est pas fourni aux navigateurs construits sur CEF et exigerait d\'envoyer des données à Google. La liste « Sites malveillants » de Shield et l\'analyse anti-phishing locale la remplacent en partie.', cls: 'disabled', keywords: 'safe browsing google malware' })),
@@ -685,10 +687,32 @@ function sPerformance() {
   after.value = String([15, 30, 60, 120].includes(S.perf.discard_after_minutes) ? S.perf.discard_after_minutes : 30);
   after.disabled = !S.perf.discard_enabled;
   after.addEventListener('change', async () => { S.perf.discard_after_minutes = Number(after.value); await save(); });
+  const keepList = el('ul', { class: 'slist' });
+  S.perf.keep_active_sites = S.perf.keep_active_sites || [];
+  const renderKeep = () => {
+    keepList.textContent = '';
+    if (!S.perf.keep_active_sites.length) keepList.append(el('li', { class: 'empty', text: 'Aucun site : tous peuvent être mis en veille.' }));
+    S.perf.keep_active_sites.forEach((h, i) => keepList.append(el('li', {}, el('span', { class: 'grow', text: h }),
+      iconButton('s-x', 'Retirer ' + h, async () => { S.perf.keep_active_sites.splice(i, 1); await save(); renderKeep(); }))));
+  };
+  renderKeep();
+  const keepInput = el('input', { placeholder: 'mail.exemple.fr', 'aria-label': 'Site à garder actif' });
+  const addKeep = async () => {
+    const v = keepInput.value.trim();
+    if (!v) return;
+    S.perf.keep_active_sites.push(v);
+    await save('Site ajouté');
+    const g = await api('settings.get');
+    if (g.ok) S.perf.keep_active_sites = g.settings.perf.keep_active_sites;
+    keepInput.value = '';
+    renderKeep();
+  };
+  keepInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addKeep(); });
   return [
     group('Mémoire',
       row({ label: 'Économiseur de mémoire', desc: 'Quand la mémoire manque, met en veille les onglets inactifs depuis le délai choisi (5 min si la mémoire est presque épuisée), jamais l\'onglet actif, épinglé ou privé. Ils se rechargent d\'un clic.', keywords: 'ram performance veille onglets',
-        ctl: [after, sw(() => S.perf.discard_enabled, (v) => { S.perf.discard_enabled = v; }, { after: (v) => { after.disabled = !v; } })] })),
+        ctl: [after, sw(() => S.perf.discard_enabled, (v) => { S.perf.discard_enabled = v; }, { after: (v) => { after.disabled = !v; } })] }),
+      row({ label: 'Sites toujours actifs', desc: 'Jamais mis en veille, sous-domaines compris (messagerie, musique, outils de travail).', stack: true, below: el('div', { class: 'stack-ctl' }, keepList, el('div', { class: 'inline-form' }, keepInput, button('Ajouter', addKeep))), keywords: 'veille exception toujours actif' })),
     group('Affichage',
       row({ label: 'Utiliser l\'accélération matérielle', desc: 'Utilise la carte graphique pour afficher les pages et les vidéos. À désactiver en cas d\'affichage défaillant. S\'applique au prochain lancement.', keywords: 'gpu carte graphique',
         ctl: [restart, sw(() => P.hardware_acceleration, (v) => { P.hardware_acceleration = v; }, { after: restart.nfUpdate })] })),

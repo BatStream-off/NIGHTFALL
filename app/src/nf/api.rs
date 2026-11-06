@@ -366,6 +366,7 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         "data.import" | "data.export" => data_transfer(caller, cmd, body),
         "system.proxySettings" => open_proxy_settings(),
         "system.defaultBrowser" => open_default_browser_settings(),
+        "system.certificates" => open_certificates(),
         "https.proceed" => {
             // "Continuer vers le site" on the HTTPS-First warning page.
             let BrowserKind::Tab { window_id, tab_id, .. } = caller.kind else { return err("interdit") };
@@ -1251,6 +1252,17 @@ fn open_default_browser_settings() -> Value {
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let r: std::io::Result<std::process::Child> = Err(std::io::Error::other("non disponible"));
     r.map(|_| ok()).unwrap_or_else(|e| err(format!("impossible d'ouvrir les réglages du système : {e}")))
+}
+
+/// The system's certificate store (NIGHTFALL uses it through Chromium).
+fn open_certificates() -> Value {
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("mmc.exe").arg("certmgr.msc").spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("/usr/bin/open").args(["-b", "com.apple.keychainaccess"]).spawn();
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let r: std::io::Result<std::process::Child> = Err(std::io::Error::other("non disponible"));
+    r.map(|_| ok()).unwrap_or_else(|e| err(format!("impossible d'ouvrir le gestionnaire de certificats : {e}")))
 }
 
 fn open_proxy_settings() -> Value {

@@ -1784,6 +1784,7 @@ pub fn tab_activity() -> Vec<(u32, nf_perf::TabActivity)> {
                         editing_form: false,
                         private: ctx.private,
                         discarded: t.discarded,
+                        host: url::Url::parse(&t.url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default(),
                     },
                 ));
             }
