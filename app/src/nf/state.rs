@@ -51,6 +51,10 @@ pub struct Settings {
     /// leaves the computer before Enter).
     pub search_suggestions: bool,
     pub vertical_tabs: bool,
+    /// Coloured line on top of the active tab.
+    pub tab_accent_line: bool,
+    /// « attached » (joined to the toolbar) | « rounded » (floating).
+    pub tab_shape: String,
     /// 0 = never.
     pub auto_lock_minutes: u32,
     pub lock_on_sleep: bool,
@@ -203,6 +207,8 @@ impl Default for Settings {
             search_engines_custom: Vec::new(),
             search_suggestions: false,
             vertical_tabs: false,
+            tab_accent_line: true,
+            tab_shape: "attached".into(),
             auto_lock_minutes: 15,
             lock_on_sleep: true,
             session_vault: true,
@@ -396,6 +402,9 @@ impl Settings {
         }
         sites.truncate(100);
         self.perf.keep_active_sites = sites;
+        if !["attached", "rounded"].contains(&self.tab_shape.as_str()) {
+            self.tab_shape = "attached".into();
+        }
         if !MIN_FONT_SIZES.contains(&self.min_font_size) {
             self.min_font_size = 0;
         }
@@ -686,6 +695,7 @@ mod tests {
         // Settings added in 0.3: absent from older profiles, safe defaults.
         assert_eq!((s.min_font_size, s.reduce_motion, s.network_prediction), (0, false, false));
         assert!(!s.clear_on_close_history && !s.clear_on_close_cookies && s.search_engines_custom.is_empty());
+        assert!(s.tab_accent_line && s.tab_shape == "attached");
     }
 
     #[test]

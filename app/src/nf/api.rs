@@ -456,6 +456,26 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             json!({ "ok": true, "shortcuts": c.settings.shortcuts, "wallpaper": c.settings.wallpaper, "topSites": top, "engine": c.settings.search_engine, "stats": stats })
         }
 
+        // ---- New tab background image (encrypted with the user's data)
+        "newtab.image.get" => match core().storage() {
+            Some(st) => json!({ "ok": true, "data": st.setting::<String>(NEWTAB_IMAGE_KEY).ok().flatten().unwrap_or_default() }),
+            None => err("NIGHTFALL est verrouillé"),
+        },
+        "newtab.image.set" => {
+            let data = s(body, "data");
+            if !valid_background_image(data) {
+                return err("image refusée (JPEG, PNG ou WebP de moins de 3 Mo)");
+            }
+            match core().storage() {
+                Some(st) => st.set_setting(NEWTAB_IMAGE_KEY, &data).map(|_| ok()).unwrap_or_else(err),
+                None => err("NIGHTFALL est verrouillé"),
+            }
+        }
+        "newtab.image.clear" => match core().storage() {
+            Some(st) => st.set_setting(NEWTAB_IMAGE_KEY, &"").map(|_| ok()).unwrap_or_else(err),
+            None => err("NIGHTFALL est verrouillé"),
+        },
+
         // ---- downloads (UI thread data)
         "downloads.list" => {
             // Download state lives on the UI thread; the page polls this.
@@ -679,6 +699,8 @@ fn state_json(w: u32) -> Value {
         "splash": c.prefs.splash_enabled,
         "verticalTabs": c.settings.vertical_tabs,
         "showHome": c.settings.show_home_button,
+        "tabAccent": c.settings.tab_accent_line,
+        "tabShape": c.settings.tab_shape,
         "frameless": super::titlebar::FRAMELESS,
         "platform": super::titlebar::platform(),
         "windowId": w,
@@ -835,6 +857,17 @@ fn run_transfer(export: bool, what: &str, p: &std::path::Path) -> Value {
             r.map(|_| json!({ "ok": true, "count": n })).unwrap_or_else(err)
         }
     }
+}
+
+const NEWTAB_IMAGE_KEY: &str = "newtab_image";
+
+/// A background chosen by the user: a base64 data URL of a JPEG, PNG or
+/// WebP image (resized by the page), at most 3 MB.
+fn valid_background_image(data: &str) -> bool {
+    let Some(b64) = ["data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,"].iter().find_map(|p| data.strip_prefix(p)) else {
+        return false;
+    };
+    data.len() <= 3 * 1024 * 1024 && !b64.is_empty() && b64.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'+' || c == b'/' || c == b'=')
 }
 
 fn unlock_error(e: UnlockError) -> Value {
@@ -1180,7 +1213,10 @@ fn apply_settings_change(old: &state::Settings) -> Value {
     let new = core().settings.clone();
     super::prefs::update_flags(&new);
     let (tx, rx) = std::sync::mpsc::channel();
-    let layout = old.vertical_tabs != new.vertical_tabs || old.show_home_button != new.show_home_button;
+    let layout = old.vertical_tabs != new.vertical_tabs
+        || old.show_home_button != new.show_home_button
+        || old.tab_accent_line != new.tab_accent_line
+        || old.tab_shape != new.tab_shape;
     on_ui(move || {
         let report = super::prefs::apply_all();
         let _ = tx.send(report);
@@ -1733,6 +1769,17 @@ fn request_remote_suggestions(w: u32, text: String, endpoint: &'static str, temp
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_images_are_checked() {
+        assert!(valid_background_image("data:image/jpeg;base64,/9j/4AAQSkZJRg=="));
+        assert!(valid_background_image("data:image/webp;base64,UklGRg=="));
+        assert!(!valid_background_image("data:image/svg+xml;base64,PHN2Zz4="));
+        assert!(!valid_background_image("data:image/png;base64,"));
+        assert!(!valid_background_image("data:image/png;base64,AAAA\"><script>"));
+        assert!(!valid_background_image("https://example.com/a.jpg"));
+        assert!(!valid_background_image(&format!("data:image/png;base64,{}", "A".repeat(3 * 1024 * 1024))));
+    }
 
     #[test]
     fn input_resolution() {
