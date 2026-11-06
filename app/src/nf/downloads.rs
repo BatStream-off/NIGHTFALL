@@ -124,6 +124,24 @@ pub fn choose_folder(browser: &Browser, current: &std::path::Path, done: impl Fn
     );
 }
 
+/// Native file picker (open or save) for an import or an export run from
+/// a settings tab; `accept` are extensions such as ".html".
+pub fn choose_file(browser: &Browser, save: bool, title: &str, default_path: &str, accept: &[&str], done: impl FnOnce(Option<String>) + Send + 'static) {
+    let Some(host) = browser.host() else { return };
+    let mut cb = FolderPicked::new(Arc::new(std::sync::Mutex::new(Some(Box::new(done) as Box<dyn FnOnce(Option<String>) + Send>))));
+    let mut filters = CefStringList::new();
+    for a in accept {
+        filters.append(a);
+    }
+    host.run_file_dialog(
+        if save { FileDialogMode::SAVE } else { FileDialogMode::OPEN },
+        Some(&CefString::from(title)),
+        Some(&CefString::from(default_path)),
+        Some(&mut filters),
+        Some(&mut cb),
+    );
+}
+
 type FolderDone = Arc<std::sync::Mutex<Option<Box<dyn FnOnce(Option<String>) + Send>>>>;
 
 wrap_run_file_dialog_callback! {

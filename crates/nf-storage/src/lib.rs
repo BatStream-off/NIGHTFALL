@@ -7,6 +7,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::path::Path;
 
+pub mod bookmark_io;
+
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
     #[error("base de données : {0}")]

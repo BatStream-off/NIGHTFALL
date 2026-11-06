@@ -160,7 +160,7 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             on_ui(move || shortcut(w, action));
             ok()
         }
-        "omnibox.suggest" => omnibox_suggest(s(body, "text")),
+        "omnibox.suggest" => omnibox_suggest(w, s(body, "text")),
         "omnibox.render" => {
             // The top view shows its suggestions in the dropdown view.
             let ev = json!({ "type": "suggest", "items": body.get("items").cloned().unwrap_or(json!([])), "selected": body.get("selected").cloned().unwrap_or(json!(-1)) });
@@ -352,7 +352,9 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             c.save_settings();
             ok()
         }
+        "data.import" | "data.export" => data_transfer(caller, cmd, body),
         "system.proxySettings" => open_proxy_settings(),
+        "system.defaultBrowser" => open_default_browser_settings(),
         "https.proceed" => {
             // "Continuer vers le site" on the HTTPS-First warning page.
             let BrowserKind::Tab { window_id, tab_id, .. } = caller.kind else { return err("interdit") };
@@ -631,6 +633,9 @@ pub fn resolve_input(input: &str, settings: &state::Settings) -> String {
     if lower.starts_with("javascript:") || lower.starts_with("data:") || lower.starts_with("file:") {
         return settings.search_url(t);
     }
+    if let Some((_, url)) = settings.keyword_search(t) {
+        return url;
+    }
     let looks_like_host = !t.contains(' ')
         && (t.contains('.') || lower.starts_with("localhost"))
         && url::Url::parse(&format!("https://{t}")).map(|u| u.host_str().map(|h| h.contains('.') || h == "localhost").unwrap_or(false)).unwrap_or(false);
@@ -705,6 +710,115 @@ fn recovery_confirm() -> Value {
     drop(c);
     after_unlock_ui();
     ok()
+}
+
+/// Import or export of bookmarks (HTML) or passwords (CSV), from the
+/// settings tab: a native file dialog, then the page is told the result
+/// (nfTransferDone). Exporting passwords asks for the code first.
+fn data_transfer(caller: &Caller, cmd: &str, body: &Value) -> Value {
+    let BrowserKind::Tab { window_id, tab_id, .. } = caller.kind else { return err("interdit") };
+    let what = s(body, "what").to_string();
+    if !matches!(what.as_str(), "bookmarks" | "passwords") {
+        return err("type inconnu");
+    }
+    let export = cmd == "data.export";
+    {
+        let c = core();
+        if !c.is_unlocked() {
+            return err("NIGHTFALL est verrouillé");
+        }
+        if export && what == "passwords" {
+            let Some(lock) = c.lock.as_ref() else { return err("non configuré") };
+            if let Err(e) = lock.unlock_with_pin(s(body, "pin"), now()) {
+                return unlock_error(e);
+            }
+        }
+    }
+    let dir = super::downloads::download_dir(core().settings.download_dir.as_deref());
+    let (title, name, accept): (&'static str, &str, Vec<&'static str>) = match (export, what.as_str()) {
+        (false, "bookmarks") => ("Importer des favoris (fichier HTML)", "", vec![".html", ".htm"]),
+        (false, _) => ("Importer des mots de passe (fichier CSV)", "", vec![".csv"]),
+        (true, "bookmarks") => ("Exporter les favoris", "favoris-nightfall.html", vec![".html"]),
+        (true, _) => ("Exporter les mots de passe", "mots-de-passe-nightfall.csv", vec![".csv"]),
+    };
+    let default = if name.is_empty() { dir.display().to_string() } else { dir.join(name).display().to_string() };
+    on_ui(move || {
+        let Some(b) = windows::tab_browser(window_id, tab_id) else { return };
+        super::downloads::choose_file(&b, export, title, &default, &accept, move |path| {
+            let result = match path {
+                None => json!({ "ok": false, "cancelled": true }),
+                Some(p) => run_transfer(export, &what, std::path::Path::new(&p)),
+            };
+            let ev = json!({ "what": what, "export": export, "result": result });
+            windows::exec_in_tab(window_id, tab_id, &format!("window.nfTransferDone && window.nfTransferDone({ev})"));
+        });
+    });
+    ok()
+}
+
+fn read_limited(p: &std::path::Path, max: u64) -> Result<Vec<u8>, String> {
+    let meta = std::fs::metadata(p).map_err(|e| format!("fichier illisible : {e}"))?;
+    if meta.len() > max {
+        return Err(format!("fichier trop grand (plus de {} Mo)", max / (1024 * 1024)));
+    }
+    std::fs::read(p).map_err(|e| format!("fichier illisible : {e}"))
+}
+
+fn run_transfer(export: bool, what: &str, p: &std::path::Path) -> Value {
+    use zeroize::Zeroize;
+    let mut c = core();
+    match (export, what) {
+        (false, "bookmarks") => {
+            let bytes = match read_limited(p, 20 * 1024 * 1024) {
+                Ok(b) => b,
+                Err(e) => return err(e),
+            };
+            let nodes = nf_storage::bookmark_io::parse_netscape(&String::from_utf8_lossy(&bytes));
+            if nodes.is_empty() {
+                return err("aucun favori trouvé dans ce fichier");
+            }
+            let Some(st) = c.storage() else { return err("NIGHTFALL est verrouillé") };
+            st.import_bookmarks(&nodes, "Favoris importés", now()).map(|s| json!({ "ok": true, "stats": s })).unwrap_or_else(err)
+        }
+        (false, _) => {
+            let mut bytes = match read_limited(p, 10 * 1024 * 1024) {
+                Ok(b) => b,
+                Err(e) => return err(e),
+            };
+            let parsed = match std::str::from_utf8(&bytes) {
+                Ok(text) => nf_vault::csv_io::parse_csv(text).map_err(|e| e.to_string()),
+                Err(_) => Err("le fichier n'est pas en UTF-8".into()),
+            };
+            bytes.zeroize();
+            let (entries, skipped) = match parsed {
+                Ok(v) => v,
+                Err(e) => return err(e),
+            };
+            let Some(v) = c.vault_mut() else { return err("NIGHTFALL est verrouillé") };
+            v.import_entries(&entries, now())
+                .map(|s| json!({ "ok": true, "stats": { "added": s.added, "duplicates": s.duplicates, "skipped": skipped } }))
+                .unwrap_or_else(err)
+        }
+        (true, "bookmarks") => {
+            let Some(st) = c.storage() else { return err("NIGHTFALL est verrouillé") };
+            let (folders, bookmarks) = match (st.folders(), st.bookmarks()) {
+                (Ok(f), Ok(b)) => (f, b),
+                _ => return err("lecture des favoris impossible"),
+            };
+            let n = bookmarks.len();
+            std::fs::write(p, nf_storage::bookmark_io::export_netscape(&folders, &bookmarks))
+                .map(|_| json!({ "ok": true, "count": n }))
+                .unwrap_or_else(err)
+        }
+        (true, _) => {
+            let Some(v) = c.vault() else { return err("NIGHTFALL est verrouillé") };
+            let n = v.len();
+            let mut csv = v.export_csv();
+            let r = nf_core::paths::write_private(p, csv.as_bytes());
+            csv.zeroize();
+            r.map(|_| json!({ "ok": true, "count": n })).unwrap_or_else(err)
+        }
+    }
 }
 
 fn unlock_error(e: UnlockError) -> Value {
@@ -1025,6 +1139,8 @@ fn settings_get() -> Value {
         "settings": c.settings,
         "prefs": c.prefs,
         "engines": engines,
+        "engineKeywords": state::ENGINE_KEYWORDS.iter().map(|(k, n, _)| json!({"keyword": k, "name": n})).collect::<Vec<_>>(),
+        "suggestionEngines": state::SEARCH_ENGINES.iter().filter(|(id, _, _)| super::omnibox::suggest_endpoint(id).is_some()).map(|(id, _, _)| *id).collect::<Vec<_>>(),
         "permissionKinds": kinds,
         "platform": platform,
         "version": nf_core::VERSION,
@@ -1109,6 +1225,18 @@ fn settings_reset() -> Value {
 }
 
 /// Open the operating system's proxy settings (Chromium uses them).
+/// The system's own page for the default browser: NIGHTFALL never makes
+/// itself the default; the user picks it there.
+fn open_default_browser_settings() -> Value {
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("explorer.exe").arg("ms-settings:defaultapps?registeredAppUser=NIGHTFALL").spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("/usr/bin/open").arg("x-apple.systempreferences:com.apple.Desktop-Settings.extension").spawn();
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let r: std::io::Result<std::process::Child> = Err(std::io::Error::other("non disponible"));
+    r.map(|_| ok()).unwrap_or_else(|e| err(format!("impossible d'ouvrir les réglages du système : {e}")))
+}
+
 fn open_proxy_settings() -> Value {
     #[cfg(target_os = "windows")]
     let r = std::process::Command::new("explorer.exe").arg("ms-settings:network-proxy").spawn();
@@ -1498,14 +1626,18 @@ fn tab_command(w: u32, id: u32, cmd: &str, terminate: bool) {
 static OMNIBOX: std::sync::Mutex<std::collections::BTreeMap<u32, Value>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// Address bar suggestions from the local history and bookmarks only.
-fn omnibox_suggest(text: &str) -> Value {
+fn omnibox_suggest(w: u32, text: &str) -> Value {
     let text = text.trim();
     if text.is_empty() || text.len() > 300 {
         return json!({ "ok": true, "items": [] });
     }
     let c = core();
     let resolved = resolve_input(text, &c.settings);
-    let search = c.settings.search_url(text);
+    let keyword = c.settings.keyword_search(text);
+    let (search, engine_label) = match &keyword {
+        Some((name, url)) => (url.clone(), name.clone()),
+        None => (c.settings.search_url(text), c.settings.search_engine_label()),
+    };
     let typed = if resolved != search { Some(resolved) } else { None };
     // The SQL filter uses the longest word; the ranking checks every word.
     let word = text.split_whitespace().max_by_key(|w| w.len()).unwrap_or(text).to_string();
@@ -1521,8 +1653,49 @@ fn omnibox_suggest(text: &str) -> Value {
         .map(|b| super::omnibox::Candidate { url: &b.url, title: &b.title, visits: 1, last_visit: b.modified.max(b.created), bookmark: true })
         .collect();
     candidates.extend(history.iter().map(|h| super::omnibox::Candidate { url: &h.url, title: &h.title, visits: h.visit_count, last_visit: h.last_visit, bookmark: false }));
-    let items = super::omnibox::suggest(text, typed.as_deref(), &search, &c.settings.search_engine_label(), &candidates, now(), 8);
+    let items = super::omnibox::suggest(text, typed.as_deref(), &search, &engine_label, &candidates, now(), 8);
+    // The engine's own suggestions: only when turned on, for a search (not
+    // an address or a keyword), never in a private window. They arrive
+    // later as an `omnibox_remote` event; the local list is not delayed.
+    if c.settings.search_suggestions && keyword.is_none() && typed.is_none() && text.chars().count() <= 100 {
+        if let Some(endpoint) = super::omnibox::suggest_endpoint(&c.settings.search_engine) {
+            let template = c.settings.search_template();
+            request_remote_suggestions(w, text.to_string(), endpoint, template);
+        }
+    }
     json!({ "ok": true, "items": items })
+}
+
+fn request_remote_suggestions(w: u32, text: String, endpoint: &'static str, template: String) {
+    on_ui(move || {
+        if windows::is_private_window(w) {
+            return;
+        }
+        super::ui_thread::background(
+            move || {
+                let q: String = url::form_urlencoded::byte_serialize(text.as_bytes()).collect();
+                let agent = ureq::AgentBuilder::new().timeout(std::time::Duration::from_millis(1500)).user_agent("NIGHTFALL").build();
+                let body = agent.get(&endpoint.replacen("%s", &q, 1)).call().ok().and_then(|r| {
+                    let mut buf = String::new();
+                    std::io::Read::read_to_string(&mut std::io::Read::take(r.into_reader(), 64 * 1024), &mut buf).ok().map(|_| buf)
+                });
+                let phrases = body.map(|b| super::omnibox::parse_opensearch(&b, &text, 4)).unwrap_or_default();
+                let items: Vec<Value> = phrases
+                    .into_iter()
+                    .map(|p| {
+                        let pq: String = url::form_urlencoded::byte_serialize(p.as_bytes()).collect();
+                        json!({ "type": "search", "remote": true, "title": p, "url": template.replacen("%s", &pq, 1) })
+                    })
+                    .collect();
+                (text, items)
+            },
+            move |(text, items)| {
+                if !items.is_empty() {
+                    windows::push_event(w, &json!({ "type": "omnibox_remote", "text": text, "items": items }));
+                }
+            },
+        );
+    });
 }
 
 #[cfg(test)]
@@ -1538,5 +1711,7 @@ mod tests {
         assert!(resolve_input("rust borrow checker", &s).starts_with("https://duckduckgo.com/?q=rust+borrow+checker"));
         assert!(resolve_input("javascript:alert(1)", &s).starts_with("https://duckduckgo.com/"));
         assert_eq!(resolve_input("", &s), windows::NEW_TAB_URL);
+        assert_eq!(resolve_input("@w chat", &s), "https://fr.wikipedia.org/w/index.php?search=chat");
+        assert_eq!(resolve_input("@w", &s), "https://duckduckgo.com/?q=%40w");
     }
 }

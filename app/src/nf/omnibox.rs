@@ -1,5 +1,6 @@
 //! Address bar suggestions, computed locally from the encrypted history and
-//! bookmarks. Nothing is ever sent to a remote suggestion service.
+//! bookmarks. The search engine's own suggestions are asked for only when
+//! the user turned them on (off by default), never in a private window.
 
 use serde::Serialize;
 
@@ -21,6 +22,38 @@ pub struct Candidate<'a> {
     pub bookmark: bool,
 }
 
+/// OpenSearch suggestion address (`%s` = query) of a built-in engine;
+/// None for engines without a public one (Qwant, Startpage, custom).
+pub fn suggest_endpoint(engine: &str) -> Option<&'static str> {
+    Some(match engine {
+        "duckduckgo" => "https://duckduckgo.com/ac/?q=%s&type=list",
+        "brave" => "https://search.brave.com/api/suggest?q=%s",
+        "ecosia" => "https://ac.ecosia.org/autocomplete?q=%s&type=list",
+        "google" => "https://suggestqueries.google.com/complete/search?client=firefox&q=%s",
+        "bing" => "https://api.bing.com/osjson.aspx?query=%s",
+        _ => return None,
+    })
+}
+
+/// Phrases of an OpenSearch answer `["query", ["phrase", …], …]`: at most
+/// `max`, each short and without control characters, the query itself left out.
+pub fn parse_opensearch(body: &str, query: &str, max: usize) -> Vec<String> {
+    let Ok(serde_json::Value::Array(v)) = serde_json::from_str::<serde_json::Value>(body) else { return Vec::new() };
+    let Some(serde_json::Value::Array(list)) = v.get(1) else { return Vec::new() };
+    let mut out: Vec<String> = Vec::new();
+    for p in list.iter().filter_map(|x| x.as_str()) {
+        let p = p.trim();
+        if p.is_empty() || p.chars().count() > 120 || p.chars().any(char::is_control) || p.eq_ignore_ascii_case(query.trim()) || out.iter().any(|o| o == p) {
+            continue;
+        }
+        out.push(p.to_string());
+        if out.len() >= max {
+            break;
+        }
+    }
+    out
+}
+
 /// Display name of a search engine id.
 pub fn engine_name(id: &str) -> String {
     match id {
@@ -31,6 +64,7 @@ pub fn engine_name(id: &str) -> String {
         "qwant" => "Qwant".into(),
         "ecosia" => "Ecosia".into(),
         "bing" => "Bing".into(),
+        "wikipedia" => "Wikipédia".into(),
         other => {
             let mut c = other.chars();
             match c.next() {
@@ -126,6 +160,17 @@ mod tests {
 
     fn c<'a>(url: &'a str, title: &'a str, visits: i64, bookmark: bool) -> Candidate<'a> {
         Candidate { url, title, visits, last_visit: 1_000_000, bookmark }
+    }
+
+    #[test]
+    fn opensearch_answers_are_read_safely() {
+        let body = r#"["chat",["chat","chat noir","chat\u0007bip","chat roux","chat noir"]]"#;
+        assert_eq!(parse_opensearch(body, "chat", 4), vec!["chat noir", "chat roux"]);
+        assert!(parse_opensearch("<html>", "x", 4).is_empty());
+        assert!(parse_opensearch(r#"{"a":1}"#, "x", 4).is_empty());
+        assert_eq!(parse_opensearch(r#"["a",["a1","a2","a3"]]"#, "a", 2).len(), 2);
+        assert!(suggest_endpoint("qwant").is_none() && suggest_endpoint("custom").is_none());
+        assert!(suggest_endpoint("duckduckgo").unwrap().starts_with("https://"));
     }
 
     #[test]

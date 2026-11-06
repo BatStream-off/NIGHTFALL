@@ -779,7 +779,7 @@ function moveSuggestion(delta) {
   if (!n) return;
   sugg.selected = (sugg.selected + delta + n) % n;
   const it = sugg.items[sugg.selected];
-  $('#address').value = it.type === 'history' || it.type === 'bookmark' ? it.url : sugg.typed;
+  $('#address').value = it.type === 'history' || it.type === 'bookmark' ? it.url : it.remote ? it.title : sugg.typed;
   api('omnibox.render', { items: sugg.items, selected: sugg.selected });
 }
 
@@ -870,6 +870,15 @@ window.nfEvent = (ev) => {
       break;
     case 'suggest':
       if (MODE === 'popup') renderSuggestions(ev);
+      break;
+    case 'omnibox_remote':
+      // The search engine's suggestions (setting on, normal windows only),
+      // added under the local ones while the same text is still typed.
+      if (MODE === 'top' && ev.text === sugg.typed && document.activeElement === $('#address')) {
+        const have = new Set(sugg.items.map((x) => x.title));
+        const extra = (ev.items || []).filter((x) => !have.has(x.title));
+        if (extra.length) { sugg.items = sugg.items.concat(extra).slice(0, 12); if (sugg.selected < 0) sugg.selected = 0; showSuggest(); }
+      }
       break;
     case 'omnibox_picked':
       if (MODE === 'top') { sugg.open = false; sugg.seq++; const a = $('#address'); a.value = ev.url || a.value; a.blur(); }

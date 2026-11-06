@@ -653,8 +653,43 @@ pub fn after_unlock(session: Vec<nf_storage::SessionTab>) {
     for id in ids {
         open_initial_tabs(id);
     }
+    // Links opened from other applications while NIGHTFALL was locked.
+    let pending = EXTERNAL_PENDING.with(|p| std::mem::take(&mut *p.borrow_mut()));
+    if !pending.is_empty() {
+        open_external_urls(pending);
+    }
     push_event_all(&serde_json::json!({ "type": "unlocked" }));
     push_tabs_all();
+}
+
+thread_local! {
+    static EXTERNAL_PENDING: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Web addresses passed by another application (NIGHTFALL is the default
+/// browser, or a second launch with links): opened in new tabs of the first
+/// normal window, which comes to the front. While locked they wait for the
+/// unlock and are never shown before the code.
+pub fn open_external_urls(urls: Vec<String>) {
+    let urls: Vec<String> = urls.into_iter().filter(|u| u.starts_with("http://") || u.starts_with("https://")).take(20).collect();
+    let target = window_ids().into_iter().find(|&id| !is_private_window(id));
+    let Some(id) = target else {
+        create_window(false, urls);
+        return;
+    };
+    if let Some(w) = with_window(id, |c| c.window.clone()).flatten() {
+        w.activate();
+    }
+    if urls.is_empty() {
+        return;
+    }
+    if !core().is_unlocked() {
+        EXTERNAL_PENDING.with(|p| p.borrow_mut().extend(urls));
+        return;
+    }
+    for (i, u) in urls.iter().enumerate() {
+        add_tab(id, u, i == 0);
+    }
 }
 
 /// Lock: hide every window's content (pages keep running but are invisible).
@@ -1359,6 +1394,11 @@ fn exec_js(view: &BrowserView, code: &str) {
 }
 
 /// Send an event to the window's interface views.
+/// True for a private window, and for an unknown one (safe side).
+pub fn is_private_window(id: u32) -> bool {
+    with_window(id, |c| c.private).unwrap_or(true)
+}
+
 pub fn push_event(window_id: u32, event: &serde_json::Value) {
     let code = format!("window.nfEvent && window.nfEvent({event});");
     if windows_busy() {

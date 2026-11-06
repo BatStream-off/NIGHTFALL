@@ -134,6 +134,7 @@ label { display: block; margin: 14px 0 6px; color: var(--mist); font-size: 13px;
 .badge { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 500; background: var(--slate-2); color: var(--mist); border: 1px solid var(--steel); }
 .badge.ok { color: var(--ok); border-color: rgba(76, 212, 160, .35); background: rgba(76, 212, 160, .08); }
 .badge.warn { color: var(--warn); border-color: rgba(242, 180, 90, .35); background: rgba(242, 180, 90, .08); }
+.kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 24px; padding: 0 6px; border: 1px solid var(--c-line-strong); border-bottom-width: 2px; border-radius: 6px; font: 500 12px/1 var(--mono); color: var(--c-text-2); background: var(--c-raised); }
 .state { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 13px; color: var(--c-text-2); }
 .state::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--ok); }
 .state.warn { color: var(--warn); }

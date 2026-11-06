@@ -396,9 +396,39 @@ function sSearch() {
   });
   custom.hidden = S.search_engine !== 'custom';
   custom.nfDep = () => sel.value === 'custom';
-  return [group('',
-    row({ label: 'Moteur de recherche utilisé dans la barre d\'adresse', desc: 'Ce que vous tapez et qui n\'est pas une adresse est envoyé à ce moteur.', ctl: sel, keywords: 'duckduckgo google brave qwant startpage ecosia bing' }),
-    custom)];
+  const sugg = toggle('Suggestions de recherche du moteur', 'Pendant la frappe, ce que vous tapez dans la barre d\'adresse est envoyé au moteur choisi pour obtenir ses suggestions (jamais dans une fenêtre privée, jamais pour une adresse). Désactivé, rien ne quitte l\'ordinateur avant Entrée. Disponible avec DuckDuckGo, Brave Search, Ecosia, Google et Bing.', () => S.search_suggestions, (v) => { S.search_suggestions = v; }, { keywords: 'suggestions autocompletion saisie' });
+
+  // Keywords: built-in engines and the user's own.
+  const kwList = el('ul', { class: 'slist' });
+  const renderKw = () => {
+    kwList.textContent = '';
+    for (const k of INFO.engineKeywords || []) kwList.append(el('li', {}, el('span', { class: 'kbd', text: '@' + k.keyword }), el('span', { class: 'grow', text: k.name })));
+    S.search_engines_custom.forEach((e, i) => kwList.append(el('li', {}, el('span', { class: 'kbd', text: '@' + e.keyword }),
+      el('div', { class: 'grow' }, el('div', { text: e.name }), el('div', { class: 'sub', text: e.url })),
+      iconButton('s-x', 'Retirer ' + e.name, async () => { S.search_engines_custom.splice(i, 1); await save('Moteur retiré'); renderKw(); }))));
+  };
+  renderKw();
+  const kName = el('input', { placeholder: 'Nom (ex. : MDN)', 'aria-label': 'Nom du moteur' });
+  const kKey = el('input', { placeholder: 'Mot-clé (ex. : mdn)', 'aria-label': 'Mot-clé', style: 'max-width:160px' });
+  const kUrl = el('input', { type: 'url', placeholder: 'https://developer.mozilla.org/fr/search?q=%s', 'aria-label': 'Adresse du moteur (%s = recherche)' });
+  const addKw = button('Ajouter', async () => {
+    const e = { name: kName.value.trim(), keyword: kKey.value.trim().replace(/^@/, '').toLowerCase(), url: kUrl.value.trim() };
+    if (!e.name || !/^[a-z0-9]{1,12}$/.test(e.keyword)) { note('Mot-clé : 1 à 12 lettres ou chiffres', true); return; }
+    if (!/^https:\/\//i.test(e.url) || !e.url.includes('%s')) { note('L\'adresse doit commencer par https:// et contenir %s', true); return; }
+    if ((INFO.engineKeywords || []).some((k) => k.keyword === e.keyword) || S.search_engines_custom.some((k) => k.keyword === e.keyword)) { note('Ce mot-clé est déjà utilisé', true); return; }
+    S.search_engines_custom.push(e);
+    if (await save('Moteur ajouté')) { kName.value = ''; kKey.value = ''; kUrl.value = ''; renderKw(); }
+  });
+  return [
+    group('',
+      row({ label: 'Moteur de recherche utilisé dans la barre d\'adresse', desc: 'Ce que vous tapez et qui n\'est pas une adresse est envoyé à ce moteur.', ctl: sel, keywords: 'duckduckgo google brave qwant startpage ecosia bing' }),
+      custom),
+    group('Suggestions', sugg),
+    group('Mots-clés',
+      row({ label: 'Rechercher avec un autre moteur', desc: 'Tapez @ suivi du mot-clé, une espace, puis votre recherche. Exemple : « @w chat » cherche « chat » dans Wikipédia.', keywords: 'mot cle raccourci moteur arobase' }),
+      el('div', {}, kwList),
+      row({ label: 'Ajouter un moteur', desc: 'Adresse https de la page de résultats, où %s est remplacé par votre recherche.', stack: true, below: el('div', { class: 'inline-form' }, kName, kKey, kUrl, addKw), keywords: 'ajouter moteur personnalise' })),
+  ];
 }
 
 // DNS over HTTPS: provider list plus the NextDNS id or custom address.
@@ -641,8 +671,45 @@ function sAdvanced() {
   ];
 }
 
+// ---- Import and export (bookmarks HTML, passwords CSV)
+window.nfTransferDone = (ev) => {
+  const r = ev.result || {};
+  if (r.cancelled) return;
+  if (!r.ok) { note(r.error || 'Opération impossible', true); return; }
+  if (ev.export) { note(ev.what === 'bookmarks' ? `${r.count} favori(s) exporté(s)` : `${r.count} mot(s) de passe exporté(s). Le fichier est en clair : supprimez-le dès qu'il a servi.`); return; }
+  const s = r.stats || {};
+  if (ev.what === 'bookmarks') note(`${s.added} favori(s) importé(s) dans le dossier « Favoris importés »` + (s.skipped ? `, ${s.skipped} doublon(s) ignoré(s)` : ''));
+  else note(`${s.added} mot(s) de passe importé(s)` + (s.duplicates ? `, ${s.duplicates} déjà présent(s)` : '') + (s.skipped ? `, ${s.skipped} ligne(s) d'applications ignorée(s)` : '') + '. Supprimez maintenant le fichier CSV : il contient vos mots de passe en clair.');
+};
+
+function exportPasswordsDialog() {
+  const pin = el('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', placeholder: 'Code NIGHTFALL', 'aria-label': 'Code NIGHTFALL' });
+  const go = button('Exporter', async () => {
+    go.disabled = true;
+    const r = await api('data.export', { what: 'passwords', pin: pin.value });
+    pin.value = '';
+    go.disabled = false;
+    if (!r || !r.ok) { note((r && r.error) || 'Export impossible', true); return; }
+    closeDialog();
+  }, 'danger');
+  pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
+  openDialog('Exporter les mots de passe', el('div', {},
+    el('p', { class: 'muted', text: 'Le fichier CSV contiendra tous vos mots de passe en clair, lisibles par n\'importe quel programme ou personne ayant accès au fichier. Gardez-le le moins longtemps possible et supprimez-le après usage.' }),
+    pin), [button('Annuler', closeDialog), go]);
+}
+
 function sGeneral() {
-  return [...sStartup(), ...sLanguages(), ...sUpdates()];
+  const run = (cmd, what) => async () => { const r = await api(cmd, { what }); if (!r || !r.ok) note((r && r.error) || 'Opération impossible', true); };
+  return [...sStartup(),
+    group('Navigateur par défaut',
+      row({ label: 'Faire de NIGHTFALL le navigateur par défaut', desc: INFO.platform === 'macos' ? 'Ouvre Réglages Système › Bureau et Dock : choisissez NIGHTFALL dans « Navigateur web par défaut ». Les liens des autres applications s\'ouvriront alors dans NIGHTFALL, après le code s\'il est verrouillé.' : 'Ouvre Paramètres › Applications › Applications par défaut de Windows : choisissez NIGHTFALL pour HTTP et HTTPS. Les liens des autres applications s\'ouvriront alors dans NIGHTFALL, après le code s\'il est verrouillé.', keywords: 'defaut principal liens',
+        ctl: button('Ouvrir les réglages du système', async () => { check(await api('system.defaultBrowser')); }) })),
+    group('Importer et exporter',
+      row({ label: 'Favoris', desc: 'Fichier HTML exporté par Chrome, Brave, Edge, Firefox ou Safari. Les favoris importés sont rangés dans un dossier « Favoris importés » ; rien d\'existant n\'est modifié.', keywords: 'importer exporter favoris marque-pages chrome firefox brave',
+        ctl: [button('Importer…', run('data.import', 'bookmarks')), button('Exporter…', run('data.export', 'bookmarks'))] }),
+      row({ label: 'Mots de passe', desc: 'Fichier CSV exporté par un autre navigateur ou gestionnaire. NIGHTFALL ne lit jamais directement les profils des autres navigateurs. L\'export demande votre code.', keywords: 'importer exporter mots de passe csv identifiants',
+        ctl: [button('Importer…', run('data.import', 'passwords')), button('Exporter…', exportPasswordsDialog)] })),
+    ...sLanguages(), ...sUpdates()];
 }
 
 function sNavigation() {
@@ -1058,6 +1125,7 @@ async function load() {
   const r = await api('settings.get');
   if (!r || !r.ok) { $('#root').append(el('p', { class: 'muted', text: 'Impossible de lire les paramètres : ' + ((r && r.error) || 'erreur') })); return; }
   S = r.settings;
+  S.search_engines_custom = S.search_engines_custom || [];
   P = r.prefs;
   INFO = r;
   render();

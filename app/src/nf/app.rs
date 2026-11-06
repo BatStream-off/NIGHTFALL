@@ -67,6 +67,24 @@ wrap_app! {
     }
 }
 
+static CONTEXT_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static EARLY_URLS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Links from the system (macOS « open URL » event): kept until the first
+/// window exists, then opened like any external link.
+#[allow(dead_code)]
+pub fn open_urls_when_ready(urls: Vec<String>) {
+    let urls: Vec<String> = urls.into_iter().filter(|u| u.starts_with("http://") || u.starts_with("https://")).collect();
+    if urls.is_empty() {
+        return;
+    }
+    if CONTEXT_READY.load(std::sync::atomic::Ordering::SeqCst) {
+        windows::open_external_urls(urls);
+    } else if let Ok(mut v) = EARLY_URLS.lock() {
+        v.extend(urls);
+    }
+}
+
 wrap_browser_process_handler! {
     struct NfBrowserProcess;
 
@@ -76,15 +94,30 @@ wrap_browser_process_handler! {
             // Chromium-side settings (defaults until unlock, then the
             // user's: see api.rs open_stores).
             super::prefs::apply_all();
-            let urls: Vec<String> = std::env::args()
+            let mut urls: Vec<String> = std::env::args()
                 .skip(1)
                 .filter(|a| a.starts_with("http://") || a.starts_with("https://"))
                 .collect();
+            // Links handed over by macOS before Chromium was ready.
+            urls.extend(EARLY_URLS.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default());
+            CONTEXT_READY.store(true, std::sync::atomic::Ordering::SeqCst);
             windows::create_window(false, urls);
             timers::start();
             super::browsing::start_zoom_watch();
             #[cfg(feature = "selftest")]
             super::selftest::start();
+        }
+
+        // A second launch (a link opened from another application while
+        // NIGHTFALL runs): its addresses open here, the new process exits.
+        fn on_already_running_app_relaunch(&self, command_line: Option<&mut CommandLine>, _current_directory: Option<&CefString>) -> ::std::os::raw::c_int {
+            let mut list = CefStringList::new();
+            if let Some(cl) = command_line {
+                cl.arguments(Some(&mut list));
+            }
+            let urls: Vec<String> = list.into_iter().map(|a| a.to_string()).filter(|a| a.starts_with("http://") || a.starts_with("https://")).collect();
+            windows::open_external_urls(urls);
+            1
         }
     }
 }

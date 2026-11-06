@@ -45,6 +45,11 @@ pub struct Settings {
     /// where `%s` is replaced by the query.
     pub search_custom_name: String,
     pub search_custom_url: String,
+    /// Extra engines reached with their keyword (`@w chat`).
+    pub search_engines_custom: Vec<CustomEngine>,
+    /// Suggestions of the search engine while typing (off: nothing typed
+    /// leaves the computer before Enter).
+    pub search_suggestions: bool,
     pub vertical_tabs: bool,
     /// 0 = never.
     pub auto_lock_minutes: u32,
@@ -151,6 +156,30 @@ pub enum Startup {
     Pages,
 }
 
+/// A search engine added by the user, used with its keyword.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct CustomEngine {
+    pub name: String,
+    /// Without the `@`, lowercase letters and digits.
+    pub keyword: String,
+    /// https address where `%s` is replaced by the query.
+    pub url: String,
+}
+
+/// Keywords of the built-in engines: `@g chat` searches Google for « chat ».
+pub const ENGINE_KEYWORDS: &[(&str, &str, &str)] = &[
+    ("d", "DuckDuckGo", "https://duckduckgo.com/?q=%s"),
+    ("b", "Brave Search", "https://search.brave.com/search?q=%s"),
+    ("q", "Qwant", "https://www.qwant.com/?q=%s"),
+    ("s", "Startpage", "https://www.startpage.com/do/search?q=%s"),
+    ("e", "Ecosia", "https://www.ecosia.org/search?q=%s"),
+    ("g", "Google", "https://www.google.com/search?q=%s"),
+    ("bi", "Bing", "https://www.bing.com/search?q=%s"),
+    ("w", "Wikipédia", "https://fr.wikipedia.org/w/index.php?search=%s"),
+    ("yt", "YouTube", "https://www.youtube.com/results?search_query=%s"),
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Shortcut {
     pub title: String,
@@ -164,6 +193,8 @@ impl Default for Settings {
             search_engine: "duckduckgo".into(),
             search_custom_name: String::new(),
             search_custom_url: String::new(),
+            search_engines_custom: Vec::new(),
+            search_suggestions: false,
             vertical_tabs: false,
             auto_lock_minutes: 15,
             lock_on_sleep: true,
@@ -249,6 +280,25 @@ impl Settings {
         self.search_template().replacen("%s", &q, 1)
     }
 
+    /// `@keyword query`: (engine name, search address) when the keyword is
+    /// one of the built-in or user engines and a query follows.
+    pub fn keyword_search(&self, input: &str) -> Option<(String, String)> {
+        let rest = input.trim().strip_prefix('@')?;
+        let (kw, query) = rest.split_once(char::is_whitespace)?;
+        let (kw, query) = (kw.to_lowercase(), query.trim());
+        if query.is_empty() {
+            return None;
+        }
+        let (name, tpl) = self
+            .search_engines_custom
+            .iter()
+            .find(|e| e.keyword == kw)
+            .map(|e| (e.name.clone(), e.url.clone()))
+            .or_else(|| ENGINE_KEYWORDS.iter().find(|(k, _, _)| *k == kw).map(|(_, n, u)| (n.to_string(), u.to_string())))?;
+        let q: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
+        Some((name, tpl.replacen("%s", &q, 1)))
+    }
+
     /// What to open after unlock at start-up.
     pub fn startup(&self) -> Startup {
         match self.startup_mode.as_str() {
@@ -311,6 +361,22 @@ impl Settings {
         if !FONT_SIZES.contains(&self.font_size) {
             self.font_size = 16;
         }
+        let mut seen: Vec<String> = Vec::new();
+        self.search_engines_custom.retain_mut(|e| {
+            e.name = e.name.trim().chars().take(40).collect();
+            e.keyword = e.keyword.trim().trim_start_matches('@').to_lowercase();
+            e.url = e.url.trim().chars().take(500).collect();
+            let ok = !e.name.is_empty()
+                && (1..=12).contains(&e.keyword.len())
+                && e.keyword.chars().all(|c| c.is_ascii_alphanumeric())
+                && valid_search_template(&e.url)
+                && !seen.contains(&e.keyword);
+            if ok {
+                seen.push(e.keyword.clone());
+            }
+            ok
+        });
+        self.search_engines_custom.truncate(30);
         if !MIN_FONT_SIZES.contains(&self.min_font_size) {
             self.min_font_size = 0;
         }
@@ -600,6 +666,28 @@ mod tests {
         assert!(!p.splash_enabled && p.hardware_acceleration && !p.autoplay_block);
         // Settings added in 0.3: absent from older profiles, safe defaults.
         assert_eq!((s.min_font_size, s.reduce_motion, s.network_prediction), (0, false, false));
+    }
+
+    #[test]
+    fn keyword_engines() {
+        let mut s = Settings::default();
+        let (name, url) = s.keyword_search("@w chat noir").unwrap();
+        assert_eq!((name.as_str(), url.as_str()), ("Wikipédia", "https://fr.wikipedia.org/w/index.php?search=chat+noir"));
+        assert_eq!(s.keyword_search("@G  été").unwrap().1, "https://www.google.com/search?q=%C3%A9t%C3%A9");
+        // No query, unknown keyword, no @: an ordinary search.
+        assert!(s.keyword_search("@w").is_none() && s.keyword_search("@w   ").is_none());
+        assert!(s.keyword_search("@zz chat").is_none() && s.keyword_search("w chat").is_none());
+        s.search_engines_custom = vec![
+            CustomEngine { name: "MDN".into(), keyword: "@MDN".into(), url: "https://developer.mozilla.org/fr/search?q=%s".into() },
+            CustomEngine { name: "Doublon".into(), keyword: "mdn".into(), url: "https://autre.example/?q=%s".into() },
+            CustomEngine { name: "Non chiffré".into(), keyword: "x".into(), url: "http://x.example/?q=%s".into() },
+            CustomEngine { name: "Mot-clé invalide".into(), keyword: "a b".into(), url: "https://y.example/?q=%s".into() },
+        ];
+        s.sanitize();
+        assert_eq!(s.search_engines_custom.len(), 1);
+        assert_eq!(s.search_engines_custom[0].keyword, "mdn");
+        assert_eq!(s.keyword_search("@mdn grid").unwrap().1, "https://developer.mozilla.org/fr/search?q=grid");
+        assert!(!Settings::default().search_suggestions);
     }
 
     #[test]
