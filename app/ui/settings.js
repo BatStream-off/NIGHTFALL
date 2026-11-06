@@ -36,6 +36,15 @@ const KIND_NAMES = {
   downloads: ['Téléchargements multiples', 'Plusieurs fichiers téléchargés à la suite'],
   window_management: ['Gestion des fenêtres', 'Ouverture et placement de fenêtres sur vos écrans'],
   local_fonts: ['Polices installées', 'Liste des polices de votre ordinateur'],
+  sensors: ['Capteurs de mouvement', 'Accéléromètre, gyroscope : peuvent servir à vous identifier'],
+  midi: ['Appareils MIDI', 'Instruments et contrôleurs de musique'],
+  idle_detection: ['Détection d\'inactivité', 'Savoir si vous utilisez l\'ordinateur'],
+  protocol_handlers: ['Gestionnaires de liens', 'Ouvrir des liens mailto:, webcal:… avec le site'],
+  storage_access: ['Accès aux cookies intégrés', 'Un site intégré dans un autre demande ses propres cookies'],
+  file_system: ['Modification de fichiers', 'Enregistrer dans des fichiers de votre ordinateur'],
+  local_network: ['Réseau local', 'Appareils de votre réseau : imprimante, box, objets connectés'],
+  keyboard_lock: ['Capture du clavier', 'Plein écran de jeux et bureaux à distance'],
+  pointer_lock: ['Capture de la souris', 'Jeux et applications 3D'],
 };
 
 // ------------------------------------------------------------------ helpers
@@ -609,9 +618,69 @@ function sPermissions() {
   renderList();
   const decisions = row({ label: 'Décisions mémorisées', desc: 'Sans « Mémoriser », votre réponse vaut jusqu\'au prochain verrouillage. Dans une fenêtre privée, rien n\'est mémorisé.', ctl: clearAll, keywords: 'sites autorises bloques exceptions' });
   return [
+    sitesGroup(),
     group('Comportement par défaut', defaults),
-    group('Par site', decisions, el('div', {}, list)),
+    group('Décisions par site', decisions, el('div', {}, list)),
   ];
+}
+
+// ---- One place per site: everything NIGHTFALL keeps for it (Shield
+// exception, remembered permissions, zoom, always active), each removable.
+function siteKey(h) { return String(h || '').replace(/^www\./, ''); }
+
+function sitesGroup() {
+  const list = el('ul', { class: 'slist' });
+  const search = el('input', { type: 'search', placeholder: 'Rechercher un site', 'aria-label': 'Rechercher un site' });
+  let sites = new Map();
+  const collect = async () => {
+    const [st, z] = await Promise.all([loadSecurity(), api('zoom.list')]);
+    sites = new Map();
+    const get = (h) => { const k = siteKey(h); if (!sites.has(k)) sites.set(k, { host: k, shield: null, perms: [], zoom: null, keep: null }); return sites.get(k); };
+    for (const d of (st && st.shield.allowlist) || []) get(d).shield = d;
+    for (const p of S.site_permissions) get(host(p.origin) || p.origin).perms.push(p);
+    for (const s of (z && z.ok && z.sites) || []) get(s.host).zoom = s;
+    for (const h of S.perf.keep_active_sites || []) get(h).keep = h;
+    render();
+  };
+  const render = () => {
+    const q = norm(search.value.trim());
+    list.textContent = '';
+    const rows = [...sites.values()].filter((s) => !q || norm(s.host).includes(q)).sort((a, b) => a.host.localeCompare(b.host));
+    if (!rows.length) { list.append(el('li', { class: 'empty', text: sites.size ? 'Aucun site ne correspond.' : 'Aucun site n\'a de réglage propre.' })); return; }
+    for (const s of rows) {
+      const parts = [];
+      if (s.shield) parts.push('Shield désactivé');
+      if (s.perms.length) parts.push(s.perms.length + ' autorisation(s)');
+      if (s.zoom) parts.push('zoom ' + s.zoom.percent + ' %');
+      if (s.keep) parts.push('toujours actif');
+      const li = el('li', { class: 'clickable', tabindex: '0', role: 'button' }, el('div', { class: 'grow' }, el('div', { text: s.host }), el('div', { class: 'sub', text: parts.join(' · ') })), icon('s-open', 'chev'));
+      const open = () => siteDialog(s, collect);
+      li.addEventListener('click', open);
+      li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      list.append(li);
+    }
+  };
+  search.addEventListener('input', render);
+  collect();
+  return group('Sites', row({ label: 'Réglages propres à chaque site', desc: 'Exceptions de Shield, autorisations mémorisées, zoom et sites toujours actifs, regroupés par site.', ctl: search, keywords: 'site exceptions fiche' }), el('div', {}, list));
+}
+
+function siteDialog(s, refresh) {
+  const body = el('div', { class: 'site-sheet' });
+  const line = (label, value, remove) => body.append(el('div', { class: 'srow' }, el('div', { class: 'txt' }, el('div', { class: 'lbl', text: label }), el('div', { class: 'desc', text: value })),
+    remove ? el('div', { class: 'ctl' }, button('Retirer', async () => { if (await remove()) { closeDialog(); refresh(); } })) : null));
+  if (s.shield) line('NIGHTFALL Shield', 'Désactivé sur ce site', () => saveShieldCfg((c) => { c.allowlist = c.allowlist.filter((x) => x !== s.shield); }, 'Shield réactivé sur ' + s.host));
+  for (const p of s.perms) {
+    const name = (KIND_NAMES[p.kind] || [p.kind])[0];
+    line(name, (p.allow ? 'Autorisé' : 'Bloqué') + ' · ' + p.origin, async () => {
+      const ok = check(await api('permissions.forget', { origin: p.origin, kind: p.kind }), 'Décision retirée');
+      if (ok) S.site_permissions = S.site_permissions.filter((x) => !(x.origin === p.origin && x.kind === p.kind));
+      return ok;
+    });
+  }
+  if (s.zoom) line('Zoom', s.zoom.percent + ' %', async () => check(await api('zoom.forget', { host: s.zoom.host }), 'Zoom retiré'));
+  if (s.keep) line('Économiseur de mémoire', 'Toujours actif', async () => { S.perf.keep_active_sites = S.perf.keep_active_sites.filter((h) => h !== s.keep); return save('Site retiré'); });
+  openDialog(s.host, body, [button('Fermer', closeDialog, 'primary')]);
 }
 
 function sPasswords() {
