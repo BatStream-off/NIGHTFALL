@@ -34,7 +34,6 @@ static ASSETS: &[(&str, &[u8], &str)] = &[
     asset!("insecure.html", "text/html; charset=utf-8"),
     asset!("insecure.js", "text/javascript; charset=utf-8"),
     asset!("security.html", "text/html; charset=utf-8"),
-    asset!("security.js", "text/javascript; charset=utf-8"),
     asset!("history.html", "text/html; charset=utf-8"),
     asset!("history.js", "text/javascript; charset=utf-8"),
     asset!("bookmarks.html", "text/html; charset=utf-8"),

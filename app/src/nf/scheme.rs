@@ -134,7 +134,12 @@ wrap_scheme_handler_factory! {
                 let css = {
                     let c = state::core();
                     let t = if c.is_unlocked() { super::theme::active_theme(&c.settings.theme) } else { super::theme::Theme::default() };
-                    super::theme::css(&t)
+                    let mut css = super::theme::css(&t);
+                    // Accessibilité > Réduire les animations.
+                    if c.is_unlocked() && c.settings.reduce_motion {
+                        css.push_str(super::theme::REDUCED_MOTION_CSS);
+                    }
+                    css
                 };
                 return respond(200, "text/css", css.into_bytes(), false);
             }

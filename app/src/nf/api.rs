@@ -210,13 +210,20 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             ok()
         }
         "page.open" => {
-            let page = s(body, "page").to_string();
+            let mut page = s(body, "page").to_string();
             let allowed = ["settings", "security", "history", "bookmarks", "downloads", "passwords", "extensions", "about", "newtab"];
             if !allowed.contains(&page.as_str()) {
                 return err("page inconnue");
             }
             // Optional section of the page (settings.html#confidentialite).
-            let hash: String = s(body, "hash").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
+            let mut hash: String = s(body, "hash").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
+            // The Security Center is a section of the settings.
+            if page == "security" {
+                page = "settings".into();
+                if hash.is_empty() {
+                    hash = "security".into();
+                }
+            }
             let url = if hash.is_empty() { format!("nightfall://app/{page}.html") } else { format!("nightfall://app/{page}.html#{hash}") };
             on_ui(move || {
                 windows::add_tab(w, &url, true);
@@ -298,6 +305,15 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
 
         // ---- settings
         "settings.get" => settings_get(),
+        "zoom.list" => {
+            let sites: Vec<Value> = super::browsing::site_zoom_list().into_iter().map(|(host, percent)| json!({"host": host, "percent": percent})).collect();
+            json!({"ok": true, "sites": sites})
+        }
+        "zoom.forget" => {
+            let host = s(body, "host");
+            super::browsing::forget_site_zoom(if host.is_empty() { None } else { Some(host) });
+            json!({"ok": true})
+        }
         "settings.set" => settings_set(body),
         "theme.get" => theme_get(),
         "theme.set" => theme_set(body),
@@ -1016,6 +1032,7 @@ fn settings_get() -> Value {
         "downloadDir": super::downloads::download_dir(c.settings.download_dir.as_deref()).display().to_string(),
         "spellcheckAvailable": super::prefs::SPELLCHECK_AVAILABLE,
         "hardwareAccelerationAtStart": super::prefs::HW_ACCEL_AT_START.load(std::sync::atomic::Ordering::Relaxed),
+        "autoplayBlockAtStart": super::prefs::AUTOPLAY_BLOCK_AT_START.load(std::sync::atomic::Ordering::Relaxed),
         "chromium": super::prefs::last_report(),
     })
 }

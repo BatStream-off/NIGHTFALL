@@ -24,11 +24,14 @@ pub struct UiPrefs {
     pub splash_enabled: bool,
     /// GPU acceleration; read before Chromium starts (applied at next start).
     pub hardware_acceleration: bool,
+    /// Media start only after the user has interacted with the page
+    /// (Chromium command line, applied at next start).
+    pub autoplay_block: bool,
 }
 
 impl Default for UiPrefs {
     fn default() -> Self {
-        Self { splash_enabled: true, hardware_acceleration: true }
+        Self { splash_enabled: true, hardware_acceleration: true, autoplay_block: false }
     }
 }
 
@@ -70,6 +73,10 @@ pub struct Settings {
     pub default_zoom: u32,
     /// Default font size in CSS pixels (Chromium: 16).
     pub font_size: u32,
+    /// Smallest font size of web pages in CSS pixels; 0 = no minimum.
+    pub min_font_size: u32,
+    /// NIGHTFALL's own pages without animations or transitions.
+    pub reduce_motion: bool,
 
     // ---- privacy
     pub block_third_party_cookies: bool,
@@ -84,6 +91,9 @@ pub struct Settings {
     pub secure_dns: String,
     /// NextDNS configuration id, or custom DoH template URL.
     pub secure_dns_custom: String,
+    /// Chromium's page preloading and DNS prefetching (off: no request
+    /// is made to a site before you open it).
+    pub network_prediction: bool,
 
     // ---- site permissions
     /// Permission kind id -> "ask" | "block" (missing = ask).
@@ -131,6 +141,8 @@ pub const SEARCH_ENGINES: &[(&str, &str, &str)] = &[
 pub const DEFAULT_ACCEPT_LANGUAGES: &str = "fr-FR,fr,en-US,en";
 pub const ZOOM_LEVELS: &[u32] = &[50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
 pub const FONT_SIZES: &[u32] = &[9, 12, 16, 20, 24];
+/// Minimum font sizes offered (0 = none), in CSS pixels.
+pub const MIN_FONT_SIZES: &[u32] = &[0, 9, 10, 12, 14, 16, 18, 20, 24];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Startup {
@@ -173,12 +185,15 @@ impl Default for Settings {
             show_home_button: true,
             default_zoom: 100,
             font_size: 16,
+            min_font_size: 0,
+            reduce_motion: false,
             block_third_party_cookies: true,
             global_privacy_control: true,
             https_first: true,
             webrtc_ip_protection: true,
             secure_dns: "system".into(),
             secure_dns_custom: String::new(),
+            network_prediction: false,
             permission_defaults: BTreeMap::new(),
             site_permissions: Vec::new(),
             permission_resets: Vec::new(),
@@ -295,6 +310,9 @@ impl Settings {
         }
         if !FONT_SIZES.contains(&self.font_size) {
             self.font_size = 16;
+        }
+        if !MIN_FONT_SIZES.contains(&self.min_font_size) {
+            self.min_font_size = 0;
         }
         if !["system", "off", "cloudflare", "quad9", "mullvad", "nextdns", "custom"].contains(&self.secure_dns.as_str()) {
             self.secure_dns = "system".into();
@@ -452,6 +470,15 @@ pub fn core() -> MutexGuard<'static, Core> {
 
 /// GPU acceleration preference, readable before the core is fully set up
 /// (Chromium command line); `true` when unknown.
+/// Autoplay preference, readable before Chromium starts; `false` when unknown.
+pub fn autoplay_block_pref() -> bool {
+    CORE.get().map(|m| match m.lock() {
+        Ok(g) => g.prefs.autoplay_block,
+        Err(p) => p.into_inner().prefs.autoplay_block,
+    })
+    .unwrap_or(false)
+}
+
 pub fn hardware_acceleration_pref() -> bool {
     CORE.get().map(|m| match m.lock() {
         Ok(g) => g.prefs.hardware_acceleration,
@@ -570,7 +597,9 @@ mod tests {
         // Older profiles: start-up follows "restore_session".
         assert_eq!(s.startup(), Startup::NewTab);
         let p: UiPrefs = serde_json::from_str(r#"{"splash_enabled":false}"#).unwrap();
-        assert!(!p.splash_enabled && p.hardware_acceleration);
+        assert!(!p.splash_enabled && p.hardware_acceleration && !p.autoplay_block);
+        // Settings added in 0.3: absent from older profiles, safe defaults.
+        assert_eq!((s.min_font_size, s.reduce_motion, s.network_prediction), (0, false, false));
     }
 
     #[test]
@@ -652,6 +681,9 @@ mod tests {
         s.sanitize();
         assert_eq!((s.default_zoom, s.font_size), (100, 16));
         assert_eq!(s.accept_languages, "de-DE,fr,en-US");
+        s.min_font_size = 7;
+        s.sanitize();
+        assert_eq!(s.min_font_size, 0);
         assert_eq!(s.secure_dns, "system");
         assert_eq!(s.permission_defaults.len(), 1);
         assert_eq!(s.download_dir, None);

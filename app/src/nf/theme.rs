@@ -170,6 +170,10 @@ fn is_light(bg: [u8; 3]) -> bool {
 }
 
 /// Custom properties of a theme (every colour token of the interface).
+/// Added to theme.css when the user asks for fewer animations: every
+/// animation and transition of NIGHTFALL's pages ends at once.
+pub const REDUCED_MOTION_CSS: &str = "*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important;scroll-behavior:auto!important}\n";
+
 pub fn css(t: &Theme) -> String {
     let t = if validate(t).is_ok() { t.clone() } else { Theme::default() };
     let p = |c: &str| parse_hex(c).expect("validated");

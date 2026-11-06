@@ -22,6 +22,12 @@ wrap_app! {
                 if !hw {
                     cl.append_switch(Some(&CefString::from("disable-gpu")));
                 }
+                // Settings > Navigation > autoplay (applied at start).
+                let autoplay_block = super::state::autoplay_block_pref();
+                super::prefs::AUTOPLAY_BLOCK_AT_START.store(autoplay_block, std::sync::atomic::Ordering::Relaxed);
+                if let Some(policy) = super::prefs::autoplay_policy(autoplay_block) {
+                    cl.append_switch_with_value(Some(&CefString::from("autoplay-policy")), Some(&CefString::from(policy)));
+                }
                 // CI self test only: record network events for diagnosis.
                 #[cfg(feature = "selftest")]
                 if let Ok(dir) = std::env::var("NIGHTFALL_PROFILE_DIR") {

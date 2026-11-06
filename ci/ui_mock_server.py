@@ -118,6 +118,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                 "topSites": [{"title": "RTBF", "url": "https://www.rtbf.be/"}, {"title": "Reddit", "url": "https://www.reddit.com/"},
                              {"title": "OpenStreetMap", "url": "https://www.openstreetmap.org/"}, {"title": "Qwant", "url": "https://www.qwant.com/"}],
                 "stats": {"blocked": 735, "bytesSaved": 26738688, "secondsSaved": 37}}
+        elif cmd == 'zoom.list':
+            r = {"ok": True, "sites": [{"host": "fr.wikipedia.org", "percent": 125}, {"host": "www.lemonde.fr", "percent": 110}]}
         elif cmd == 'state':
             r = STATE
         else:
