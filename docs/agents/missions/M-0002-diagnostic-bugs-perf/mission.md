@@ -2,7 +2,7 @@
 
 - **Rôle** : Optimiseur
 - **Modèle** : opus — raison : diagnostic du cycle de vie des navigateurs CEF, des threads et de l'état WINDOWS : code délicat où une erreur d'analyse coûterait cher
-- **Statut** : PRÉPARÉE
+- **Statut** : ACCEPTÉE
 - **Branche** : agent/M-0002-diagnostic-bugs-perf
 - **Copie isolée (worktree)** : oui
 - **Dépend de** : rien (phase d'audit de la refonte, aucune fusion)
