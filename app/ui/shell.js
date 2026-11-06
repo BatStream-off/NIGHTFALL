@@ -871,6 +871,10 @@ window.nfEvent = (ev) => {
     case 'suggest':
       if (MODE === 'popup') renderSuggestions(ev);
       break;
+    case 'winmaxhover':
+      // Snap Layouts: the pointer is over the maximise button (Windows).
+      if ($('#w-max')) $('#w-max').classList.toggle('hover', !!ev.on);
+      break;
     case 'omnibox_remote':
       // The search engine's suggestions (setting on, normal windows only),
       // added under the local ones while the same text is still typed.

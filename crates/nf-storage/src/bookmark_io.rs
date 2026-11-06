@@ -44,9 +44,13 @@ fn decode_entities(s: &str) -> String {
             "quot" => Some('"'),
             "apos" | "#39" => Some('\''),
             "nbsp" => Some(' '),
-            _ if ent.starts_with("#x") || ent.starts_with("#X") => u32::from_str_radix(&ent[2..], 16).ok().and_then(char::from_u32),
-            _ if ent.starts_with('#') => ent[1..].parse::<u32>().ok().and_then(char::from_u32),
-            _ => None,
+            _ => match ent.strip_prefix('#') {
+                Some(n) => match n.strip_prefix(['x', 'X']) {
+                    Some(hex) => u32::from_str_radix(hex, 16).ok().and_then(char::from_u32),
+                    None => n.parse::<u32>().ok().and_then(char::from_u32),
+                },
+                None => None,
+            },
         };
         match ch {
             Some(c) => {

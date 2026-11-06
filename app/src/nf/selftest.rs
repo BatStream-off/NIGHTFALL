@@ -1000,7 +1000,7 @@ fn step_titlebar() {
     }
     if cfg!(target_os = "windows") {
         let h = &r["hitTest"];
-        let ok = h["drag"] == 2 && h["noDrag"] == 1 && h["content"] == 1 && h["leftEdge"] == 10 && h["bottomRight"] == 17;
+        let ok = h["drag"] == 2 && h["noDrag"] == 1 && h["content"] == 1 && h["leftEdge"] == 10 && h["bottomRight"] == 17 && h["maxButton"] == 9;
         if !ok {
             return fail(&format!("barre de titre : réponses WM_NCHITTEST inattendues {h}"));
         }
