@@ -822,7 +822,7 @@ mod tests {
 
     #[test]
     fn nested_settings_with_missing_fields_load_without_loss() {
-        // Complete "app" copy as saved today: perf with its 3 fields,
+        // Complete "app" copy as saved today: perf with its 4 fields,
         // auto_purge with its 3 fields.
         let mut s = Settings::default();
         s.search_engine = "qwant".into();
@@ -832,7 +832,7 @@ mod tests {
         s.auto_purge.min_independent_critical = 3;
         s.site_permissions.push(SitePermission { origin: "https://a.example".into(), kind: "camera".into(), allow: true, updated: 5 });
         let full = serde_json::to_value(&s).unwrap();
-        assert_eq!(full["perf"].as_object().unwrap().len(), 3);
+        assert_eq!(full["perf"].as_object().unwrap().len(), 4);
         assert_eq!(full["auto_purge"].as_object().unwrap().len(), 3);
         let back: Settings = serde_json::from_value(full.clone()).unwrap();
         assert_eq!(serde_json::to_value(&back).unwrap(), full);
