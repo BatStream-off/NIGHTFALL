@@ -135,3 +135,10 @@ raison, preuves.
   jetable (commit et push sur `develop` refusés sans marqueur Directeur, suppression
   refusée), `preserve.py` rejoué sur 0.1.2 → 0.1.3 (détecte les éléments disparus de
   la refonte) et 0.1.3 → 0.1.4 (aucune disparition).
+
+## 2026-11-06 — Décisions du propriétaire (finalisation)
+- security.html remplacée par une redirection vers le Security Center des Paramètres (accord écrit : « Oui, rediriger »).
+- Inclus dans la 1.0 : import/export (favoris HTML, mots de passe CSV), navigateur par défaut, suggestions de recherche en ligne (désactivées par défaut), Snap Layouts Windows.
+- VideoGuard : lecture seule, aucun envoi ni vote SponsorBlock.
+- Événements de sécurité : conservation 30 jours.
+- Netflix et services à DRM : lecteur compagnon sur Electron de castLabs (ECS + EVS gratuit) reporté après la 1.0.

@@ -10,7 +10,7 @@ use super::ui_thread::on_ui;
 use super::windows;
 use cef::*;
 use serde::Deserialize;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 #[derive(Debug, Default, Deserialize)]
@@ -114,6 +114,38 @@ wrap_dev_tools_message_observer! {
 thread_local! {
     /// Keeps the DevTools observer registered until the results are in.
     static OBSERVER: std::cell::RefCell<Option<Registration>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Set when the last window closes with « effacer les cookies à la
+/// fermeture »: the Session Vault then drops its sealed copy.
+pub static CLEAR_COOKIES_ON_CLOSE: AtomicBool = AtomicBool::new(false);
+
+/// Confidentialité › À la fermeture, run when the last window closes.
+pub fn clear_on_close() {
+    let (history, cookies, vault) = {
+        let c = core();
+        (c.settings.clear_on_close_history, c.settings.clear_on_close_cookies, c.settings.session_vault)
+    };
+    if history {
+        let c = core();
+        if let Some(st) = c.storage() {
+            let h = st.clear_history();
+            let d = st.delete_downloads_range(0, i64::MAX);
+            state::log(&format!("effacement à la fermeture : historique {}, téléchargements {}", h.is_ok(), d.is_ok()));
+        }
+    }
+    if cookies {
+        CLEAR_COOKIES_ON_CLOSE.store(true, Ordering::SeqCst);
+        // With the Session Vault, sealing removes the cookies from Chromium
+        // and the sealed copy is dropped; without it, delete them here.
+        if !vault {
+            if let Some(m) = cookie_manager_get_global_manager(None) {
+                let mut cb = CookiesDeleted::new();
+                m.delete_cookies(None, None, Some(&mut cb));
+                m.flush_store(None);
+            }
+        }
+    }
 }
 
 /// Sites whose data was cleared (self test).

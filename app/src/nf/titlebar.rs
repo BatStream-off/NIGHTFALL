@@ -8,7 +8,8 @@
 //! and handed to `CefWindow::SetDraggableRegions`, which makes the window
 //! answer "caption" (HTCAPTION) to the system there. Verified in CI: move
 //! by dragging, double-click to maximise / restore (Windows) and zoom
-//! (macOS). Windows Snap is only expected from HTCAPTION: not tested.
+//! (macOS). Windows 11 Snap Layouts: see `snap` (maximise button answers
+//! HTMAXBUTTON, checked by the self test).
 //!
 //! - Windows: the minimise / maximise / close buttons are drawn by the
 //!   interface (`win.*` commands); the resize borders are provided by CEF's
@@ -149,6 +150,8 @@ pub fn apply(window_id: u32) {
         out
     });
     window.set_draggable_regions(Some(&out));
+    #[cfg(target_os = "windows")]
+    snap::update(window_id, &window);
 }
 
 pub fn forget(window_id: u32) {
@@ -270,8 +273,125 @@ fn hit_test(window: &Window, drag: Option<(i32, i32)>, nodrag: Option<(i32, i32)
         "content": test(Some((area.width / 2, h - 60))),
         "leftEdge": test(Some((1, h / 2))),
         "bottomRight": test(Some((area.width - 2, h - 2))),
+        // Centre of the interface's maximise button (Snap Layouts): HTMAXBUTTON = 9.
+        "maxButton": test(Some((area.width - snap::BUTTON_W - snap::BUTTON_W / 2, 19))),
         "scale": scale,
     })
+}
+
+/// Windows 11 Snap Layouts: the layout grid appears when the pointer rests
+/// on the maximise button, which the system finds by asking the window
+/// what is under the pointer (WM_NCHITTEST). The button is drawn by the
+/// interface (top right: minimise, maximise, close, 46 DIP each), so the
+/// window procedure is subclassed to answer HTMAXBUTTON over it; a click
+/// there then arrives as a non-client message and toggles maximise here.
+#[cfg(target_os = "windows")]
+mod snap {
+    use cef::*;
+    use std::sync::Mutex;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT};
+    use windows_sys::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowRect, HTMAXBUTTON, WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE};
+
+    /// Width of each window button and height of the band, in DIP (shell.css).
+    pub const BUTTON_W: i32 = 46;
+    const BAND_H: i32 = 38;
+
+    struct Info {
+        hwnd: isize,
+        window_id: u32,
+        scale: f32,
+        enabled: bool,
+        hover: bool,
+    }
+
+    static WINDOWS: Mutex<Vec<Info>> = Mutex::new(Vec::new());
+
+    /// Install once per window, then keep the scale and state current.
+    pub fn update(window_id: u32, window: &Window) {
+        let hwnd = window.window_handle().0 as isize;
+        if hwnd == 0 {
+            return;
+        }
+        let scale = window.display().map(|d| d.device_scale_factor()).unwrap_or(1.0);
+        let enabled = window.is_fullscreen() == 0;
+        let ids = super::windows::window_ids();
+        let Ok(mut list) = WINDOWS.lock() else { return };
+        if !ids.is_empty() {
+            list.retain(|i| ids.contains(&i.window_id));
+        }
+        if let Some(i) = list.iter_mut().find(|i| i.hwnd == hwnd) {
+            i.scale = scale;
+            i.enabled = enabled;
+            return;
+        }
+        // SAFETY: a live top-level window of this process; the procedure
+        // only reads coordinates and calls DefSubclassProc.
+        let ok = unsafe { SetWindowSubclass(hwnd as HWND, Some(proc), 0x4E46, 0) } != 0;
+        if ok {
+            list.push(Info { hwnd, window_id, scale, enabled, hover: false });
+        }
+    }
+
+    fn over_button(hwnd: HWND, lp: LPARAM) -> Option<u32> {
+        let x = (lp & 0xFFFF) as u16 as i16 as i32;
+        let y = ((lp >> 16) & 0xFFFF) as u16 as i16 as i32;
+        let list = WINDOWS.try_lock().ok()?;
+        let info = list.iter().find(|i| i.hwnd == hwnd as isize && i.enabled)?;
+        let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        // SAFETY: valid window handle and RECT out-pointer.
+        if unsafe { GetWindowRect(hwnd, &mut r) } == 0 {
+            return None;
+        }
+        let px = |dip: i32| (dip as f32 * info.scale).round() as i32;
+        let inside = x >= r.right - px(2 * BUTTON_W) && x < r.right - px(BUTTON_W) && y >= r.top && y < r.top + px(BAND_H);
+        inside.then_some(info.window_id)
+    }
+
+    fn set_hover(hwnd: HWND, on: bool) {
+        let changed = WINDOWS.try_lock().ok().and_then(|mut list| {
+            let i = list.iter_mut().find(|i| i.hwnd == hwnd as isize)?;
+            (i.hover != on).then(|| {
+                i.hover = on;
+                i.window_id
+            })
+        });
+        if let Some(id) = changed {
+            super::on_ui_delayed(0, move || super::windows::push_event(id, &serde_json::json!({ "type": "winmaxhover", "on": on })));
+        }
+    }
+
+    unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM, _id: usize, _data: usize) -> LRESULT {
+        let max = HTMAXBUTTON as usize;
+        match msg {
+            WM_NCHITTEST => {
+                if over_button(hwnd, lp).is_some() {
+                    return HTMAXBUTTON as LRESULT;
+                }
+            }
+            WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK if wp == max => return 0,
+            WM_NCLBUTTONUP if wp == max => {
+                if let Some(id) = over_button(hwnd, lp) {
+                    super::on_ui_delayed(0, move || super::command(id, "win.maximize"));
+                }
+                return 0;
+            }
+            WM_NCMOUSEMOVE => {
+                let on = wp == max;
+                if on {
+                    let mut t = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE | TME_NONCLIENT, hwndTrack: hwnd, dwHoverTime: 0 };
+                    // SAFETY: valid structure for this window.
+                    unsafe { TrackMouseEvent(&mut t) };
+                }
+                set_hover(hwnd, on);
+            }
+            WM_NCMOUSELEAVE => set_hover(hwnd, false),
+            _ => {}
+        }
+        // SAFETY: forwarding the unchanged message to the next procedure.
+        unsafe { DefSubclassProc(hwnd, msg, wp, lp) }
+    }
 }
 
 #[allow(dead_code)]

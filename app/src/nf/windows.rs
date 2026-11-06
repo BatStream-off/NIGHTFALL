@@ -232,6 +232,9 @@ wrap_window_delegate! {
         }
 
         fn can_close(&self, _window: Option<&mut Window>) -> i32 {
+            if ask_before_close(self.window_id) {
+                return 0;
+            }
             prepare_window_close(self.window_id);
             1
         }
@@ -495,7 +498,17 @@ pub fn create_window(private: bool, urls: Vec<String>) {
     });
 }
 
+/// Time from process start to the first window, in ms (0 = not yet).
+pub static FIRST_WINDOW_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn on_window_created(id: u32, window: Window) {
+    if FIRST_WINDOW_MS.load(Ordering::Relaxed) == 0 {
+        if let Some(t0) = super::PROCESS_START.get() {
+            let ms = t0.elapsed().as_millis().max(1) as u64;
+            FIRST_WINDOW_MS.store(ms, Ordering::Relaxed);
+            super::state::log(&format!("mesure : première fenêtre après {ms} ms"));
+        }
+    }
     let unlocked = core().is_unlocked();
     with_window(id, |ctx| {
         let win_layout = window.set_to_box_layout(Some(&BoxLayoutSettings { horizontal: 1, cross_axis_alignment: AxisAlignment::STRETCH, ..Default::default() }));
@@ -653,8 +666,43 @@ pub fn after_unlock(session: Vec<nf_storage::SessionTab>) {
     for id in ids {
         open_initial_tabs(id);
     }
+    // Links opened from other applications while NIGHTFALL was locked.
+    let pending = EXTERNAL_PENDING.with(|p| std::mem::take(&mut *p.borrow_mut()));
+    if !pending.is_empty() {
+        open_external_urls(pending);
+    }
     push_event_all(&serde_json::json!({ "type": "unlocked" }));
     push_tabs_all();
+}
+
+thread_local! {
+    static EXTERNAL_PENDING: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Web addresses passed by another application (NIGHTFALL is the default
+/// browser, or a second launch with links): opened in new tabs of the first
+/// normal window, which comes to the front. While locked they wait for the
+/// unlock and are never shown before the code.
+pub fn open_external_urls(urls: Vec<String>) {
+    let urls: Vec<String> = urls.into_iter().filter(|u| u.starts_with("http://") || u.starts_with("https://")).take(20).collect();
+    let target = window_ids().into_iter().find(|&id| !is_private_window(id));
+    let Some(id) = target else {
+        create_window(false, urls);
+        return;
+    };
+    if let Some(w) = with_window(id, |c| c.window.clone()).flatten() {
+        w.activate();
+    }
+    if urls.is_empty() {
+        return;
+    }
+    if !core().is_unlocked() {
+        EXTERNAL_PENDING.with(|p| p.borrow_mut().extend(urls));
+        return;
+    }
+    for (i, u) in urls.iter().enumerate() {
+        add_tab(id, u, i == 0);
+    }
 }
 
 /// Lock: hide every window's content (pages keep running but are invisible).
@@ -678,6 +726,7 @@ fn prepare_window_close(id: u32) {
         // Chromium's copy of the remembered permission decisions does not
         // outlive the session (given back at the next unlock).
         super::permissions::forget_remembered_in_chromium();
+        super::browsing_data::clear_on_close();
     }
     // Collect first, close after: closing calls back into NIGHTFALL.
     let hosts: Vec<BrowserHost> = with_window(id, |ctx| {
@@ -1359,6 +1408,11 @@ fn exec_js(view: &BrowserView, code: &str) {
 }
 
 /// Send an event to the window's interface views.
+/// True for a private window, and for an unknown one (safe side).
+pub fn is_private_window(id: u32) -> bool {
+    with_window(id, |c| c.private).unwrap_or(true)
+}
+
 pub fn push_event(window_id: u32, event: &serde_json::Value) {
     let code = format!("window.nfEvent && window.nfEvent({event});");
     if windows_busy() {
@@ -1743,6 +1797,7 @@ pub fn tab_activity() -> Vec<(u32, nf_perf::TabActivity)> {
                         editing_form: false,
                         private: ctx.private,
                         discarded: t.discarded,
+                        host: url::Url::parse(&t.url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default(),
                     },
                 ));
             }
@@ -1759,6 +1814,41 @@ pub fn close_private_windows() {
             w.close();
         }
     }
+}
+
+thread_local! {
+    /// Windows whose closing the user confirmed (several tabs).
+    static CLOSE_CONFIRMED: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Set while quitting the whole application: no question per window.
+pub static QUITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Paramètres › Navigation › « Demander avant de fermer plusieurs onglets »:
+/// true when the closing waits for the user's answer (dropdown in the window).
+fn ask_before_close(window_id: u32) -> bool {
+    if QUITTING.load(Ordering::SeqCst) || CLOSE_CONFIRMED.with(|c| c.borrow().contains(&window_id)) {
+        return false;
+    }
+    let (warn, unlocked) = {
+        let c = core();
+        (c.settings.warn_close_tabs, c.is_unlocked())
+    };
+    let tabs = with_window(window_id, |c| c.tabs.len()).unwrap_or(0);
+    if !warn || !unlocked || tabs < 2 {
+        return false;
+    }
+    let width = with_window(window_id, |c| c.window.as_ref().map(|w| w.bounds().width)).flatten().unwrap_or(800);
+    let x = (width / 2 - 170).max(0);
+    super::ui_thread::on_ui_delayed(0, move || popup_open(window_id, &format!("closeconfirm-{tabs}"), Rect { x, y: 40, width: 1, height: 1 }, 340, 150));
+    true
+}
+
+/// The user confirmed: close without asking again.
+pub fn close_window_confirmed(window_id: u32) {
+    CLOSE_CONFIRMED.with(|c| c.borrow_mut().push(window_id));
+    popup_close(window_id);
+    close_window(window_id);
 }
 
 pub fn close_window(window_id: u32) {

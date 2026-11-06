@@ -234,6 +234,7 @@ pub fn install_now() -> Value {
         Ok(()) => {
             state::log("mise à jour : installation et redémarrage");
             on_ui(|| {
+                windows::QUITTING.store(true, std::sync::atomic::Ordering::SeqCst);
                 for id in windows::window_ids() {
                     windows::close_window(id);
                 }

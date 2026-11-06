@@ -60,6 +60,23 @@ fn bundle(release: bool) -> Result<PathBuf> {
     let app_path = bundle(&out, &target_dir(release), APP, HELPER, Some(resources), info)
         .map_err(|e| anyhow::anyhow!("bundle macOS : {e}"))?;
     std::fs::rename(&app_path, &final_path)?;
+    // http and https links: lets the user choose NIGHTFALL as the default
+    // browser in System Settings (links then arrive as « open URL » events).
+    let plist = final_path.join("Contents").join("Info.plist");
+    for cmd in [
+        "Add :CFBundleURLTypes array",
+        "Add :CFBundleURLTypes:0 dict",
+        "Add :CFBundleURLTypes:0:CFBundleURLName string Adresse web",
+        "Add :CFBundleURLTypes:0:CFBundleTypeRole string Viewer",
+        "Add :CFBundleURLTypes:0:CFBundleURLSchemes array",
+        "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string http",
+        "Add :CFBundleURLTypes:0:CFBundleURLSchemes:1 string https",
+    ] {
+        let status = Command::new("/usr/libexec/PlistBuddy").arg("-c").arg(cmd).arg(&plist).status()?;
+        if !status.success() {
+            bail!("Info.plist : « {cmd} » a échoué");
+        }
+    }
     // Ad-hoc signature: required for the app to start on Apple Silicon. A
     // Developer ID signature + notarisation needs a paid Apple account.
     let status = Command::new("codesign")

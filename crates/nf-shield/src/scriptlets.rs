@@ -47,6 +47,14 @@ fn defs() -> Vec<Def> {
         def!("remove-class.js", ["rc.js"], false),
         def!("remove-node-text.js", ["rmnt.js"], false),
         def!("noeval-if.js", ["prevent-eval-if.js"], false),
+        def!("href-sanitizer.js", [], false),
+        def!("set-local-storage-item.js", [], false),
+        def!("set-session-storage-item.js", [], false),
+        def!("remove-cookie.js", ["cookie-remover.js"], false),
+        def!("set-cookie.js", [], false),
+        def!("nowebrtc.js", [], false),
+        def!("abort-on-stack-trace.js", ["aost.js"], false),
+        def!("adblock-detector-defuser.js", ["nobab.js", "bab-defuser.js", "nofab.js", "fuckadblock.js-3.2.0"], false),
     ]
 }
 

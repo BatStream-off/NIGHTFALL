@@ -14,6 +14,38 @@ fn slot() -> std::sync::MutexGuard<'static, Option<PhishingDetector>> {
     }
 }
 
+/// Events noticed while the encrypted database is closed (wrong codes on
+/// the lock screen), written at the next unlock.
+static PENDING_EVENTS: Mutex<Vec<(String, String, String, i64)>> = Mutex::new(Vec::new());
+
+/// Record a security event (Paramètres › Sécurité › Événements de sécurité).
+/// Never for a private window; only the site of `url` is kept.
+pub fn record_event(kind: &str, url: &str, detail: &str, private: bool) {
+    if private {
+        return;
+    }
+    let site = if url.contains("://") { nf_storage::events::site_of(url) } else { url.to_string() };
+    if let Ok(mut p) = PENDING_EVENTS.lock() {
+        if p.len() < 200 {
+            p.push((kind.into(), site, detail.into(), nf_core::unix_now()));
+        }
+    }
+    // Written from another thread: the caller may hold the core lock.
+    std::thread::spawn(flush_pending_events);
+}
+
+/// Write the events waiting in memory (kept while NIGHTFALL is locked).
+pub fn flush_pending_events() {
+    let c = core();
+    let Some(st) = c.storage() else { return };
+    let pending = PENDING_EVENTS.lock().map(|mut p| std::mem::take(&mut *p)).unwrap_or_default();
+    for (kind, site, detail, at) in pending {
+        if let Err(e) = st.add_security_event(&kind, &site, &detail, at) {
+            state::log(&format!("événement de sécurité non enregistré : {e}"));
+        }
+    }
+}
+
 /// Rebuild the protected-domain list (after unlock, bookmark or vault change).
 pub fn invalidate_detector() {
     *slot() = None;

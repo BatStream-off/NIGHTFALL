@@ -37,6 +37,15 @@ pub const KINDS: &[(&str, &str, u32, u32)] = &[
     ("downloads", "les téléchargements multiples", 16384, 0),
     ("window_management", "la gestion des fenêtres sur vos écrans", 8388608, 0),
     ("local_fonts", "les polices installées", 128, 0),
+    ("sensors", "les capteurs de mouvement", 268435456, 0),
+    ("midi", "les appareils MIDI", 8192, 0),
+    ("idle_detection", "la détection de votre inactivité", 2048, 0),
+    ("protocol_handlers", "l'ouverture de certains liens (mailto:, …)", 524288, 0),
+    ("storage_access", "ses cookies sur d'autres sites", 1048576, 0),
+    ("file_system", "la modification de fichiers de votre ordinateur", 16777216, 0),
+    ("local_network", "les appareils de votre réseau local", 67108864, 0),
+    ("keyboard_lock", "la capture du clavier", 65536, 0),
+    ("pointer_lock", "la capture de la souris", 131072, 0),
 ];
 
 /// Screen and system audio capture: always asked, never remembered.
@@ -128,6 +137,15 @@ fn content_types(kind: &str) -> Vec<ContentSettingTypes> {
         "downloads" => vec![ContentSettingTypes::AUTOMATIC_DOWNLOADS],
         "window_management" => vec![ContentSettingTypes::WINDOW_MANAGEMENT],
         "local_fonts" => vec![ContentSettingTypes::LOCAL_FONTS],
+        "sensors" => vec![ContentSettingTypes::SENSORS],
+        "midi" => vec![ContentSettingTypes::MIDI_SYSEX],
+        "idle_detection" => vec![ContentSettingTypes::IDLE_DETECTION],
+        "protocol_handlers" => vec![ContentSettingTypes::PROTOCOL_HANDLERS],
+        "storage_access" => vec![ContentSettingTypes::STORAGE_ACCESS],
+        "file_system" => vec![ContentSettingTypes::FILE_SYSTEM_WRITE_GUARD],
+        "local_network" => vec![ContentSettingTypes::LOCAL_NETWORK],
+        "keyboard_lock" => vec![ContentSettingTypes::KEYBOARD_LOCK],
+        "pointer_lock" => vec![ContentSettingTypes::POINTER_LOCK],
         _ => vec![],
     }
 }

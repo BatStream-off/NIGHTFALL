@@ -32,7 +32,7 @@ async function brightShare(page) {
     const share = await brightShare(p);
     const ok = share > 0.0005;
     console.log(`${ok ? 'OK  ' : 'VIDE'} ${name} : contenu visible ${(share * 100).toFixed(2)} %${errors.length ? ' ; erreurs : ' + errors.join(' | ') : ''}`);
-    if (!ok) failed = true;
+    if (!ok || errors.length) failed = true;
     await p.screenshot({ path: `ui-${name}.png` });
     await p.close();
   };
@@ -43,6 +43,10 @@ async function brightShare(page) {
   await check('menu-onglet', `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=popup&w=1&private=0&panel=tabmenu-2-ro`, { width: 290, height: 380 }, 1000);
   await check('recherche-page', `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=popup&w=1&private=0&panel=find`, { width: 400, height: 50 }, 1000);
   await check('parametres', `http://127.0.0.1:${PORT_UNLOCKED}/settings.html`, { width: 1280, height: 760 }, 1000);
+  for (const s of ['general', 'confidentialite', 'securite', 'autorisations', 'navigation', 'recherche', 'performances', 'accessibilite', 'avance']) {
+    await check('parametres-' + s, `http://127.0.0.1:${PORT_UNLOCKED}/settings.html#${s}`, { width: 1280, height: 760 }, 800);
+  }
+  await check('menu-fermeture', `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=popup&w=1&private=0&panel=closeconfirm-3`, { width: 340, height: 150 }, 800);
   await b.close();
   process.exit(failed ? 1 : 0);
 })();

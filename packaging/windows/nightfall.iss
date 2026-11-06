@@ -46,6 +46,23 @@ Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; GroupDescri
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Registry]
+; NIGHTFALL listed as a web browser (Settings > Apps > Default apps). Nothing
+; is made the default here: the user chooses it in Windows' own settings.
+Root: HKCU; Subkey: "Software\Classes\NIGHTFALLURL"; ValueType: string; ValueName: ""; ValueData: "Adresse web NIGHTFALL"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\NIGHTFALLURL"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\NIGHTFALLURL\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\nightfall.exe,0"
+Root: HKCU; Subkey: "Software\Classes\NIGHTFALLURL\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\nightfall.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Clients\StartMenuInternet\NIGHTFALL"; ValueType: string; ValueName: ""; ValueData: "NIGHTFALL"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Clients\StartMenuInternet\NIGHTFALL\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\nightfall.exe,0"
+Root: HKCU; Subkey: "Software\Clients\StartMenuInternet\NIGHTFALL\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\nightfall.exe"""
+Root: HKCU; Subkey: "Software\Clients\StartMenuInternet\NIGHTFALL\Capabilities"; ValueType: string; ValueName: "ApplicationName"; ValueData: "NIGHTFALL"
+Root: HKCU; Subkey: "Software\Clients\StartMenuInternet\NIGHTFALL\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Navigateur sécurisé NIGHTFALL"
+Root: HKCU; Subkey: "Software\Clients\StartMenuInternet\NIGHTFALL\Capabilities"; ValueType: string; ValueName: "ApplicationIcon"; ValueData: "{app}\nightfall.exe,0"
+Root: HKCU; Subkey: "Software\Clients\StartMenuInternet\NIGHTFALL\Capabilities\URLAssociations"; ValueType: string; ValueName: "http"; ValueData: "NIGHTFALLURL"
+Root: HKCU; Subkey: "Software\Clients\StartMenuInternet\NIGHTFALL\Capabilities\URLAssociations"; ValueType: string; ValueName: "https"; ValueData: "NIGHTFALLURL"
+Root: HKCU; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "NIGHTFALL"; ValueData: "Software\Clients\StartMenuInternet\NIGHTFALL\Capabilities"; Flags: uninsdeletevalue
+
 [Icons]
 Name: "{group}\NIGHTFALL"; Filename: "{app}\nightfall.exe"
 Name: "{userdesktop}\NIGHTFALL"; Filename: "{app}\nightfall.exe"; Tasks: desktopicon

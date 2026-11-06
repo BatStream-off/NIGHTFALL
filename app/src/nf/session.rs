@@ -121,7 +121,12 @@ pub fn seal_cookies_then(done: impl FnOnce() + Send + 'static) {
     manager.visit_all_cookies(Some(&mut visitor));
     on_ui_delayed(900, move || {
         let cookies = collected.lock().map(|v| v.clone()).unwrap_or_default();
-        if !cookies.is_empty() || RESTORED.load(Ordering::SeqCst) {
+        if super::browsing_data::CLEAR_COOKIES_ON_CLOSE.swap(false, Ordering::SeqCst) {
+            // Confidentialité › effacer les cookies à la fermeture: the
+            // cookies just left Chromium and are not kept.
+            let _ = std::fs::remove_file(&path);
+            state::log("Session Vault : cookies effacés à la fermeture (aucune copie gardée)");
+        } else if !cookies.is_empty() || RESTORED.load(Ordering::SeqCst) {
             match session_vault::seal(&key, &cookies, nf_core::unix_now()) {
                 Ok(bytes) => {
                     if let Err(e) = nf_core::paths::write_private(&path, &bytes) {

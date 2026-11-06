@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+pub mod csv_io;
+
 const AAD: &[u8] = b"nightfall/vault/v1";
 
 #[derive(Debug, thiserror::Error)]

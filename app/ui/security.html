@@ -4,15 +4,9 @@
   <meta charset="utf-8">
   <link rel="icon" href="favicon.png">
   <title>Security Center · NIGHTFALL</title>
-  <link rel="stylesheet" href="nf.css">
-  
+  <!-- The Security Center now lives in the settings; older addresses
+       (security.html, security.html#emergency) open the same place. -->
+  <script>location.replace('settings.html#' + (location.hash === '#emergency' ? 'emergency' : 'security'));</script>
 </head>
-<body>
-  <div class="page">
-    <div class="page-head"><img src="emblem.png" alt=""><div><h1>Security Center</h1><div class="muted">État et réglage de toutes les protections</div></div></div>
-    <div id="root"></div>
-  </div>
-  <script src="nf.js"></script>
-  <script src="security.js"></script>
-</body>
+<body></body>
 </html>

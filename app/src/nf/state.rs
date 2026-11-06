@@ -24,11 +24,14 @@ pub struct UiPrefs {
     pub splash_enabled: bool,
     /// GPU acceleration; read before Chromium starts (applied at next start).
     pub hardware_acceleration: bool,
+    /// Media start only after the user has interacted with the page
+    /// (Chromium command line, applied at next start).
+    pub autoplay_block: bool,
 }
 
 impl Default for UiPrefs {
     fn default() -> Self {
-        Self { splash_enabled: true, hardware_acceleration: true }
+        Self { splash_enabled: true, hardware_acceleration: true, autoplay_block: false }
     }
 }
 
@@ -42,6 +45,11 @@ pub struct Settings {
     /// where `%s` is replaced by the query.
     pub search_custom_name: String,
     pub search_custom_url: String,
+    /// Extra engines reached with their keyword (`@w chat`).
+    pub search_engines_custom: Vec<CustomEngine>,
+    /// Suggestions of the search engine while typing (off: nothing typed
+    /// leaves the computer before Enter).
+    pub search_suggestions: bool,
     pub vertical_tabs: bool,
     /// 0 = never.
     pub auto_lock_minutes: u32,
@@ -65,11 +73,17 @@ pub struct Settings {
 
     // ---- appearance
     pub show_home_button: bool,
+    /// Ask before closing a window that has several tabs.
+    pub warn_close_tabs: bool,
     /// Default page zoom, in percent (applied by Chromium to every page
     /// without a zoom of its own).
     pub default_zoom: u32,
     /// Default font size in CSS pixels (Chromium: 16).
     pub font_size: u32,
+    /// Smallest font size of web pages in CSS pixels; 0 = no minimum.
+    pub min_font_size: u32,
+    /// NIGHTFALL's own pages without animations or transitions.
+    pub reduce_motion: bool,
 
     // ---- privacy
     pub block_third_party_cookies: bool,
@@ -84,6 +98,14 @@ pub struct Settings {
     pub secure_dns: String,
     /// NextDNS configuration id, or custom DoH template URL.
     pub secure_dns_custom: String,
+    /// Chromium's page preloading and DNS prefetching (off: no request
+    /// is made to a site before you open it).
+    pub network_prediction: bool,
+    /// When the last window closes: history and download list erased.
+    pub clear_on_close_history: bool,
+    /// When the last window closes: cookies erased (not sealed in the
+    /// Session Vault), so every site is signed out.
+    pub clear_on_close_cookies: bool,
 
     // ---- site permissions
     /// Permission kind id -> "ask" | "block" (missing = ask).
@@ -131,6 +153,8 @@ pub const SEARCH_ENGINES: &[(&str, &str, &str)] = &[
 pub const DEFAULT_ACCEPT_LANGUAGES: &str = "fr-FR,fr,en-US,en";
 pub const ZOOM_LEVELS: &[u32] = &[50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
 pub const FONT_SIZES: &[u32] = &[9, 12, 16, 20, 24];
+/// Minimum font sizes offered (0 = none), in CSS pixels.
+pub const MIN_FONT_SIZES: &[u32] = &[0, 9, 10, 12, 14, 16, 18, 20, 24];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Startup {
@@ -138,6 +162,30 @@ pub enum Startup {
     Restore,
     Pages,
 }
+
+/// A search engine added by the user, used with its keyword.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct CustomEngine {
+    pub name: String,
+    /// Without the `@`, lowercase letters and digits.
+    pub keyword: String,
+    /// https address where `%s` is replaced by the query.
+    pub url: String,
+}
+
+/// Keywords of the built-in engines: `@g chat` searches Google for « chat ».
+pub const ENGINE_KEYWORDS: &[(&str, &str, &str)] = &[
+    ("d", "DuckDuckGo", "https://duckduckgo.com/?q=%s"),
+    ("b", "Brave Search", "https://search.brave.com/search?q=%s"),
+    ("q", "Qwant", "https://www.qwant.com/?q=%s"),
+    ("s", "Startpage", "https://www.startpage.com/do/search?q=%s"),
+    ("e", "Ecosia", "https://www.ecosia.org/search?q=%s"),
+    ("g", "Google", "https://www.google.com/search?q=%s"),
+    ("bi", "Bing", "https://www.bing.com/search?q=%s"),
+    ("w", "Wikipédia", "https://fr.wikipedia.org/w/index.php?search=%s"),
+    ("yt", "YouTube", "https://www.youtube.com/results?search_query=%s"),
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Shortcut {
@@ -152,6 +200,8 @@ impl Default for Settings {
             search_engine: "duckduckgo".into(),
             search_custom_name: String::new(),
             search_custom_url: String::new(),
+            search_engines_custom: Vec::new(),
+            search_suggestions: false,
             vertical_tabs: false,
             auto_lock_minutes: 15,
             lock_on_sleep: true,
@@ -171,14 +221,20 @@ impl Default for Settings {
             startup_mode: String::new(),
             startup_pages: Vec::new(),
             show_home_button: true,
+            warn_close_tabs: false,
             default_zoom: 100,
             font_size: 16,
+            min_font_size: 0,
+            reduce_motion: false,
             block_third_party_cookies: true,
             global_privacy_control: true,
             https_first: true,
             webrtc_ip_protection: true,
             secure_dns: "system".into(),
             secure_dns_custom: String::new(),
+            network_prediction: false,
+            clear_on_close_history: false,
+            clear_on_close_cookies: false,
             permission_defaults: BTreeMap::new(),
             site_permissions: Vec::new(),
             permission_resets: Vec::new(),
@@ -232,6 +288,25 @@ impl Settings {
     pub fn search_url(&self, query: &str) -> String {
         let q: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
         self.search_template().replacen("%s", &q, 1)
+    }
+
+    /// `@keyword query`: (engine name, search address) when the keyword is
+    /// one of the built-in or user engines and a query follows.
+    pub fn keyword_search(&self, input: &str) -> Option<(String, String)> {
+        let rest = input.trim().strip_prefix('@')?;
+        let (kw, query) = rest.split_once(char::is_whitespace)?;
+        let (kw, query) = (kw.to_lowercase(), query.trim());
+        if query.is_empty() {
+            return None;
+        }
+        let (name, tpl) = self
+            .search_engines_custom
+            .iter()
+            .find(|e| e.keyword == kw)
+            .map(|e| (e.name.clone(), e.url.clone()))
+            .or_else(|| ENGINE_KEYWORDS.iter().find(|(k, _, _)| *k == kw).map(|(_, n, u)| (n.to_string(), u.to_string())))?;
+        let q: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
+        Some((name, tpl.replacen("%s", &q, 1)))
     }
 
     /// What to open after unlock at start-up.
@@ -295,6 +370,34 @@ impl Settings {
         }
         if !FONT_SIZES.contains(&self.font_size) {
             self.font_size = 16;
+        }
+        let mut seen: Vec<String> = Vec::new();
+        self.search_engines_custom.retain_mut(|e| {
+            e.name = e.name.trim().chars().take(40).collect();
+            e.keyword = e.keyword.trim().trim_start_matches('@').to_lowercase();
+            e.url = e.url.trim().chars().take(500).collect();
+            let ok = !e.name.is_empty()
+                && (1..=12).contains(&e.keyword.len())
+                && e.keyword.chars().all(|c| c.is_ascii_alphanumeric())
+                && valid_search_template(&e.url)
+                && !seen.contains(&e.keyword);
+            if ok {
+                seen.push(e.keyword.clone());
+            }
+            ok
+        });
+        self.search_engines_custom.truncate(30);
+        let mut sites: Vec<String> = Vec::new();
+        for s in &self.perf.keep_active_sites {
+            let h = s.trim().trim_start_matches("https://").trim_start_matches("http://").split('/').next().unwrap_or("").trim_start_matches("*.").trim_end_matches('.').to_ascii_lowercase();
+            if !h.is_empty() && h.len() <= 253 && h.contains('.') && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') && !sites.contains(&h) {
+                sites.push(h);
+            }
+        }
+        sites.truncate(100);
+        self.perf.keep_active_sites = sites;
+        if !MIN_FONT_SIZES.contains(&self.min_font_size) {
+            self.min_font_size = 0;
         }
         if !["system", "off", "cloudflare", "quad9", "mullvad", "nextdns", "custom"].contains(&self.secure_dns.as_str()) {
             self.secure_dns = "system".into();
@@ -452,6 +555,15 @@ pub fn core() -> MutexGuard<'static, Core> {
 
 /// GPU acceleration preference, readable before the core is fully set up
 /// (Chromium command line); `true` when unknown.
+/// Autoplay preference, readable before Chromium starts; `false` when unknown.
+pub fn autoplay_block_pref() -> bool {
+    CORE.get().map(|m| match m.lock() {
+        Ok(g) => g.prefs.autoplay_block,
+        Err(p) => p.into_inner().prefs.autoplay_block,
+    })
+    .unwrap_or(false)
+}
+
 pub fn hardware_acceleration_pref() -> bool {
     CORE.get().map(|m| match m.lock() {
         Ok(g) => g.prefs.hardware_acceleration,
@@ -570,7 +682,32 @@ mod tests {
         // Older profiles: start-up follows "restore_session".
         assert_eq!(s.startup(), Startup::NewTab);
         let p: UiPrefs = serde_json::from_str(r#"{"splash_enabled":false}"#).unwrap();
-        assert!(!p.splash_enabled && p.hardware_acceleration);
+        assert!(!p.splash_enabled && p.hardware_acceleration && !p.autoplay_block);
+        // Settings added in 0.3: absent from older profiles, safe defaults.
+        assert_eq!((s.min_font_size, s.reduce_motion, s.network_prediction), (0, false, false));
+        assert!(!s.clear_on_close_history && !s.clear_on_close_cookies && s.search_engines_custom.is_empty());
+    }
+
+    #[test]
+    fn keyword_engines() {
+        let mut s = Settings::default();
+        let (name, url) = s.keyword_search("@w chat noir").unwrap();
+        assert_eq!((name.as_str(), url.as_str()), ("Wikipédia", "https://fr.wikipedia.org/w/index.php?search=chat+noir"));
+        assert_eq!(s.keyword_search("@G  été").unwrap().1, "https://www.google.com/search?q=%C3%A9t%C3%A9");
+        // No query, unknown keyword, no @: an ordinary search.
+        assert!(s.keyword_search("@w").is_none() && s.keyword_search("@w   ").is_none());
+        assert!(s.keyword_search("@zz chat").is_none() && s.keyword_search("w chat").is_none());
+        s.search_engines_custom = vec![
+            CustomEngine { name: "MDN".into(), keyword: "@MDN".into(), url: "https://developer.mozilla.org/fr/search?q=%s".into() },
+            CustomEngine { name: "Doublon".into(), keyword: "mdn".into(), url: "https://autre.example/?q=%s".into() },
+            CustomEngine { name: "Non chiffré".into(), keyword: "x".into(), url: "http://x.example/?q=%s".into() },
+            CustomEngine { name: "Mot-clé invalide".into(), keyword: "a b".into(), url: "https://y.example/?q=%s".into() },
+        ];
+        s.sanitize();
+        assert_eq!(s.search_engines_custom.len(), 1);
+        assert_eq!(s.search_engines_custom[0].keyword, "mdn");
+        assert_eq!(s.keyword_search("@mdn grid").unwrap().1, "https://developer.mozilla.org/fr/search?q=grid");
+        assert!(!Settings::default().search_suggestions);
     }
 
     #[test]
@@ -652,6 +789,11 @@ mod tests {
         s.sanitize();
         assert_eq!((s.default_zoom, s.font_size), (100, 16));
         assert_eq!(s.accept_languages, "de-DE,fr,en-US");
+        s.min_font_size = 7;
+        s.perf.keep_active_sites = vec!["https://Mail.Example.org/inbox".into(), "*.docs.example".into(), "pas un site".into(), "mail.example.org".into()];
+        s.sanitize();
+        assert_eq!(s.min_font_size, 0);
+        assert_eq!(s.perf.keep_active_sites, vec!["mail.example.org", "docs.example"]);
         assert_eq!(s.secure_dns, "system");
         assert_eq!(s.permission_defaults.len(), 1);
         assert_eq!(s.download_dir, None);
@@ -683,7 +825,7 @@ mod tests {
 
     #[test]
     fn nested_settings_with_missing_fields_load_without_loss() {
-        // Complete "app" copy as saved today: perf with its 3 fields,
+        // Complete "app" copy as saved today: perf with its 4 fields,
         // auto_purge with its 3 fields.
         let mut s = Settings::default();
         s.search_engine = "qwant".into();
@@ -693,7 +835,7 @@ mod tests {
         s.auto_purge.min_independent_critical = 3;
         s.site_permissions.push(SitePermission { origin: "https://a.example".into(), kind: "camera".into(), allow: true, updated: 5 });
         let full = serde_json::to_value(&s).unwrap();
-        assert_eq!(full["perf"].as_object().unwrap().len(), 3);
+        assert_eq!(full["perf"].as_object().unwrap().len(), 4);
         assert_eq!(full["auto_purge"].as_object().unwrap().len(), 3);
         let back: Settings = serde_json::from_value(full.clone()).unwrap();
         assert_eq!(serde_json::to_value(&back).unwrap(), full);

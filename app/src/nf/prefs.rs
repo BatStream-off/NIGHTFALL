@@ -18,6 +18,8 @@ pub static GPC: AtomicBool = AtomicBool::new(true);
 pub static HTTPS_FIRST: AtomicBool = AtomicBool::new(true);
 /// GPU acceleration in effect for this run (read before Chromium starts).
 pub static HW_ACCEL_AT_START: AtomicBool = AtomicBool::new(true);
+/// Autoplay blocked for this run (read before Chromium starts).
+pub static AUTOPLAY_BLOCK_AT_START: AtomicBool = AtomicBool::new(false);
 
 /// Spell checking without any download: macOS uses the system spell
 /// checker. On Windows, Chromium downloads Hunspell dictionaries from
@@ -69,6 +71,9 @@ pub fn profile_prefs(s: &Settings) -> Vec<Pref> {
     vec![
         p("webkit.webprefs.default_font_size", "Taille de police", PrefValue::Int(size)),
         p("webkit.webprefs.default_fixed_font_size", "Taille de police (chasse fixe)", PrefValue::Int((size - 3).max(6))),
+        p("webkit.webprefs.minimum_font_size", "Taille de police minimale", PrefValue::Int(s.min_font_size.min(72) as i32)),
+        // 2 = no preloading or DNS prefetching, 0 = Chromium's standard.
+        p("net.network_prediction_options", "Préchargement des pages", PrefValue::Int(if s.network_prediction { 0 } else { 2 })),
         // 2 = block third-party cookies, 0 = allow them (1 = only in private windows).
         p("profile.cookie_controls_mode", "Cookies tiers", PrefValue::Int(if s.block_third_party_cookies { 2 } else { 0 })),
         p(
@@ -81,6 +86,12 @@ pub fn profile_prefs(s: &Settings) -> Vec<Pref> {
         // Never Google's online spelling service.
         p("spellcheck.use_spelling_service", "Service de correction en ligne", PrefValue::Bool(false)),
     ]
+}
+
+/// Chromium `--autoplay-policy` for the autoplay setting: media wait for a
+/// click or key press on the page. `None`: Chromium's default.
+pub fn autoplay_policy(block: bool) -> Option<&'static str> {
+    block.then_some("document-user-activation-required")
 }
 
 /// "Local state" (browser-wide) preferences: DNS over HTTPS.
@@ -277,6 +288,17 @@ mod tests {
         assert_eq!(find(&p, "profile.cookie_controls_mode"), Some(PrefValue::Int(0)));
         assert_eq!(find(&p, "webrtc.ip_handling_policy"), Some(PrefValue::Str("default".into())));
         assert_eq!(find(&p, "browser.enable_spellchecking"), Some(PrefValue::Bool(false)));
+        // New settings: no minimum and no preloading by default.
+        let d = profile_prefs(&Settings::default());
+        assert_eq!(find(&d, "webkit.webprefs.minimum_font_size"), Some(PrefValue::Int(0)));
+        assert_eq!(find(&d, "net.network_prediction_options"), Some(PrefValue::Int(2)));
+        s.min_font_size = 14;
+        s.network_prediction = true;
+        let p = profile_prefs(&s);
+        assert_eq!(find(&p, "webkit.webprefs.minimum_font_size"), Some(PrefValue::Int(14)));
+        assert_eq!(find(&p, "net.network_prediction_options"), Some(PrefValue::Int(0)));
+        assert_eq!(autoplay_policy(false), None);
+        assert_eq!(autoplay_policy(true), Some("document-user-activation-required"));
         s.secure_dns = "mullvad".into();
         let l = local_state_prefs(&s);
         assert_eq!(find(&l, "dns_over_https.mode"), Some(PrefValue::Str("secure".into())));

@@ -116,6 +116,29 @@ fn save_zoom(url: &str, level: f64) {
     }
 }
 
+/// Sites with a zoom of their own, as (host, percent), sorted by host.
+pub fn site_zoom_list() -> Vec<(String, u32)> {
+    let mut v: Vec<(String, u32)> = saved_zooms().into_iter().map(|(h, l)| (h, (1.2f64.powf(l) * 100.0).round() as u32)).collect();
+    v.sort();
+    v
+}
+
+/// Forget the zoom of one site (`Some(host)`) or of every site (`None`):
+/// those sites follow the default zoom from their next load.
+pub fn forget_site_zoom(host: Option<&str>) -> bool {
+    let mut map = saved_zooms();
+    let changed = match host {
+        Some(h) => map.remove(h).is_some(),
+        None => !std::mem::take(&mut map).is_empty(),
+    };
+    if changed {
+        if let Some(s) = core().storage() {
+            return s.set_setting(ZOOM_KEY, &map).is_ok();
+        }
+    }
+    changed
+}
+
 /// Apply the zoom remembered for the site just opened in a tab.
 pub fn apply_site_zoom(browser: &Browser, url: &str) {
     let Some(host) = host_of(url) else { return };

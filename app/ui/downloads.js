@@ -24,7 +24,7 @@ async function load() {
       el('div', { class: 'grow', style: 'min-width:0' },
         el('div', { class: 'title', text: d.file_name || d.path }),
         el('div', { class: 'sub', text: `${STATE[d.state] || d.state} · ${progress} · ${host(d.url)}` }),
-        d.danger ? el('div', { class: 'sub', style: 'color:var(--warn);white-space:normal', text: '⚠ ' + d.danger }) : null),
+        d.danger ? el('div', { class: 'sub', style: 'color:var(--warn);white-space:normal', text: d.danger }) : null),
       d.state === 'complete' ? sigBadge(d.signature) : null,
       d.live && d.state === 'in_progress' ? el('button', { text: 'Pause', onclick: () => api('downloads.pause', { key: d.key }).then(load) }) : null,
       d.live && d.state === 'in_progress' ? el('button', { text: 'Reprendre', onclick: () => api('downloads.resume', { key: d.key }).then(load) }) : null,
