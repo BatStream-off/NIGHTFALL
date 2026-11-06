@@ -82,17 +82,8 @@ function showWallpaper(id) {
 }
 
 // ---- Shortcut tiles
-const HUES = [
-  ['#2f8fe8', '#1f5fc8'], ['#2ab7c9', '#1a7f9a'], ['#6c5ce7', '#4a3bb8'], ['#3a77e8', '#2a4fb0'],
-  ['#1fae8a', '#14806a'], ['#d9586e', '#a33a53'], ['#e08a3c', '#b4632a'], ['#8a5ce0', '#5f3db0'],
-];
-function tint(s) {
-  let h = 0;
-  for (const c of s) h = (h * 31 + c.codePointAt(0)) >>> 0;
-  const [a, b] = HUES[h % HUES.length];
-  return 'linear-gradient(145deg, ' + a + ', ' + b + ')';
-}
-
+// Every tile shares one quiet surface: the initial is enough to recognise
+// a site, and a colour per site turned the row into a rainbow.
 function initial(title, url) {
   const src = (title || host(url) || '?').replace(/^www\./i, '').trim();
   const ch = Array.from(src)[0] || '?';
@@ -104,7 +95,6 @@ const X_ICON = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="m1.5 1.5 7 
 function tileEl(item, onRemove) {
   const name = item.title || host(item.url).replace(/^www\./, '');
   const sq = el('span', { class: 'sq' }, el('span', { class: 'ini', text: initial(item.title, item.url) }));
-  sq.firstChild.style.background = tint(host(item.url) || name);
   const li = el('li', { class: 'tile' },
     el('a', { href: item.url, title: name + '\n' + item.url }, sq, el('span', { class: 'nm', text: name })));
   const rm = el('button', { class: 'rm', type: 'button', title: 'Retirer', 'aria-label': 'Retirer ' + name, onclick: (e) => { e.preventDefault(); onRemove(); } });

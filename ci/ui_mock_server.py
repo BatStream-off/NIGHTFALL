@@ -4,7 +4,7 @@ os.chdir(os.environ['NF_UI_DIR'])
 UNLOCKED = os.environ.get('NF_UNLOCKED') == '1'
 STATE = {"ok": True, "configured": UNLOCKED, "unlocked": UNLOCKED, "awaitingRecovery": False, "lockStatus": None,
          "splash": True, "verticalTabs": False, "windowId": 1, "private": False, "version": "0.1.0",
-         "tagline": "Browse Beyond the Darkness.", "signals": [], "lastError": None}
+         "tagline": "Browse Beyond the Darkness", "signals": [], "lastError": None}
 # ---- Settings page (settings.html): realistic settings.get and update.* answers.
 SETTINGS = {"search_engine": "duckduckgo", "search_custom_name": "", "search_custom_url": "", "vertical_tabs": False,
     "auto_lock_minutes": 15, "lock_on_sleep": True, "session_vault": True, "restore_session": True, "devtools_enabled": False,

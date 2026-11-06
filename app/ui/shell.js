@@ -329,7 +329,8 @@ function renderSide() {
   for (const t of tabs) {
     const node = el('div', { class: 'vtab' + (t.active ? ' active' : '') + (t.loading ? ' loading' : ''), title: t.url, 'data-id': t.id },
       tabIcon(t),
-      el('span', { class: 't-title', text: (t.pinned ? '📌 ' : '') + (t.title || 'Nouvel onglet') }),
+      t.pinned ? el('span', { class: 't-pin', 'aria-label': 'Épinglé' }, svgIcon('pin')) : null,
+      el('span', { class: 't-title', text: t.title || 'Nouvel onglet' }),
       tabSound(t),
       closeButton(t, 'Fermer l\'onglet'),
     );

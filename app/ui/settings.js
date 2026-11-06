@@ -612,7 +612,10 @@ function asyncSection(build) {
   return [box];
 }
 
-function badge(ok, text) { return el('span', { class: 'badge ' + (ok ? 'ok' : 'warn'), text }); }
+// State of a protection: a small lit window, the mark of the skyline, then
+// the word. Seven outlined badges in a row read as noise; a light does not.
+// `solo`: the row has no link arrow, so the state keeps its place in the column.
+function badge(ok, text, solo) { return el('span', { class: 'state' + (ok ? '' : ' warn') + (solo ? ' solo' : ''), text }); }
 
 function sSecurityCenter() {
   return asyncSection((st) => {
@@ -644,7 +647,7 @@ function sSecurityCenter() {
         el('div', {}, el('div', { class: 'lbl', text: alerts.length ? alerts.length + (alerts.length > 1 ? ' points demandent votre attention' : ' point demande votre attention') : 'Toutes les protections sont en place' }),
           el('div', { class: 'desc', text: (blocked.total_blocked || 0).toLocaleString('fr-FR') + ' requêtes et ' + (blocked.popups_blocked || 0) + ' pop-ups bloquées depuis le démarrage' }))),
       alerts.length ? group('Alertes', alerts.map(([t, sec]) => row({ label: t, cls: 'alert', onclick: sec ? () => show(sec) : null }))) : null,
-      group('Protections actives', protections.map(([name, good, detail, sec]) => row({ label: name, desc: detail, ctl: badge(good, good ? 'actif' : 'à vérifier'), onclick: sec ? () => show(sec) : null }))),
+      group('Protections actives', protections.map(([name, good, detail, sec]) => row({ label: name, desc: detail, ctl: badge(good, good ? 'actif' : 'à vérifier', !sec), onclick: sec ? () => show(sec) : null }))),
       group('Sites avec exceptions',
         exceptions,
         row({ label: 'Autorisations mémorisées (caméra, micro, position…)', desc: 'Décisions « Mémoriser » par site.', onclick: () => show('autorisations') })),
@@ -812,7 +815,7 @@ function sReset() {
 
 function sAbout() {
   return [group('',
-    el('div', { class: 'srow' }, el('div', { class: 'upd grow' }, el('img', { src: 'emblem.png', alt: '' }), el('div', {}, el('div', { class: 'lbl', text: 'NIGHTFALL Browser ' + (INFO.version || '') }), el('div', { class: 'desc', text: 'Browse Beyond the Darkness.' })))),
+    el('div', { class: 'srow' }, el('div', { class: 'upd grow' }, el('img', { src: 'emblem.png', alt: '' }), el('div', {}, el('div', { class: 'lbl', text: 'NIGHTFALL Browser ' + (INFO.version || '') }), el('div', { class: 'desc', text: 'Browse Beyond the Darkness' })))),
     row({ label: 'Mises à jour', desc: 'Version installée et recherche de mises à jour.', onclick: () => show('mises-a-jour'), chev: 's-update' }),
     row({ label: 'À propos, composants et licences', desc: 'Chromium (CEF), adblock-rust, polices, licences.', onclick: () => openSection('about'), keywords: 'licence credits open source' }))];
 }
