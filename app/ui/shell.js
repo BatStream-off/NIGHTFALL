@@ -38,6 +38,8 @@ async function init() {
   if (!st.ok) { msg('Erreur interne : ' + (st.error || '')); show('lock', true); return; }
   document.body.classList.toggle('vertical', !!st.verticalTabs);
   document.body.classList.toggle('no-home', st.showHome === false);
+  document.body.classList.toggle('no-tab-accent', st.tabAccent === false);
+  document.body.classList.toggle('tabs-rounded', st.tabShape === 'rounded');
   if (st.frameless && MODE !== 'popup') {
     document.body.classList.add('frameless', 'os-' + st.platform);
     if (MODE === 'top') setupWindowControls();

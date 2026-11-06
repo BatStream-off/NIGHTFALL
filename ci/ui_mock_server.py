@@ -120,6 +120,10 @@ class H(http.server.SimpleHTTPRequestHandler):
                 "stats": {"blocked": 735, "bytesSaved": 26738688, "secondsSaved": 37}}
         elif cmd == 'security.events':
             r = {"ok": True, "events": [{"id": 2, "at": 1762400000, "kind": "https_warning", "site": "vieux-site.example", "detail": "Site sans HTTPS : avertissement affiché"}, {"id": 1, "at": 1762300000, "kind": "wrong_code", "site": "", "detail": "Code incorrect (1 échec(s) de suite)"}]}
+        elif cmd in ('newtab.image.get',):
+            r = {"ok": True, "data": ""}
+        elif cmd in ('newtab.image.set', 'newtab.image.clear'):
+            r = {"ok": True}
         elif cmd == 'zoom.list':
             r = {"ok": True, "sites": [{"host": "fr.wikipedia.org", "percent": 125}, {"host": "www.lemonde.fr", "percent": 110}]}
         elif cmd == 'state':

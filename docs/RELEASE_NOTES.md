@@ -1,3 +1,8 @@
+**0.3.1**
+- **Copier-coller sur macOS :** Cmd+C, Cmd+V, Cmd+X, Cmd+A et Cmd+Z fonctionnent dans les pages, la barre d'adresse et les Paramètres.
+- **Nouvel onglet :** 7 nouveaux fonds, couleur unie ou votre propre image (gardée chiffrée), réglages pour assombrir et flouter le fond ; horloge, recherche, raccourcis et statistiques déplaçables (9 emplacements, glisser-déposer) avec de nombreuses options.
+- **Onglets :** onglet actif mis en relief ; forme « reliés » ou « arrondis » ; trait de couleur désactivable.
+
 **0.3.0**
 - **Interface :** couleurs et dégradés superflus retirés, raccourcis du Nouvel onglet sur une surface commune, emoji remplacés par des icônes, Security Center plus lisible.
 - **Paramètres en centre de contrôle :** Security Center puis 13 sections (Général, Apparence et thèmes, Confidentialité, Sécurité, NIGHTFALL Shield, VideoGuard, Autorisations des sites, Téléchargements, Navigation, Moteurs de recherche, Performances, Accessibilité, Options avancées). L'ancienne page Security Center séparée redirige vers les Paramètres.

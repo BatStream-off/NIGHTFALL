@@ -836,7 +836,7 @@ wrap_keyboard_handler! {
     impl KeyboardHandler {
         fn on_pre_key_event(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             event: Option<&KeyEvent>,
             _os_event: OsEvent<'_>,
             _is_keyboard_shortcut: Option<&mut i32>,
@@ -857,6 +857,25 @@ wrap_keyboard_handler! {
             let p = has(primary);
             let shift = has(SHIFT);
             let alt = has(ALT);
+            // macOS: Cmd+C, Cmd+V… are menu shortcuts there, and NIGHTFALL has
+            // no Edit menu, so they would do nothing. Run them on the frame
+            // that has the focus (page, address bar, settings field).
+            if mac && p {
+                if let Some(cmd) = mac_edit_command(key, shift, alt) {
+                    if let Some(frame) = browser.and_then(|b| b.focused_frame()) {
+                        match cmd {
+                            "copy" => frame.copy(),
+                            "cut" => frame.cut(),
+                            "paste" => frame.paste(),
+                            "paste_plain" => frame.paste_and_match_style(),
+                            "select_all" => frame.select_all(),
+                            "undo" => frame.undo(),
+                            _ => frame.redo(),
+                        }
+                        return 1;
+                    }
+                }
+            }
             // Escape leaves a page's fullscreen (video).
             if key == 0x1B && !p && windows::content_fullscreen(window_id) {
                 on_ui(move || windows::exit_content_fullscreen(window_id));
@@ -929,9 +948,37 @@ wrap_keyboard_handler! {
     }
 }
 
+/// macOS editing shortcuts (with Cmd): key code → frame command.
+fn mac_edit_command(key: i32, shift: bool, alt: bool) -> Option<&'static str> {
+    Some(match key {
+        0x43 if !shift && !alt => "copy",        // C
+        0x58 if !shift && !alt => "cut",         // X
+        0x56 if shift && alt => "paste_plain",   // Option+Shift+V
+        0x56 if !shift && !alt => "paste",       // V
+        0x41 if !shift && !alt => "select_all",  // A
+        0x5A if shift && !alt => "redo",         // Shift+Z
+        0x5A if !alt => "undo",                  // Z
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mac_editing_shortcuts() {
+        assert_eq!(mac_edit_command(0x43, false, false), Some("copy"));
+        assert_eq!(mac_edit_command(0x56, false, false), Some("paste"));
+        assert_eq!(mac_edit_command(0x56, true, true), Some("paste_plain"));
+        assert_eq!(mac_edit_command(0x58, false, false), Some("cut"));
+        assert_eq!(mac_edit_command(0x41, false, false), Some("select_all"));
+        assert_eq!(mac_edit_command(0x5A, false, false), Some("undo"));
+        assert_eq!(mac_edit_command(0x5A, true, false), Some("redo"));
+        // Cmd+Shift+C stays free (not « copy »); other keys untouched.
+        assert_eq!(mac_edit_command(0x43, true, false), None);
+        assert_eq!(mac_edit_command(0x54, false, false), None);
+    }
 
     #[test]
     fn global_privacy_control_header() {
