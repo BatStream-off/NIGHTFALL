@@ -1,3 +1,26 @@
+**0.2.0**
+- **Nouveau design « Crépuscule » :**
+  - barre de titre intégrée au header : sous Windows, boutons réduire, agrandir et fermer dans la barre d'onglets ; sur macOS, boutons natifs intégrés ;
+  - couleurs, tailles, boutons, champs et cases harmonisés dans tout le navigateur ; police du système pour l'interface ;
+  - contraste vérifié pour tous les textes.
+- **Thèmes** (Paramètres › Apparence) :
+  - 6 thèmes prêts : Crépuscule, Minuit, Aurore, Braise, Brume, Aube (clair) ;
+  - éditeur : créer, modifier, dupliquer, supprimer vos thèmes, avec aperçu en direct ;
+  - les couleurs illisibles sont refusées ; le thème s'applique sans redémarrer à toutes les barres, menus et pages NIGHTFALL.
+- **Paramètres :**
+  - Security Center intégré : état des protections, alertes, sites avec exceptions, accès aux réglages avancés ;
+  - nouvelles sections NIGHTFALL Shield et VideoGuard.
+- **Lancement plus rapide :** le moteur Shield est construit après le déverrouillage, en arrière-plan ; animation de démarrage raccourcie (0,85 s au lieu de 1,8 s) ; sur macOS, plus de blocage du réseau par l'interface (jusqu'à 2 s).
+- **NIGHTFALL Shield :**
+  - environ 16 000 règles uBlock qui manquaient (directives !#include et !#if) ;
+  - listes jusqu'à 32 Mo ;
+  - une liste modifiée sur le disque par autre chose que NIGHTFALL est refusée (empreinte gardée dans les réglages chiffrés).
+- **VideoGuard :**
+  - 11 catégories (accroche, moment fort, accès exclusif en plus) ;
+  - son coupé pendant les segments « sourdine », étiquette « vidéo entière », bouton « Aller au moment fort », segments en couleur sur la barre de lecture ;
+  - corrections : retour dans un sponsor imbriqué, segment au début non ignoré, « Passer » non reproposé, vitesse perdue après une publicité, choix « Revenir » oublié ;
+  - vie privée : la requête ne révèle plus vos catégories choisies.
+
 **0.1.5**
 - **Sécurité du verrouillage :**
   - les raccourcis clavier n'agissent plus quand NIGHTFALL est verrouillé (seul le verrouillage d'urgence reste disponible) ;

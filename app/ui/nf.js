@@ -1,6 +1,21 @@
 // Shared helpers for NIGHTFALL internal pages.
 'use strict';
 
+// Theme: nf.css imports theme.css once; a theme change reloads it (the link
+// below comes later in the cascade and wins).
+function nfReloadTheme() {
+  let l = document.getElementById('nf-theme');
+  if (!l) {
+    l = document.createElement('link');
+    l.id = 'nf-theme';
+    l.rel = 'stylesheet';
+    document.head.appendChild(l);
+  }
+  l.href = 'theme.css?t=' + Date.now();
+}
+window.nfReloadTheme = nfReloadTheme;
+document.addEventListener('visibilitychange', () => { if (!document.hidden) nfReloadTheme(); });
+
 async function api(cmd, body) {
   try {
     let r;

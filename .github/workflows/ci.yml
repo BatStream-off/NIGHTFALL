@@ -55,8 +55,12 @@ jobs:
           NF_UI_DIR="$RUNNER_TEMP/ui" NF_PORT=8765 python3 ci/ui_mock_server.py &
           NF_UI_DIR="$RUNNER_TEMP/ui" NF_PORT=8766 NF_UNLOCKED=1 python3 ci/ui_mock_server.py &
           sleep 1
-          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y > /dev/null && npm install --silent playwright@1 && npx playwright install --with-deps chromium > /dev/null
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y > /dev/null && npm install --no-audit --no-fund playwright@1.63.0 && node -e "require('playwright')" && npx playwright install --with-deps chromium > /dev/null
           cp "$GITHUB_WORKSPACE/ci/ui_render_test.js" . && node ui_render_test.js
+          # VideoGuard page script on a simulated YouTube player: skips, nested
+          # segments, "Revenir", speed after an ad, mute segments...
+          cp "$GITHUB_WORKSPACE/ci/videoguard_test.js" . && node videoguard_test.js "$GITHUB_WORKSPACE/crates/nf-videoguard/src/videoguard.js" | grep -v '^P\.dom_ids' > vg.out
+          diff -u "$GITHUB_WORKSPACE/ci/videoguard_expected.txt" vg.out
       - name: Lockfile
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
@@ -125,8 +129,12 @@ jobs:
           if (!(Test-Path "$env:NIGHTFALL_PROFILE_DIR\chromium")) { Write-Error "profil Chromium non créé"; exit 1 }
           Get-Content "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log"
           if (!(Select-String -Path "$env:NIGHTFALL_PROFILE_DIR\logs\nightfall.log" -Pattern "interface prête" -Quiet)) { Get-Content "$logs\chromium.log" -ErrorAction SilentlyContinue | Select-Object -Last 60; Write-Error "l'interface NIGHTFALL ne s'est pas chargée"; exit 1 }
+          # Integrated title bar (prototype M-0005): real mouse on the frameless window.
+          & pwsh -File ci/titlebar_win.ps1
+          $tb = $LASTEXITCODE
           Stop-Process -Id $p.Id -Force
           Get-Process | Where-Object { $_.Path -like "*NIGHTFALL*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          if ($tb -ne 0) { Write-Error "barre de titre intégrée : échec (voir NFTITLEBAR)"; exit 1 }
       - name: Test de démarrage (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -142,6 +150,11 @@ jobs:
           test -d "$NIGHTFALL_PROFILE_DIR/chromium" || { echo "profil Chromium non créé"; cat "$RUNNER_TEMP/nf.log"; exit 1; }
           cat "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log"
           grep -q "interface prête" "$NIGHTFALL_PROFILE_DIR/logs/nightfall.log" || { echo "l'interface NIGHTFALL ne s'est pas chargée"; tail -n 80 "$RUNNER_TEMP/nf.log"; tail -n 80 "$NIGHTFALL_PROFILE_DIR/logs/chromium.log" 2>/dev/null; exit 1; }
+          # Integrated title bar (prototype M-0005): synthetic mouse on the
+          # frameless window. Informative: the runner may refuse synthetic
+          # events (accessibility permission), which is not a product failure.
+          swiftc -O ci/titlebar_mac.swift -o "$RUNNER_TEMP/nf-titlebar" && "$RUNNER_TEMP/nf-titlebar" || echo "NFTITLEBAR test souris macOS : non concluant (code $?)"
+          screencapture -x "$RUNNER_TEMP/shot3.png" && sips -Z 960 "$RUNNER_TEMP/shot3.png" >/dev/null && { echo NFSHOT-after-BEGIN; base64 -i "$RUNNER_TEMP/shot3.png" | tr -d '\n'; echo; echo NFSHOT-after-END; } || true
           kill $PID; sleep 3; pkill -f NIGHTFALL.app || true
           tail -n 40 "$RUNNER_TEMP/nf.log"
       - name: Auto-test de bout en bout (navigateur réel)

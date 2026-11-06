@@ -23,7 +23,9 @@ pub mod selftest;
 pub mod session;
 pub mod state;
 pub mod timers;
+pub mod titlebar;
 pub mod ui_thread;
+pub mod theme;
 pub mod updater;
 pub mod windows;
 
@@ -105,7 +107,10 @@ fn startup_core(paths: ProfilePaths) -> Result<(), String> {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
 
-    let shield = nf_shield::Shield::new(paths.shield_cache(), nf_shield::ShieldConfig::default());
+    // No engine build here: it happens after unlock, in the background
+    // (faster start-up; cached lists are only read once their fingerprints,
+    // kept in the encrypted settings, are available).
+    let shield = nf_shield::Shield::new_unbuilt(paths.shield_cache(), nf_shield::ShieldConfig::default());
     let _ = state::SHIELD.set(Arc::new(shield));
 
     let last_error = if lock.is_none() && nf_auth::NightfallLock::is_configured(&paths) {

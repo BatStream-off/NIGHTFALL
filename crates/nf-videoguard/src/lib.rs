@@ -27,7 +27,25 @@ pub const CATEGORIES: &[(&str, &str)] = &[
     ("preview", "Aperçu / récapitulatif"),
     ("filler", "Hors-sujet / remplissage"),
     ("music_offtopic", "Musique : partie non musicale"),
+    ("hook", "Accroche / teaser d'ouverture"),
+    ("poi_highlight", "Moment fort (bouton « Aller au moment fort »)"),
+    ("exclusive_access", "Accès exclusif (étiquette sur la vidéo entière)"),
 ];
+
+/// Default user choice for a category (also used for categories added by a
+/// newer version and missing from a saved configuration).
+pub fn default_action(category: &str) -> Action {
+    match category {
+        "sponsor" | "interaction" | "selfpromo" => Action::Skip,
+        "intro" | "outro" | "preview" | "hook" | "poi_highlight" | "exclusive_access" => Action::Show,
+        _ => Action::Ignore,
+    }
+}
+
+/// Every category and segment type is always requested, so the request
+/// does not reveal the user's settings; filtering happens locally.
+const ALL_CATEGORIES: &[&str] = &["sponsor", "selfpromo", "interaction", "intro", "outro", "preview", "music_offtopic", "filler", "hook", "poi_highlight", "exclusive_access"];
+const ALL_ACTION_TYPES: &str = r#"["skip","mute","full","poi"]"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,6 +71,10 @@ pub struct VideoGuardConfig {
     /// (muted, then the "skip" button is pressed as soon as it appears).
     #[serde(default = "yes")]
     pub skip_video_ads: bool,
+    /// Mute the "mute" segments (sound only, the video goes on).
+    pub mute_segments: bool,
+    /// Show the "whole video" labels (fully sponsored, exclusive access).
+    pub full_video_labels: bool,
 }
 
 fn yes() -> bool {
@@ -63,24 +85,37 @@ impl Default for VideoGuardConfig {
     fn default() -> Self {
         let mut actions = BTreeMap::new();
         for (c, _) in CATEGORIES {
-            let a = match *c {
-                "sponsor" | "interaction" | "selfpromo" => Action::Skip,
-                "intro" | "outro" | "preview" => Action::Show,
-                _ => Action::Ignore,
-            };
-            actions.insert((*c).to_string(), a);
+            actions.insert((*c).to_string(), default_action(c));
         }
-        Self { enabled: true, actions, min_duration: 1, skip_video_ads: true }
+        Self { enabled: true, actions, min_duration: 1, skip_video_ads: true, mute_segments: true, full_video_labels: true }
     }
 }
 
 impl VideoGuardConfig {
     pub fn active_categories(&self) -> Vec<String> {
-        self.actions
+        CATEGORIES
             .iter()
-            .filter(|(_, a)| **a != Action::Ignore)
-            .map(|(c, _)| c.clone())
+            .map(|(c, _)| *c)
+            .chain(self.actions.keys().map(String::as_str).filter(|k| !CATEGORIES.iter().any(|(c, _)| c == k)))
+            .filter(|c| self.action_for(c) != Action::Ignore)
+            .map(str::to_string)
             .collect()
+    }
+
+    /// The configuration with every known category listed (defaults for the
+    /// ones missing from a configuration saved by an older version).
+    pub fn with_all_categories(&self) -> Self {
+        let mut c = self.clone();
+        for (cat, _) in CATEGORIES {
+            c.actions.entry((*cat).to_string()).or_insert_with(|| default_action(cat));
+        }
+        c
+    }
+
+    /// User choice for a category, with the default for categories missing
+    /// from a configuration saved by an older version.
+    pub fn action_for(&self, category: &str) -> Action {
+        self.actions.get(category).copied().unwrap_or_else(|| default_action(category))
     }
 }
 
@@ -91,6 +126,14 @@ pub struct Segment {
     pub end: f64,
     pub uuid: String,
     pub action: Action,
+    /// SponsorBlock segment type: "skip", "mute", "full" (whole video) or
+    /// "poi" (highlight, a single point).
+    #[serde(default = "skip_kind")]
+    pub kind: String,
+}
+
+fn skip_kind() -> String {
+    "skip".into()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -152,15 +195,23 @@ pub fn parse_response(body: &str, video_id: &str, cfg: &VideoGuardConfig) -> Res
     let mut out = Vec::new();
     for v in videos.into_iter().filter(|v| v.video_id == video_id) {
         for s in v.segments {
-            if !(s.action_type.is_empty() || s.action_type == "skip") {
+            let kind = if s.action_type.is_empty() { "skip".to_string() } else { s.action_type.clone() };
+            let action = cfg.action_for(&s.category);
+            if action == Action::Ignore {
                 continue;
             }
-            let action = cfg.actions.get(&s.category).copied().unwrap_or(Action::Ignore);
             let (start, end) = (s.segment[0], s.segment[1]);
-            if action == Action::Ignore || !(end > start) || end - start < cfg.min_duration as f64 {
+            let keep = match kind.as_str() {
+                "skip" => end > start && end - start >= cfg.min_duration as f64,
+                "mute" => cfg.mute_segments && end > start,
+                "full" => cfg.full_video_labels,
+                "poi" => start >= 0.0,
+                _ => false,
+            };
+            if !keep {
                 continue;
             }
-            out.push(Segment { category: s.category, start, end, uuid: s.uuid, action });
+            out.push(Segment { category: s.category, start, end, uuid: s.uuid, action, kind });
         }
     }
     out.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
@@ -172,11 +223,14 @@ pub fn fetch_segments(video_id: &str, cfg: &VideoGuardConfig) -> Result<Vec<Segm
     if !cfg.enabled {
         return Ok(Vec::new());
     }
-    let cats = serde_json::to_string(&cfg.active_categories()).expect("serializable");
+    if cfg.active_categories().is_empty() {
+        return Ok(Vec::new());
+    }
+    let cats = serde_json::to_string(ALL_CATEGORIES).expect("serializable");
     let url = format!("{API_BASE}/skipSegments/{}", hash_prefix(video_id));
     let resp = ureq::get(&url)
         .query("categories", &cats)
-        .query("actionTypes", "[\"skip\"]")
+        .query("actionTypes", ALL_ACTION_TYPES)
         .set("User-Agent", "NIGHTFALL-VideoGuard/0.1")
         .timeout(std::time::Duration::from_secs(10))
         .call();
@@ -194,7 +248,7 @@ pub fn fetch_segments(video_id: &str, cfg: &VideoGuardConfig) -> Result<Vec<Segm
 /// JavaScript injected into YouTube pages with the segments of the current
 /// video. It skips (or offers to skip) segments and lets the user go back.
 pub fn injection_script(video_id: &str, segments: &[Segment]) -> String {
-    let data = serde_json::json!({ "videoId": video_id, "segments": segments });
+    let data = serde_json::json!({ "videoId": video_id, "segments": segments, "labels": labels() });
     format!("{}\n;window.__nightfallVideoGuard && window.__nightfallVideoGuard({});", CONTENT_SCRIPT, data)
 }
 
@@ -204,7 +258,7 @@ pub fn page_script(page_url: &str, cfg: &VideoGuardConfig) -> Option<String> {
     if !cfg.enabled || !is_youtube(page_url) {
         return None;
     }
-    let opts = serde_json::json!({ "skipVideoAds": cfg.skip_video_ads });
+    let opts = serde_json::json!({ "skipVideoAds": cfg.skip_video_ads, "labels": labels() });
     Some(format!("{}\n;window.__nightfallVideoGuardInit && window.__nightfallVideoGuardInit({});", CONTENT_SCRIPT, opts))
 }
 
@@ -217,6 +271,15 @@ pub fn is_youtube(page_url: &str) -> bool {
 }
 
 const CONTENT_SCRIPT: &str = include_str!("videoguard.js");
+
+/// Short French labels shown on the video.
+fn labels() -> serde_json::Value {
+    serde_json::json!({
+        "sponsor": "Sponsor", "intro": "Intro", "outro": "Outro", "interaction": "Rappel d'abonnement",
+        "selfpromo": "Autopromotion", "preview": "Aperçu", "filler": "Hors-sujet", "music_offtopic": "Partie non musicale",
+        "hook": "Accroche", "poi_highlight": "Moment fort", "exclusive_access": "Accès exclusif"
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -251,8 +314,38 @@ mod tests {
              {"category":"sponsor","actionType":"skip","segment":[100,100.2],"UUID":"tiny"}
           ]}]"#;
         let segs = parse_response(body, "dQw4w9WgXcQ", &VideoGuardConfig::default()).unwrap();
-        let ids: Vec<_> = segs.iter().map(|s| (s.uuid.as_str(), s.action)).collect();
-        assert_eq!(ids, [("i", Action::Show), ("s", Action::Skip)]);
+        let ids: Vec<_> = segs.iter().map(|s| (s.uuid.as_str(), s.action, s.kind.as_str())).collect();
+        // The "mute" segment is kept (muted), the too-short skip is not.
+        assert_eq!(ids, [("i", Action::Show, "skip"), ("s", Action::Skip, "skip"), ("m", Action::Skip, "mute")]);
+    }
+
+    #[test]
+    fn mute_full_and_poi_follow_the_settings() {
+        let body = r#"[{"videoID":"dQw4w9WgXcQ","segments":[
+             {"category":"sponsor","actionType":"mute","segment":[10,20],"UUID":"m"},
+             {"category":"sponsor","actionType":"full","segment":[0,0],"UUID":"f"},
+             {"category":"poi_highlight","actionType":"poi","segment":[42,42],"UUID":"p"},
+             {"category":"hook","actionType":"skip","segment":[0,8],"UUID":"h"}
+          ]}]"#;
+        let all = parse_response(body, "dQw4w9WgXcQ", &VideoGuardConfig::default()).unwrap();
+        let kinds: Vec<_> = all.iter().map(|s| s.kind.as_str()).collect();
+        assert_eq!(kinds, ["full", "skip", "mute", "poi"]);
+        let cfg = VideoGuardConfig { mute_segments: false, full_video_labels: false, ..Default::default() };
+        let some = parse_response(body, "dQw4w9WgXcQ", &cfg).unwrap();
+        let kinds: Vec<_> = some.iter().map(|s| s.kind.as_str()).collect();
+        assert_eq!(kinds, ["skip", "poi"]);
+    }
+
+    #[test]
+    fn categories_missing_from_an_old_configuration_get_their_default() {
+        let old: VideoGuardConfig = serde_json::from_str(r#"{"enabled":true,"actions":{"sponsor":"skip","intro":"ignore"},"min_duration":1}"#).unwrap();
+        assert_eq!(old.action_for("intro"), Action::Ignore);
+        assert_eq!(old.action_for("hook"), Action::Show);
+        assert!(old.mute_segments && old.full_video_labels && old.skip_video_ads);
+        let full = old.with_all_categories();
+        assert_eq!(full.actions.get("hook"), Some(&Action::Show));
+        assert_eq!(full.actions.get("intro"), Some(&Action::Ignore));
+        assert_eq!(full.actions.len(), CATEGORIES.len());
     }
 
     #[test]
@@ -265,7 +358,7 @@ mod tests {
 
     #[test]
     fn script_embeds_segments() {
-        let s = injection_script("dQw4w9WgXcQ", &[Segment { category: "sponsor".into(), start: 1.0, end: 2.0, uuid: "u".into(), action: Action::Skip }]);
+        let s = injection_script("dQw4w9WgXcQ", &[Segment { category: "sponsor".into(), start: 1.0, end: 2.0, uuid: "u".into(), action: Action::Skip, kind: "skip".into() }]);
         assert!(s.contains("\"videoId\":\"dQw4w9WgXcQ\""));
         assert!(s.contains("__nightfallVideoGuard"));
     }

@@ -41,7 +41,7 @@ fn now() -> i64 {
 }
 
 /// Commands allowed before unlock.
-const PRE_UNLOCK: &[&str] = &["state", "setup", "unlock", "unlock.recovery", "recovery.confirm", "ui.activity", "ui.expand", "popup.close"];
+const PRE_UNLOCK: &[&str] = &["state", "setup", "unlock", "unlock.recovery", "recovery.confirm", "ui.activity", "ui.expand", "popup.close", "win.minimize", "win.maximize", "win.close"];
 
 pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
     let unlocked = core().is_unlocked();
@@ -66,6 +66,17 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         }
         "ui.activity" => {
             super::idle::touch();
+            ok()
+        }
+        // Window buttons of the integrated title bar (prototype M-0005):
+        // only the window's own top interface view may use them, also on
+        // the lock screen (the frameless window has no other buttons).
+        "win.minimize" | "win.maximize" | "win.close" => {
+            if !matches!(caller.kind, BrowserKind::Ui { side: false, .. }) {
+                return err("interdit");
+            }
+            let cmd = cmd.to_string();
+            on_ui(move || super::titlebar::command(w, &cmd));
             ok()
         }
         "ui.expand" => {
@@ -288,6 +299,17 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
         // ---- settings
         "settings.get" => settings_get(),
         "settings.set" => settings_set(body),
+        "theme.get" => theme_get(),
+        "theme.set" => theme_set(body),
+        "theme.save" => theme_save(body),
+        "theme.delete" => theme_delete(body),
+        "theme.preview" => {
+            let t: super::theme::Theme = serde_json::from_value(body.get("theme").cloned().unwrap_or(Value::Null)).unwrap_or_default();
+            match super::theme::validate(&t) {
+                Ok(()) => json!({ "ok": true, "css": super::theme::css(&t) }),
+                Err(e) => err(e),
+            }
+        }
         "settings.reset" => settings_reset(),
         "browsing.clear" => super::browsing_data::clear(body),
         "downloads.chooseFolder" => {
@@ -569,6 +591,10 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
 // ---------------------------------------------------------------- helpers
 
 fn windows_active_url(w: u32) -> String {
+    // Cached by the UI thread: no wait on CEF's IO thread.
+    if let Some(u) = windows::cached_active_url(w) {
+        return u;
+    }
     let (tx, rx) = std::sync::mpsc::channel();
     on_ui(move || {
         let _ = tx.send(windows::active_url(w).unwrap_or_default());
@@ -616,6 +642,8 @@ fn state_json(w: u32) -> Value {
         "splash": c.prefs.splash_enabled,
         "verticalTabs": c.settings.vertical_tabs,
         "showHome": c.settings.show_home_button,
+        "frameless": super::titlebar::FRAMELESS,
+        "platform": super::titlebar::platform(),
         "windowId": w,
         "private": private,
         "version": nf_core::VERSION,
@@ -765,8 +793,9 @@ fn open_stores(c: &mut Core, mk: nf_crypto::SecretKey) -> Result<(), String> {
             c.videoguard = v;
         }
         if let Some(sh) = state::load_setting::<nf_shield::ShieldConfig>(st, "shield") {
-            state::shield().set_config(sh.with_new_default_lists());
+            state::shield().set_config_later(sh.with_new_default_lists());
         }
+        rebuild_shield_in_background();
         if let Ok(Some(total)) = st.setting::<u64>("shield_total") {
             state::set_blocked_saved_total(total);
         }
@@ -1024,6 +1053,8 @@ fn settings_set(body: &Value) -> Value {
                 s.site_permissions = old.site_permissions.clone();
                 s.permission_resets = old.permission_resets.clone();
                 s.download_dir = old.download_dir.clone();
+                // Themes change only through the theme.* commands.
+                s.theme = old.theme.clone();
                 s.sanitize();
                 c.settings = s;
             }
@@ -1071,11 +1102,114 @@ fn open_proxy_settings() -> Value {
     r.map(|_| ok()).unwrap_or_else(|e| err(format!("impossible d'ouvrir les réglages du système : {e}")))
 }
 
+fn theme_get() -> Value {
+    let c = core();
+    json!({
+        "ok": true,
+        "active": super::theme::active_theme(&c.settings.theme).id,
+        "presets": super::theme::presets(),
+        "custom": super::theme::custom_themes(&c.settings.theme),
+    })
+}
+
+/// Saved, then every interface view and internal page reloads its colours.
+fn theme_changed() {
+    core().save_settings();
+    on_ui(|| {
+        windows::push_event_all(&json!({ "type": "theme" }));
+        windows::exec_in_internal_tabs("window.nfReloadTheme && window.nfReloadTheme();");
+    });
+}
+
+fn theme_set(body: &Value) -> Value {
+    let id = s(body, "id").to_string();
+    {
+        let mut c = core();
+        let known = super::theme::presets().into_iter().chain(super::theme::custom_themes(&c.settings.theme)).any(|t| t.id == id);
+        if !known {
+            return err("thème inconnu");
+        }
+        c.settings.theme.active = id;
+    }
+    theme_changed();
+    ok()
+}
+
+/// Create (no id or an unknown one) or update a custom theme, then use it.
+fn theme_save(body: &Value) -> Value {
+    let mut t: super::theme::Theme = match serde_json::from_value(body.get("theme").cloned().unwrap_or(Value::Null)) {
+        Ok(t) => t,
+        Err(e) => return err(e),
+    };
+    t.name = t.name.trim().to_string();
+    if let Err(e) = super::theme::validate(&t) {
+        return err(e);
+    }
+    let id = {
+        let mut c = core();
+        let existing = super::theme::custom_themes(&c.settings.theme);
+        if existing.len() >= 30 && !existing.iter().any(|e| e.id == t.id) {
+            return err("30 thèmes personnels au plus");
+        }
+        if !t.id.starts_with("custom-") || !existing.iter().any(|e| e.id == t.id) {
+            t.id = format!("custom-{}", nf_core::unix_now());
+            while existing.iter().any(|e| e.id == t.id) {
+                t.id.push('x');
+            }
+        }
+        let value = serde_json::to_value(&t).unwrap_or(Value::Null);
+        let list = &mut c.settings.theme.custom;
+        match list.iter().position(|v| v.get("id").and_then(Value::as_str) == Some(t.id.as_str())) {
+            Some(i) => list[i] = value,
+            None => list.push(value),
+        }
+        c.settings.theme.active = t.id.clone();
+        t.id.clone()
+    };
+    theme_changed();
+    json!({ "ok": true, "id": id })
+}
+
+fn theme_delete(body: &Value) -> Value {
+    let id = s(body, "id").to_string();
+    if !id.starts_with("custom-") {
+        return err("les thèmes intégrés ne peuvent pas être supprimés");
+    }
+    {
+        let mut c = core();
+        c.settings.theme.custom.retain(|v| v.get("id").and_then(Value::as_str) != Some(id.as_str()));
+        if c.settings.theme.active == id {
+            c.settings.theme.active = super::theme::presets()[0].id.clone();
+        }
+    }
+    theme_changed();
+    ok()
+}
+
+/// Build Shield's engine off CEF's threads (80 to 140 ms, more with large
+/// lists), then save the settings (fingerprints recorded at the first build).
+pub fn rebuild_shield_in_background() {
+    background(
+        || {
+            let sh = state::shield();
+            sh.rebuild();
+            sh.integrity_errors()
+        },
+        |refused| {
+            for e in &refused {
+                state::log(&format!("Shield : {e}"));
+            }
+            core().save_settings();
+        },
+    );
+}
+
 fn shield_set(body: &Value) -> Value {
     match serde_json::from_value::<nf_shield::ShieldConfig>(body.get("config").cloned().unwrap_or(Value::Null)) {
         Ok(cfg) => {
-            state::shield().set_config(cfg);
+            state::shield().set_config_later(cfg);
             core().save_settings();
+            rebuild_shield_in_background();
             ok()
         }
         Err(e) => err(e),
