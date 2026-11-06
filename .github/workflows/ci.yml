@@ -61,6 +61,9 @@ jobs:
           # segments, "Revenir", speed after an ad, mute segments...
           cp "$GITHUB_WORKSPACE/ci/videoguard_test.js" . && node videoguard_test.js "$GITHUB_WORKSPACE/crates/nf-videoguard/src/videoguard.js" | grep -v '^P\.dom_ids' > vg.out
           diff -u "$GITHUB_WORKSPACE/ci/videoguard_expected.txt" vg.out
+          # Shield scriptlets (href-sanitizer, storage items, cookies, WebRTC,
+          # stack trace, anti-adblock defusers) in a real page.
+          cp "$GITHUB_WORKSPACE/ci/scriptlets_test.js" . && node scriptlets_test.js "$GITHUB_WORKSPACE/crates/nf-shield/scriptlets/"
       - name: Lockfile
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4

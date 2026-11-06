@@ -21,6 +21,18 @@ fn to_string(s: &CefStringUserfree) -> String {
     CefString::from(s).to_string()
 }
 
+/// Neutral answer of a Shield `$redirect` (empty script, transparent
+/// image…), served instead of the blocked request.
+pub fn neutral_response(mime: &str, body: Vec<u8>) -> Option<ResourceHandler> {
+    let stream = Arc::new(Mutex::new(ByteStream::new(body)));
+    let mut handler = ByteReadHandler::new(stream);
+    let reader = stream_reader_create_for_handler(Some(&mut handler))?;
+    let mut headers = CefStringMultimap::new();
+    headers.append("Cache-Control", "no-store");
+    headers.append("Access-Control-Allow-Origin", "*");
+    Some(StreamResourceHandler::new(200, "OK".into(), mime.into(), Some(headers), Some(reader)))
+}
+
 fn respond(status: i32, mime: &str, body: Vec<u8>, csp: bool) -> Option<ResourceHandler> {
     let stream = Arc::new(Mutex::new(ByteStream::new(body)));
     let mut handler = ByteReadHandler::new(stream);

@@ -7,6 +7,7 @@
 //! the scriptlets used by `##+js(...)` rules are NIGHTFALL's own
 //! implementations (see `scriptlets/`).
 
+pub mod redirects;
 pub mod scriptlets;
 
 use adblock::lists::{FilterSet, ParseOptions};
@@ -150,6 +151,15 @@ pub fn site_of(url_str: &str) -> String {
 }
 
 /// Map a CEF `cef_resource_type_t` value to adblock's request type string.
+/// What to do with a sub-resource request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Decision {
+    Allow,
+    Block,
+    /// Blocked, and answered with this neutral content instead of an error.
+    Redirect { mime: String, body: Vec<u8> },
+}
+
 pub fn request_type_from_cef(resource_type: i32) -> &'static str {
     match resource_type {
         0 => "main_frame",
@@ -242,7 +252,9 @@ impl Shield {
             set.add_filter_list(cfg.custom_filters.clone(), ParseOptions::default());
         }
         let mut engine = Engine::new_with_filter_set(set);
-        engine.use_resources(scriptlets::resources());
+        let mut res = scriptlets::resources();
+        res.extend(redirects::resources());
+        engine.use_resources(res);
         *self.engine.write().unwrap() = Arc::new(engine);
         *self.rules_loaded.lock().unwrap() = count;
         if !first_seen.is_empty() {
@@ -300,23 +312,35 @@ impl Shield {
     /// Decide whether to block a sub-resource. `page_url` is the top-level
     /// document URL (used for the allowlist and statistics).
     pub fn should_block(&self, url: &str, source_url: &str, request_type: &str, page_url: &str) -> bool {
+        !matches!(self.decide(url, source_url, request_type, page_url), Decision::Allow)
+    }
+
+    /// Like `should_block`, with the neutral replacement to serve when the
+    /// matching filter asks for one (`$redirect`, `$redirect-rule`).
+    pub fn decide(&self, url: &str, source_url: &str, request_type: &str, page_url: &str) -> Decision {
         if request_type == "main_frame" || !self.is_active_for(page_url) {
-            return false;
+            return Decision::Allow;
         }
         if !(url.starts_with("http://") || url.starts_with("https://") || url.starts_with("ws")) {
-            return false;
+            return Decision::Allow;
         }
         let Ok(req) = Request::new(url, source_url, request_type, "GET") else {
-            return false;
+            return Decision::Allow;
         };
         let engine = self.engine.read().unwrap().clone();
-        let blocked = engine.check_network_request(&req).should_block();
-        if blocked {
+        let result = engine.check_network_request(&req);
+        if !result.should_block() {
+            return Decision::Allow;
+        }
+        {
             let mut st = self.stats.lock().unwrap();
             st.total_blocked += 1;
             *st.per_site.entry(site_of(page_url)).or_default() += 1;
         }
-        blocked
+        match result.redirect.as_deref().and_then(redirects::decode_data_url) {
+            Some((mime, body)) => Decision::Redirect { mime, body },
+            None => Decision::Block,
+        }
     }
 
     pub fn record_popup_blocked(&self, page_url: &str) {
@@ -769,6 +793,24 @@ mod tests {
         let page = "https://a.test/";
         assert!(s.should_block("https://cdn.example.com/ads.js", page, "script", page));
         assert!(!s.should_block("https://cdn.example.com/jquery.js", page, "script", page));
+    }
+
+    #[test]
+    fn redirect_filters_get_a_neutral_answer() {
+        let (_d, s) = shield_with("||ads.example^$script,redirect=noop.js\n||pix.example^$image,redirect=1x1.gif\n||plain.example^\n||rr.example^$redirect-rule=noop.txt\n");
+        let page = "https://a.test/";
+        match s.decide("https://ads.example/x.js", page, "script", page) {
+            Decision::Redirect { mime, body } => {
+                assert_eq!(mime, "application/javascript");
+                assert_eq!(body, b"(function () {})();\n");
+            }
+            other => panic!("redirection attendue : {other:?}"),
+        }
+        assert!(matches!(s.decide("https://pix.example/p.gif", page, "image", page), Decision::Redirect { ref mime, .. } if mime == "image/gif"));
+        assert_eq!(s.decide("https://plain.example/a.js", page, "script", page), Decision::Block);
+        // redirect-rule alone does not block.
+        assert_eq!(s.decide("https://rr.example/a.txt", page, "script", page), Decision::Allow);
+        assert_eq!(s.decide("https://other.example/a.js", page, "script", page), Decision::Allow);
     }
 
     #[test]
