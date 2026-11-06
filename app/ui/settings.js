@@ -518,6 +518,37 @@ function emergencyGroups() {
   });
 }
 
+const EVENT_KINDS = {
+  https_warning: 'Site sans HTTPS',
+  phishing_warning: 'Avertissement anti-phishing',
+  dangerous_download: 'Téléchargement à risque',
+  wrong_code: 'Code incorrect',
+  lockdown: 'Verrouillage d\'urgence',
+};
+
+function eventRow(e) {
+  const when = new Date(e.at * 1000).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  return el('li', {}, el('div', { class: 'grow' }, el('div', { text: (EVENT_KINDS[e.kind] || e.kind) + (e.site ? ' · ' + e.site : '') }), e.detail ? el('div', { class: 'sub', text: e.detail }) : null),
+    el('span', { class: 'figure muted', text: when }));
+}
+
+function eventsGroup() {
+  const list = el('ul', { class: 'slist' });
+  const clear = button('Tout effacer', async () => { if (check(await api('security.events.clear'), 'Événements effacés')) render(); });
+  const render = async () => {
+    const r = await api('security.events', { limit: 200 });
+    const evs = (r && r.ok && r.events) || [];
+    list.textContent = '';
+    clear.hidden = !evs.length;
+    if (!evs.length) { list.append(el('li', { class: 'empty', text: 'Aucun événement ces 30 derniers jours.' })); return; }
+    evs.forEach((e) => list.append(eventRow(e)));
+  };
+  render();
+  return [el('div', { id: 'events' }), group('Événements de sécurité',
+    row({ label: 'Ce que NIGHTFALL a signalé ou bloqué', desc: 'Sites sans HTTPS, avertissements anti-phishing, téléchargements à risque, codes incorrects, verrouillages d\'urgence. Chiffrés avec vos données, gardés 30 jours, jamais en navigation privée ; seul le nom du site est conservé, jamais l\'adresse complète.', ctl: clear, keywords: 'journal evenements historique securite alertes' }),
+    el('div', {}, list))];
+}
+
 function sSecurity() {
   const lock = sLock();
   return [
@@ -531,6 +562,7 @@ function sSecurity() {
       toggle('Avertissements anti-phishing', 'Analyse locale des adresses : homographes, imitations de vos sites et de services connus, sous-domaines trompeurs.', () => S.phishing_warnings, (v) => { S.phishing_warnings = v; }, { keywords: 'hameconnage fraude' }),
       row({ label: 'Navigation sécurisée de Google', desc: 'Non disponible : ce service de Google n\'est pas fourni aux navigateurs construits sur CEF et exigerait d\'envoyer des données à Google. La liste « Sites malveillants » de Shield et l\'analyse anti-phishing locale la remplacent en partie.', cls: 'disabled', keywords: 'safe browsing google malware' })),
     group('Mots de passe', sPasswords().flatMap((g) => [...g.querySelectorAll('.srow')])),
+    ...eventsGroup(),
     ...emergencyGroups(),
   ];
 }
@@ -809,6 +841,16 @@ function asyncSection(build) {
 // `solo`: the row has no link arrow, so the state keeps its place in the column.
 function badge(ok, text, solo) { return el('span', { class: 'state' + (ok ? '' : ' warn') + (solo ? ' solo' : ''), text }); }
 
+function recentEvents() {
+  const list = el('ul', { class: 'slist' });
+  api('security.events', { limit: 3 }).then((r) => {
+    const evs = (r && r.ok && r.events) || [];
+    if (!evs.length) list.append(el('li', { class: 'empty', text: 'Aucun événement ces 30 derniers jours.' }));
+    evs.forEach((e) => list.append(eventRow(e)));
+  });
+  return group('Événements récents', el('div', {}, list), row({ label: 'Tous les événements', onclick: () => show('securite', 'events') }));
+}
+
 function sSecurityCenter() {
   return asyncSection((st) => {
     const alerts = [];
@@ -840,6 +882,7 @@ function sSecurityCenter() {
           el('div', { class: 'desc', text: (blocked.total_blocked || 0).toLocaleString('fr-FR') + ' requêtes et ' + (blocked.popups_blocked || 0) + ' pop-ups bloquées depuis le démarrage' }))),
       alerts.length ? group('Alertes', alerts.map(([t, sec]) => row({ label: t, cls: 'alert', onclick: sec ? () => show(sec) : null }))) : null,
       group('Protections actives', protections.map(([name, good, detail, sec]) => row({ label: name, desc: detail, ctl: badge(good, good ? 'actif' : 'à vérifier', !sec), onclick: sec ? () => show(sec) : null }))),
+      recentEvents(),
       group('Sites avec exceptions',
         exceptions,
         row({ label: 'Autorisations mémorisées (caméra, micro, position…)', desc: 'Décisions « Mémoriser » par site.', onclick: () => show('autorisations') })),

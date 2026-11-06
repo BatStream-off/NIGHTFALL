@@ -245,6 +245,12 @@ fn on_navigation(window_id: u32, tab_id: u32, private: bool, url: &str) {
     });
     if let Some(w) = &warning {
         windows::push_event(window_id, &serde_json::json!({ "type": "warning", "tab": tab_id, "message": w }));
+        super::security::record_event("phishing_warning", url, w, private);
+    }
+    // HTTPS-First warning page shown for a site without HTTPS.
+    if let Some(hash) = url.strip_prefix(super::https_first::WARNING_PAGE).and_then(|r| r.strip_prefix('#')) {
+        let http: String = url::form_urlencoded::parse(format!("u={hash}").as_bytes()).next().map(|(_, v)| v.into_owned()).unwrap_or_default();
+        super::security::record_event("https_warning", &http, "Site sans HTTPS : avertissement affiché", private);
     }
     if is_web && !private {
         if let Some(s) = core().storage() {

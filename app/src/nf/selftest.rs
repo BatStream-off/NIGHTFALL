@@ -255,6 +255,14 @@ fn step_insecure() {
                 return fail("HTTPS-First : l'adresse a de nouveau été passée en https après « Continuer »");
             }
             state::log("selftest: HTTPS-First : adresse http:// ouverte telle quelle après « Continuer »");
+            // The warning was recorded as a security event, with the site only.
+            let r = call("security.events", json!({ "limit": 20 }));
+            let site = url::Url::parse(NO_HTTPS).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default();
+            let found = r["events"].as_array().map(|a| a.iter().any(|e| e["kind"] == "https_warning" && e["site"] == site.as_str())).unwrap_or(false);
+            if !found {
+                return fail(&format!("événement de sécurité HTTPS-First absent : {r}"));
+            }
+            state::log("selftest: événement de sécurité HTTPS-First enregistré");
             step_shield();
         });
     });

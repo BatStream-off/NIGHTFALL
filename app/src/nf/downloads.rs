@@ -201,6 +201,9 @@ wrap_download_handler! {
                 signature: "unknown".into(),
                 danger: nf_downloads::danger_message(danger).to_string(),
             };
+            if !record.danger.is_empty() {
+                super::security::record_event("dangerous_download", &record.url, &record.danger, private);
+            }
             if !private {
                 if let Some(s) = core().storage() {
                     if let Ok(id) = s.insert_download(&record) {

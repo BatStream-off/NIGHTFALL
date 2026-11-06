@@ -118,6 +118,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                 "topSites": [{"title": "RTBF", "url": "https://www.rtbf.be/"}, {"title": "Reddit", "url": "https://www.reddit.com/"},
                              {"title": "OpenStreetMap", "url": "https://www.openstreetmap.org/"}, {"title": "Qwant", "url": "https://www.qwant.com/"}],
                 "stats": {"blocked": 735, "bytesSaved": 26738688, "secondsSaved": 37}}
+        elif cmd == 'security.events':
+            r = {"ok": True, "events": [{"id": 2, "at": 1762400000, "kind": "https_warning", "site": "vieux-site.example", "detail": "Site sans HTTPS : avertissement affiché"}, {"id": 1, "at": 1762300000, "kind": "wrong_code", "site": "", "detail": "Code incorrect (1 échec(s) de suite)"}]}
         elif cmd == 'zoom.list':
             r = {"ok": True, "sites": [{"host": "fr.wikipedia.org", "percent": 125}, {"host": "www.lemonde.fr", "percent": 110}]}
         elif cmd == 'state':

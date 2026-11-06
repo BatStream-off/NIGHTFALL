@@ -305,6 +305,17 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
 
         // ---- settings
         "settings.get" => settings_get(),
+        "security.events" => {
+            let limit = body.get("limit").and_then(|v| v.as_i64()).unwrap_or(200);
+            match core().storage() {
+                Some(st) => st.security_events(limit, now()).map(|e| json!({ "ok": true, "events": e })).unwrap_or_else(err),
+                None => err("NIGHTFALL est verrouillé"),
+            }
+        }
+        "security.events.clear" => match core().storage() {
+            Some(st) => st.clear_security_events().map(|n| json!({ "ok": true, "removed": n })).unwrap_or_else(err),
+            None => err("NIGHTFALL est verrouillé"),
+        },
         "zoom.list" => {
             let sites: Vec<Value> = super::browsing::site_zoom_list().into_iter().map(|(host, percent)| json!({"host": host, "percent": percent})).collect();
             json!({"ok": true, "sites": sites})
@@ -823,7 +834,10 @@ fn run_transfer(export: bool, what: &str, p: &std::path::Path) -> Value {
 
 fn unlock_error(e: UnlockError) -> Value {
     match e {
-        UnlockError::WrongPin { failures, next_wait_seconds } => json!({ "ok": false, "error": "Code incorrect", "failures": failures, "wait": next_wait_seconds }),
+        UnlockError::WrongPin { failures, next_wait_seconds } => {
+            security::record_event("wrong_code", "", &format!("Code incorrect ({failures} échec(s) de suite)"), false);
+            json!({ "ok": false, "error": "Code incorrect", "failures": failures, "wait": next_wait_seconds })
+        }
         UnlockError::Throttled(s) => json!({ "ok": false, "error": format!("Patientez {s} s avant un nouvel essai"), "wait": s }),
         UnlockError::RecoveryRequired => json!({ "ok": false, "error": "Trop d'échecs : utilisez votre Recovery Key", "recoveryRequired": true }),
         other => err(other),
@@ -937,6 +951,7 @@ fn open_stores(c: &mut Core, mk: nf_crypto::SecretKey) -> Result<(), String> {
 fn after_unlock_ui() {
     super::updater::load_prefs();
     security::invalidate_detector();
+    std::thread::spawn(security::flush_pending_events);
     super::idle::touch();
     let session = {
         let c = core();
@@ -1011,6 +1026,7 @@ pub fn lock_now() {
 }
 
 pub fn emergency_lockdown() {
+    security::record_event("lockdown", "", "Verrouillage d'urgence déclenché", false);
     windows::close_private_windows();
     lock_now();
     windows::push_event_all(&json!({ "type": "lockdown" }));
