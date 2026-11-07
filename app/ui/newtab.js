@@ -130,8 +130,6 @@ function showWallpaper(id) {
     img.onerror = swap;
     img.src = wallUrl(id);
   } else swap();
-  const kind = bgKind(id);
-  $('#credit').textContent = kind === 'wall' ? 'Fond : NIGHTFALL · ' + WALLS.find((x) => x.id === id).name : '';
   applyBgEffects();
 }
 function applyBgEffects() {
