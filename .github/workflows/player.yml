@@ -42,6 +42,7 @@ jobs:
         shell: bash
     env:
       NF_PLAYER_OUT: ${{ github.workspace }}/out
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

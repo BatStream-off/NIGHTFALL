@@ -4,6 +4,25 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-07 — Lecteur NIGHTFALL 0.1.0 : construit, signé et testé (Windows + macOS)
+- **Workflow** `.github/workflows/player.yml`, run 42377494926 (commit `9fab433`) : vert
+  sur les deux plates-formes. Signature VMP de production EVS acceptée et vérifiée
+  (« streaming, 1349 days left ») ; macOS signé ad hoc après EVS. Auto-test dans le
+  paquet signé, 9/9 sur chaque plate-forme : liste des services, données séparées,
+  Widevine installé (4.10.3112.0), page isolée, sandbox, lecture Widevine réelle,
+  navigation et fenêtre hors liste rendues à NIGHTFALL, autorisations refusées.
+  Manifeste Ed25519 avec préfixe de contexte signé et vérifié (clé jetable).
+- **Contraintes EVS découvertes** (FAQ castLabs, « Binary signature denied ») : seules
+  les fuses de la liste de castLabs sont acceptées, d'où
+  `GrantFileProtocolExtraPrivileges` = true ; sur macOS, l'empreinte ASAR ne doit pas
+  être écrite dans le binaire du framework (`asarIntegrityDigest: false`) :
+  l'intégrité de app.asar reste vérifiée via `Info.plist`. Diagnostic : ECS + fuses
+  accepté, ECS renommé avec empreinte refusé.
+- **Clé de signature** : la vraie clé `NIGHTFALL_UPDATE_KEY` n'est pas utilisée sur les
+  branches de travail (elle serait exposée à tout commit poussé) ; décision de
+  publication à prendre avec le propriétaire.
+- **Mesures** ajoutées à `docs/MESURES.md`.
+
 ## 2026-11-07 — Lecteur compagnon : étape 1 (EVS + ad hoc sur macOS) RÉUSSIE
 - **Décision du propriétaire** : le lecteur compagnon (Electron for Content Security de
   castLabs, MIT) est avancé, alors que l'entrée du 2026-11-06 le reportait après la 1.0 ;
