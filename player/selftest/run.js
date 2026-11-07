@@ -9,11 +9,11 @@ const path = require('path');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function run({ partition, status, forwarded, serviceFor }) {
+async function run({ partition, status, forwarded, serviceFor, trace = () => {} }) {
   const out = process.env.NF_PLAYER_OUT || app.getPath('temp');
   const checks = {};
   const fail = [];
-  const check = (name, ok, detail) => { checks[name] = { ok: !!ok, detail }; if (!ok) fail.push(name); };
+  const check = (name, ok, detail) => { checks[name] = { ok: !!ok, detail }; if (!ok) fail.push(name); trace(`${ok ? 'OK' : 'ÉCHEC'} ${name}`); };
 
   // 1. Liste des services : sous-domaines oui, imitations et http non.
   check('services', !!serviceFor('https://www.netflix.com/browse') && !!serviceFor('https://www.disneyplus.com/')
@@ -33,7 +33,9 @@ async function run({ partition, status, forwarded, serviceFor }) {
     width: 960, height: 600, show: true,
     webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false, devTools: false },
   });
+  trace('chargement de la page de test');
   await win.loadFile(path.join(__dirname, 'test.html'));
+  trace('page chargée');
 
   // 4. Page isolée : ni require ni process dans la page.
   const isolated = await win.webContents.executeJavaScript('typeof require === "undefined" && typeof process === "undefined"');

@@ -20,6 +20,14 @@ const { serviceFor } = require('./services');
 
 const PARTITION = 'persist:nightfall-lecteur';
 const SELFTEST = process.argv.includes('--nf-selftest');
+// Auto-test : trace des étapes dans un fichier (la sortie standard d'une
+// application graphique Windows n'est pas toujours récupérable).
+function trace(msg) {
+  if (!SELFTEST || !process.env.NF_PLAYER_OUT) return;
+  try { require('fs').mkdirSync(process.env.NF_PLAYER_OUT, { recursive: true }); require('fs').appendFileSync(require('path').join(process.env.NF_PLAYER_OUT, 'trace-' + process.platform + '.txt'), new Date().toISOString() + ' ' + msg + '\n'); } catch {}
+}
+trace('démarrage ' + process.versions.electron);
+process.on('uncaughtException', (e) => { trace('exception : ' + (e && e.stack || e)); });
 
 app.enableSandbox();
 app.setName('Lecteur NIGHTFALL');
@@ -121,14 +129,17 @@ if (!SELFTEST && !app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => app.quit());
 
   app.whenReady().then(async () => {
+    trace('prêt');
     menu();
     setupSession();
     try {
       await components.whenReady();
+      trace('composants : ' + JSON.stringify(components.status()));
     } catch (e) {
+      trace('composants : échec ' + e);
       dialog.showErrorBox('Lecteur NIGHTFALL', 'Le module de lecture protégée (Widevine) n\'a pas pu être installé.\n\n' + String(e));
     }
-    if (SELFTEST) return require('./selftest/run').run({ partition: PARTITION, status: components.status(), forwarded, serviceFor });
+    if (SELFTEST) return require('./selftest/run').run({ partition: PARTITION, status: components.status(), forwarded, serviceFor, trace });
     const url = urlArg(process.argv);
     if (!url || !serviceFor(url)) {
       if (url) toNightfall(url);

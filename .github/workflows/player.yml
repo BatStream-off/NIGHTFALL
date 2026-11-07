@@ -94,6 +94,32 @@ jobs:
           EVS_NO_ASK: '1'
         run: python -m castlabs_evs.vmp sign-pkg "$PKG"
 
+      # Seulement si EVS refuse le paquet macOS : quelle modification est en cause ?
+      #   A = ECS d'origine + fuses seules ; B = ECS renommé par le packager, sans fuses.
+      - name: Diagnostic EVS macOS (si refus)
+        if: failure() && runner.os == 'macOS'
+        env:
+          EVS_NO_ASK: '1'
+        run: |
+          set +e
+          cd "$RUNNER_TEMP"
+          mkdir -p diagA diagB/src
+          ditto -x -k "ecszip/electron-v$ECS_VERSION-${{ matrix.zip }}.zip" diagA
+          node --input-type=module -e "
+            import { flipFuses, FuseVersion, FuseV1Options as F } from '$GITHUB_WORKSPACE/player/build/node_modules/@electron/fuses/dist/index.js';
+            await flipFuses('diagA/Electron.app', { version: FuseVersion.V1, resetAdHocDarwinSignature: false,
+              [F.RunAsNode]: false, [F.EnableCookieEncryption]: true, [F.EnableNodeOptionsEnvironmentVariable]: false,
+              [F.EnableNodeCliInspectArguments]: false, [F.EnableEmbeddedAsarIntegrityValidation]: true,
+              [F.OnlyLoadAppFromAsar]: true, [F.LoadBrowserProcessSpecificV8Snapshot]: false, [F.GrantFileProtocolExtraPrivileges]: true });"
+          echo "=== A : ECS d'origine + fuses seules"; python -m castlabs_evs.vmp sign-pkg diagA 2>&1 | tail -3
+          cp -R "$GITHUB_WORKSPACE/player/." diagB/src/ && rm -rf diagB/src/build
+          node --input-type=module -e "
+            import { packager } from '$GITHUB_WORKSPACE/player/build/node_modules/@electron/packager/dist/index.js';
+            await packager({ dir: 'diagB/src', out: 'diagB/out', platform: 'darwin', arch: 'arm64', name: 'Lecteur NIGHTFALL',
+              electronVersion: '$ECS_VERSION', electronZipDir: '$RUNNER_TEMP/ecszip', asar: true, prune: false });"
+          echo "=== B : renommé par le packager, sans fuses"; python -m castlabs_evs.vmp sign-pkg diagB/out/*/ 2>&1 | tail -3
+          exit 1
+
       - name: Signature Apple ad hoc (après EVS)
         if: runner.os == 'macOS'
         run: |
@@ -114,12 +140,17 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = macOS ]; then bin="$PKG/Lecteur NIGHTFALL.app/Contents/MacOS/Lecteur NIGHTFALL"; else bin="$PKG/Lecteur NIGHTFALL.exe"; fi
           set +e
-          "$bin" --nf-selftest > "$RUNNER_TEMP/selftest.log" 2>&1 &
+          "$bin" --nf-selftest --enable-logging=stderr > "$RUNNER_TEMP/selftest.log" 2>&1 &
           pid=$!
           for i in $(seq 1 150); do [ -f "$NF_PLAYER_OUT"/selftest-*.json ] && break; sleep 1; done
+          if [ ! -f "$NF_PLAYER_OUT"/selftest-*.json ] && [ "$RUNNER_OS" = Windows ]; then
+            powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; \$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; \$i=New-Object System.Drawing.Bitmap \$b.Width,\$b.Height; [System.Drawing.Graphics]::FromImage(\$i).CopyFromScreen(\$b.Location,[System.Drawing.Point]::Empty,\$b.Size); \$i.Save('$NF_PLAYER_OUT\\ecran-windows.png')" || true
+            tasklist | grep -i -E "lecteur|electron" || true
+          fi
           sleep 3; kill $pid 2>/dev/null
-          grep -E "PLAYER-SELFTEST|components" "$RUNNER_TEMP/selftest.log" | tail -5
-          cat "$NF_PLAYER_OUT"/selftest-*.json
+          echo "--- trace"; cat "$NF_PLAYER_OUT"/trace-*.txt 2>/dev/null
+          echo "--- journal (fin)"; grep -v -i "passw" "$RUNNER_TEMP/selftest.log" | tail -40
+          echo "--- résultat"; cat "$NF_PLAYER_OUT"/selftest-*.json
           python -c "import json,glob,sys;r=json.load(open(glob.glob(sys.argv[1]+'/selftest-*.json')[0]));print('mémoire (Mo) :',round(r['memoryKB']/1024),'processus :',r['processes']);sys.exit(0 if r['ok'] else 1)" "$NF_PLAYER_OUT"
 
       - name: Archive et taille sur disque

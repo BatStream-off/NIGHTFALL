@@ -41,7 +41,9 @@ const binary = platform === 'darwin'
 // lecteur ne charge aucune page file:// hors auto-test.
 await flipFuses(binary, {
   version: FuseVersion.V1,
-  resetAdHocDarwinSignature: platform === 'darwin',
+  // Pas de re-signature ad hoc ici : EVS doit voir le binaire tel que castLabs
+  // l'a publié, fuses mises à part. La signature Apple ad hoc vient après EVS.
+  resetAdHocDarwinSignature: false,
   [FuseV1Options.RunAsNode]: false,
   [FuseV1Options.EnableCookieEncryption]: true,
   [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
