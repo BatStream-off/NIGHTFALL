@@ -4,6 +4,25 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-07 — Lecteur compagnon : étape 1 (EVS + ad hoc sur macOS) RÉUSSIE
+- **Décision du propriétaire** : le lecteur compagnon (Electron for Content Security de
+  castLabs, MIT) est avancé, alors que l'entrée du 2026-11-06 le reportait après la 1.0 ;
+  plan validé (tâche 5). Compte EVS « NIGHTFALL » créé par le propriétaire lui-même
+  (script fourni), secrets `EVS_ACCOUNT_NAME` et `EVS_PASSWD` posés le 2026-11-07.
+- **Preuve** (run 42374056833, `.github/workflows/ecs-poc.yml`, branche
+  `poc-ecs-evs-macos`, macOS arm64) : ECS 45.2.1 (SHA-256 vérifiée), CDM Widevine
+  4.10.3112.0 ; EVS : « Existing signature invalid: Certificate is valid for development
+  only » puis signature de production « streaming, 1349 days left » ; `codesign
+  --sign -` (Signature=adhoc, TeamIdentifier=not set, « valid on disk ») ; `verify-pkg`
+  **après** la signature Apple : « Signature is valid ». Lecture Shaka « Angel One »
+  Widevine dans le paquet signé : keySystem com.widevine.alpha, 6,0 s, 149 images,
+  2 licences, image déchiffrée visible sur la capture. Secrets masqués (« *** »).
+- **Limite honnête** : le témoin (ECS tel que publié, signature VMP de développement)
+  lit aussi la vidéo : le serveur de licences de démonstration n'exige pas de VMP de
+  production. La preuve établit donc que la chaîne EVS + ad hoc produit une signature
+  VMP valide, pas qu'un service commercial l'acceptera : seul le test réel du
+  propriétaire le dira. Aucun service n'est annoncé compatible.
+
 ## 2026-11-05 soir — M-0002 et M-0003 ACCEPTÉES (audit final)
 - Corrections du Directeur (autorisées par le propriétaire) : M-0003 0dc8013, M-0002 7729abb.
 - Audit final (Opus, agent neuf) : **ACCEPTÉ** pour les deux, aucun MAJEUR. Mineurs : errata
