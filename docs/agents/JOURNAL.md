@@ -4,6 +4,14 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-07 — Publication 0.3.2 (accord écrit du propriétaire)
+- **Accord** : « ok publie la nouvelle version ». #44 fusionnée dans develop après CI verte
+  sur le résultat fusionné (ca1c83e) ; version 0.3.2 (f63d064) ; PR #45 develop → main.
+- **Préservation** : la disparition de `ui-id:newtab.html#credit` (PR #42, demandée par le
+  propriétaire) est redéclarée dans le corps de #45, que le contrôle lit pour main.
+- À la fusion dans main : pré-version NIGHTFALL v0.3.2 (update.json signé) et première
+  publication `lecteur-v0.1.0` (player.json signé avec préfixe de contexte).
+
 ## 2026-11-07 — Fusions dans develop (accord écrit du propriétaire)
 - **Accord** : « Oui, fusionne les trois » (PR #42, #43, #44).
 - #42 (texte du fond retiré du Nouvel onglet) fusionnée : 59d5440. #43 (popup Shield)
