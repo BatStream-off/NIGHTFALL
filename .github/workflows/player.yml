@@ -1,0 +1,182 @@
+# Lecteur NIGHTFALL (sites vidéo protégés) : construction, signature VMP de
+# production (castLabs EVS), signature Apple ad hoc (macOS), auto-test dans le
+# paquet signé, manifeste signé Ed25519. Rien n'est publié par ce workflow.
+#
+# Clé Ed25519 : ce workflow tourne sur des branches de travail, donc il signe
+# avec une clé JETABLE créée pour l'exécution. La vraie clé de mise à jour
+# (NIGHTFALL_UPDATE_KEY) ne sert qu'à la publication, depuis main.
+name: Lecteur NIGHTFALL
+
+on:
+  push:
+    branches: [poc-ecs-evs-macos]
+  pull_request:
+    paths: ['player/**', '.github/workflows/player.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: player-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ECS_VERSION: 45.2.1+wvcus
+  SHAKA_VERSION: 5.3.4
+  EVS_VERSION: 1.3.3
+
+jobs:
+  build:
+    name: Lecteur (${{ matrix.key }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, key: macos-arm64, zip: darwin-arm64 }
+          - { os: windows-latest, key: windows-x64, zip: win32-x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      NF_PLAYER_OUT: ${{ github.workspace }}/out
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Version
+        id: v
+        run: echo "player=$(node -p "require('./player/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Outils (castlabs-evs, packager, fuses, Shaka Player pour l'auto-test)
+        run: |
+          python -m pip install --quiet "castlabs-evs==$EVS_VERSION"
+          npm install --prefix player/build --no-audit --no-fund --silent @electron/packager@20.3.0 @electron/fuses@2.1.3
+          mkdir -p "$RUNNER_TEMP/shaka" && cd "$RUNNER_TEMP/shaka"
+          npm pack --silent "shaka-player@$SHAKA_VERSION"
+          tar -xzf "shaka-player-$SHAKA_VERSION.tgz"
+          cp package/dist/shaka-player.compiled.js "$GITHUB_WORKSPACE/player/selftest/"
+
+      - name: Electron for Content Security (téléchargement vérifié)
+        run: |
+          mkdir -p "$RUNNER_TEMP/ecszip" && cd "$RUNNER_TEMP/ecszip"
+          base="https://github.com/castlabs/electron-releases/releases/download/v${ECS_VERSION/+/%2B}"
+          zip="electron-v$ECS_VERSION-${{ matrix.zip }}.zip"
+          curl -sSLf -o "$zip" "$base/$zip"
+          curl -sSLf -o ../SHASUMS256.txt "$base/SHASUMS256.txt"
+          expected=$(grep -F " *$zip" ../SHASUMS256.txt | cut -d' ' -f1)
+          actual=$(python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$zip")
+          echo "$zip : $actual"
+          test -n "$expected" && test "$expected" = "$actual"
+
+      - name: Paquet et fuses
+        run: |
+          node player/build/package.mjs "$RUNNER_TEMP/ecszip" "$ECS_VERSION" "$RUNNER_TEMP/pkg"
+          ls "$RUNNER_TEMP/pkg"/*
+          echo "PKG=$(ls -d "$RUNNER_TEMP/pkg"/*/ | head -1)" >> "$GITHUB_ENV"
+
+      - name: Connexion EVS (secrets, non interactive)
+        env:
+          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
+          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+          EVS_NO_ASK: '1'
+        run: python player/build/evs_login.py
+
+      - name: Signature VMP de production (EVS)
+        env:
+          EVS_NO_ASK: '1'
+        run: python -m castlabs_evs.vmp sign-pkg "$PKG"
+
+      - name: Signature Apple ad hoc (après EVS)
+        if: runner.os == 'macOS'
+        run: |
+          app="$PKG/Lecteur NIGHTFALL.app"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          codesign -dv "$app" 2>&1 | grep -E "^Signature|TeamIdentifier|flags"
+
+      - name: Vérifications (VMP, fuses)
+        env:
+          EVS_NO_ASK: '1'
+        run: |
+          python -m castlabs_evs.vmp verify-pkg "$PKG"
+          if [ "$RUNNER_OS" = macOS ]; then app="$PKG/Lecteur NIGHTFALL.app"; else app="$PKG/Lecteur NIGHTFALL.exe"; fi
+          npx --prefix player/build electron-fuses read --app "$app"
+
+      - name: Auto-test dans le paquet signé (Widevine, verrouillage, mémoire)
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then bin="$PKG/Lecteur NIGHTFALL.app/Contents/MacOS/Lecteur NIGHTFALL"; else bin="$PKG/Lecteur NIGHTFALL.exe"; fi
+          set +e
+          "$bin" --nf-selftest > "$RUNNER_TEMP/selftest.log" 2>&1 &
+          pid=$!
+          for i in $(seq 1 150); do [ -f "$NF_PLAYER_OUT"/selftest-*.json ] && break; sleep 1; done
+          sleep 3; kill $pid 2>/dev/null
+          grep -E "PLAYER-SELFTEST|components" "$RUNNER_TEMP/selftest.log" | tail -5
+          cat "$NF_PLAYER_OUT"/selftest-*.json
+          python -c "import json,glob,sys;r=json.load(open(glob.glob(sys.argv[1]+'/selftest-*.json')[0]));print('mémoire (Mo) :',round(r['memoryKB']/1024),'processus :',r['processes']);sys.exit(0 if r['ok'] else 1)" "$NF_PLAYER_OUT"
+
+      - name: Archive et taille sur disque
+        run: |
+          name="Lecteur-NIGHTFALL-${{ steps.v.outputs.player }}-${{ matrix.key }}.zip"
+          mkdir -p dist
+          if [ "$RUNNER_OS" = macOS ]; then
+            ditto -c -k --keepParent "$PKG/Lecteur NIGHTFALL.app" "dist/$name"
+          else
+            (cd "$PKG" && 7z a -tzip -mx=9 "$GITHUB_WORKSPACE/dist/$name" . > /dev/null)
+          fi
+          python -c "import os,sys
+          def du(p): return sum(os.path.getsize(os.path.join(d,f)) for d,_,fs in os.walk(p) for f in fs if not os.path.islink(os.path.join(d,f)))
+          print('installé (Mo) :', round(du(sys.argv[1])/2**20,1), '| téléchargement (Mo) :', round(os.path.getsize(sys.argv[2])/2**20,1))" "$PKG" "dist/$name" | tee "$NF_PLAYER_OUT/taille-${{ matrix.key }}.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lecteur-${{ matrix.key }}
+          path: dist/*.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lecteur-test-${{ matrix.key }}
+          path: out
+          if-no-files-found: warn
+
+  manifest:
+    name: Manifeste signé (clé jetable)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lecteur-*
+          path: dist
+          merge-multiple: true
+      - name: Signer puis vérifier
+        run: |
+          python3 -m pip install --quiet cryptography
+          version=$(node -p "require('./player/package.json').version")
+          eval "$(python3 -c "
+          import base64
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+          from cryptography.hazmat.primitives import serialization as s
+          k = Ed25519PrivateKey.generate()
+          raw = lambda b: base64.b64encode(b).decode()
+          print('export NF_PLAYER_SIGNING_KEY=' + raw(k.private_bytes(s.Encoding.Raw, s.PrivateFormat.Raw, s.NoEncryption())))
+          print('PUB=' + raw(k.public_key().public_bytes(s.Encoding.Raw, s.PublicFormat.Raw)))
+          ")"
+          echo "::add-mask::$NF_PLAYER_SIGNING_KEY"
+          ECS_VERSION="$ECS_VERSION" python3 player/build/manifest.py "$version" dist
+          unset NF_PLAYER_SIGNING_KEY
+          python3 player/build/manifest.py --verify dist "$PUB"
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lecteur-manifeste
+          path: dist/player.json*

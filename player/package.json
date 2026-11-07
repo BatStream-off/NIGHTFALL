@@ -1,0 +1,9 @@
+{
+  "name": "nightfall-lecteur",
+  "productName": "Lecteur NIGHTFALL",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lecteur NIGHTFALL pour les sites vidéo protégés (Widevine), basé sur Electron for Content Security",
+  "main": "main.js",
+  "license": "MPL-2.0"
+}

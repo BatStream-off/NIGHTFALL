@@ -1,8 +1,0 @@
-{
-  "name": "nightfall-ecs-poc",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Preuve de faisabilité : lecture Widevine dans Electron for Content Security (CI seulement)",
-  "main": "main.js",
-  "license": "MPL-2.0"
-}
