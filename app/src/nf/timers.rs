@@ -56,6 +56,7 @@ fn tick() {
         }
         session::save_session_snapshot();
         super::updater::tick();
+        super::player::tick();
     }
     // Every 30 minutes: refresh Shield's filter lists when they are old.
     if n % 120 == 119 {

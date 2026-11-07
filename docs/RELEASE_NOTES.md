@@ -1,4 +1,5 @@
 **0.3.2 (en préparation)**
+- **Lecteur NIGHTFALL (vidéos protégées) :** sur les sites vidéo qui exigent une protection Widevine, que NIGHTFALL ne peut pas lire lui-même, une barre propose de les ouvrir dans le lecteur NIGHTFALL, une application séparée et verrouillée, basée sur Electron for Content Security de castLabs. Elle n'est pas incluse dans l'installateur : elle est téléchargée (environ 115 à 150 Mo) seulement si vous l'acceptez, et vérifiée (signature, empreinte) avant installation, comme ses mises à jour. Ses cookies sont séparés de ceux de NIGHTFALL ; tout autre site s'ouvre dans NIGHTFALL. Réglages et suppression : Paramètres › Sécurité. La lecture sur chaque service reste à vérifier : aucun n'est encore annoncé comme compatible.
 - **NIGHTFALL Shield :** l'interrupteur « Shield activé pour ce site » de la fenêtre du bouclier s'affiche de nouveau correctement, et le lien « Ouvrir le Security Center » n'est plus coupé.
 
 **0.3.1**

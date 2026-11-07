@@ -4,6 +4,53 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-07 — Fusions dans develop (accord écrit du propriétaire)
+- **Accord** : « Oui, fusionne les trois » (PR #42, #43, #44).
+- #42 (texte du fond retiré du Nouvel onglet) fusionnée : 59d5440. #43 (popup Shield)
+  fusionnée : e24499e. Toutes deux à CI verte.
+- #44 (lecteur NIGHTFALL) : develop fusionnée dans la branche ; conflits sans perte
+  (`ci/ui_mock_server.py`, `ci/ui_render_test.js`, `docs/RELEASE_NOTES.md`, ce journal :
+  les deux ajouts gardés). Test de rendu complet repassé en local avant la CI ; fusion
+  dans develop seulement après CI verte.
+
+## 2026-11-07 — Lecteur NIGHTFALL 0.1.0 : construit, signé et testé (Windows + macOS)
+- **Workflow** `.github/workflows/player.yml`, run 42377494926 (commit `9fab433`) : vert
+  sur les deux plates-formes. Signature VMP de production EVS acceptée et vérifiée
+  (« streaming, 1349 days left ») ; macOS signé ad hoc après EVS. Auto-test dans le
+  paquet signé, 9/9 sur chaque plate-forme : liste des services, données séparées,
+  Widevine installé (4.10.3112.0), page isolée, sandbox, lecture Widevine réelle,
+  navigation et fenêtre hors liste rendues à NIGHTFALL, autorisations refusées.
+  Manifeste Ed25519 avec préfixe de contexte signé et vérifié (clé jetable).
+- **Contraintes EVS découvertes** (FAQ castLabs, « Binary signature denied ») : seules
+  les fuses de la liste de castLabs sont acceptées, d'où
+  `GrantFileProtocolExtraPrivileges` = true ; sur macOS, l'empreinte ASAR ne doit pas
+  être écrite dans le binaire du framework (`asarIntegrityDigest: false`) :
+  l'intégrité de app.asar reste vérifiée via `Info.plist`. Diagnostic : ECS + fuses
+  accepté, ECS renommé avec empreinte refusé.
+- **Clé de signature** : la vraie clé `NIGHTFALL_UPDATE_KEY` n'est pas utilisée sur les
+  branches de travail (elle serait exposée à tout commit poussé) ; décision de
+  publication à prendre avec le propriétaire.
+- **Mesures** ajoutées à `docs/MESURES.md`.
+
+## 2026-11-07 — Lecteur compagnon : étape 1 (EVS + ad hoc sur macOS) RÉUSSIE
+- **Décision du propriétaire** : le lecteur compagnon (Electron for Content Security de
+  castLabs, MIT) est avancé, alors que l'entrée du 2026-11-06 le reportait après la 1.0 ;
+  plan validé (tâche 5). Compte EVS « NIGHTFALL » créé par le propriétaire lui-même
+  (script fourni), secrets `EVS_ACCOUNT_NAME` et `EVS_PASSWD` posés le 2026-11-07.
+- **Preuve** (run 42374056833, `.github/workflows/ecs-poc.yml`, branche
+  `poc-ecs-evs-macos`, macOS arm64) : ECS 45.2.1 (SHA-256 vérifiée), CDM Widevine
+  4.10.3112.0 ; EVS : « Existing signature invalid: Certificate is valid for development
+  only » puis signature de production « streaming, 1349 days left » ; `codesign
+  --sign -` (Signature=adhoc, TeamIdentifier=not set, « valid on disk ») ; `verify-pkg`
+  **après** la signature Apple : « Signature is valid ». Lecture Shaka « Angel One »
+  Widevine dans le paquet signé : keySystem com.widevine.alpha, 6,0 s, 149 images,
+  2 licences, image déchiffrée visible sur la capture. Secrets masqués (« *** »).
+- **Limite honnête** : le témoin (ECS tel que publié, signature VMP de développement)
+  lit aussi la vidéo : le serveur de licences de démonstration n'exige pas de VMP de
+  production. La preuve établit donc que la chaîne EVS + ad hoc produit une signature
+  VMP valide, pas qu'un service commercial l'acceptera : seul le test réel du
+  propriétaire le dira. Aucun service n'est annoncé compatible.
+
 ## 2026-11-07 — Popup Shield corrigée ; compte castLabs ; lecteur compagnon
 - **Popup Shield** (demande du propriétaire, accord écrit « corrige le bouton dans la
   popup ») : l'interrupteur mesurait 16×16 px au lieu de 40×22 parce que la règle
