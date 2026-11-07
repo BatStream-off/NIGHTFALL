@@ -4,6 +4,23 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-07 — Publication 0.3.2 faite et vérifiée
+- #45 fusionnée dans main (badece7) après CI verte, dont la préservation (déclaration
+  `ui-id:newtab.html#credit` reprise dans le corps). Workflows « CI » et « Lecteur
+  NIGHTFALL » verts sur main.
+- **v0.3.2** (pré-version) : signature de `update.json` valide avec la clé publique
+  compilée, refusée avec le préfixe du lecteur ; version signée 0.3.2 ; dmg macOS et
+  setup.exe Windows conformes au manifeste (taille et SHA-256 de l'API GitHub).
+- **lecteur-v0.1.0** : signature de `player.json` valide avec le préfixe de contexte,
+  refusée sans ; type `nightfall-lecteur`, version 0.1.0 ; zips macOS (113,9 Mio) et
+  Windows (146,2 Mio) conformes.
+- **Écart corrigé** : GitHub affichait lecteur-v0.1.0 comme « dernière version » du dépôt
+  (seule publication non marquée pré-version). Passée en pré-version (le lecteur la
+  trouve toujours : seuls les brouillons sont exclus) ; `--prerelease` ajouté au
+  workflow.
+- **Non vérifié** : parcours réel dans NIGHTFALL 0.3.2 (bandeau → téléchargement →
+  lecteur) sur une machine ; lecture sur un service réel (test du propriétaire).
+
 ## 2026-11-07 — Publication 0.3.2 (accord écrit du propriétaire)
 - **Accord** : « ok publie la nouvelle version ». #44 fusionnée dans develop après CI verte
   sur le résultat fusionné (ca1c83e) ; version 0.3.2 (f63d064) ; PR #45 develop → main.
