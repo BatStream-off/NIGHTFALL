@@ -480,7 +480,7 @@ function askPermission(ev) {
 
 // ------------------------------------------------------------------ popups (top view side)
 // Size each dropdown opens with; the popup then fits itself (popup.resize).
-const POPUP_SIZE = { menu: [340, 640], shield: [320, 330], passwords: [340, 380], zoom: [270, 60], find: [400, 50], tabmenu: [290, 360] };
+const POPUP_SIZE = { menu: [340, 640], shield: [320, 356], passwords: [340, 380], zoom: [270, 60], find: [400, 50], tabmenu: [290, 360] };
 const POPUP_BUTTON = { menu: '#b-menu', shield: '#b-shield', passwords: '#b-key', zoom: '#b-zoom' };
 let pressedOnOpen = null;
 // Last popup closed by the core: on macOS the popup's own close (it lost the

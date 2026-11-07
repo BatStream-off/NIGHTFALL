@@ -86,6 +86,57 @@ async function brightShare(page) {
     if (problems.length) failed = true;
     await p.close();
   }
+
+  // Shield popup on a web site, opened at the size of POPUP_SIZE.shield (shell.js).
+  // Bug of 0.3.1: nf.css `input[type=checkbox]` (16 px) beat `.toggle`, so the
+  // switch was squashed and its knob stuck out; the panel was also taller than
+  // its opening size, which cut the « Ouvrir le Security Center » link.
+  const shieldSize = await (async () => {
+    const p = await b.newPage();
+    await p.goto(`http://127.0.0.1:${PORT_UNLOCKED}/shell.js`);
+    const m = /shield:\s*\[(\d+),\s*(\d+)\]/.exec(await p.textContent('body'));
+    await p.close();
+    return m ? { width: Number(m[1]), height: Number(m[2]) } : null;
+  })();
+  if (!shieldSize) { console.log('ÉCHEC popup Shield : POPUP_SIZE.shield introuvable dans shell.js'); failed = true; }
+  for (const [name, off] of [['shield-actif', false], ['shield-desactive', true]]) {
+    if (!shieldSize) break;
+    const url = `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=popup&w=1&private=0&panel=shield&mocksite=lemonde.fr${off ? '&mockoff=1' : ''}`;
+    await check('popup-' + name, url, shieldSize, 1000);
+    const p = await b.newPage({ viewport: shieldSize });
+    // The popup fits itself (fitPopup → popup.resize, clamped to 760 px by
+    // windows.rs:popup_resize): check it at the size it asks for, as in NIGHTFALL
+    // (fonts differ between systems: 353 px on macOS, 372 px on Linux).
+    let asked = null;
+    p.on('request', (r) => { if (r.url().endsWith('/api/popup.resize')) { try { asked = JSON.parse(r.postData()); } catch (e) {} } });
+    await p.goto(url);
+    await p.waitForSelector('.sh-toggle input.toggle');
+    await p.waitForTimeout(500);
+    if (!asked || asked.width !== shieldSize.width || asked.height < 40 || asked.height > 760) {
+      console.log(`ÉCHEC popup ${name} : taille demandée invalide ${JSON.stringify(asked)}`); failed = true; await p.close(); continue;
+    }
+    await p.setViewportSize({ width: asked.width, height: asked.height });
+    await p.waitForTimeout(300);
+    const m = await p.evaluate(() => {
+      const box = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
+      const t = document.querySelector('.sh-toggle input.toggle');
+      const after = getComputedStyle(t, '::after');
+      const knobLeft = parseFloat(after.left) + (t.checked ? 18 : 0);
+      return { toggle: box(t), checked: t.checked, knobRight: knobLeft + parseFloat(after.width),
+        inner: box(document.querySelector('#popup-body').firstElementChild), link: box(document.querySelector('#popup-body .m-item')),
+        vw: innerWidth, vh: innerHeight };
+    });
+    const problems = [];
+    if (Math.round(m.toggle.w) !== 40 || Math.round(m.toggle.h) !== 22) problems.push(`interrupteur ${m.toggle.w}×${m.toggle.h} au lieu de 40×22`);
+    if (m.knobRight > m.toggle.w) problems.push('bouton de l\'interrupteur hors de sa piste');
+    if (m.toggle.r > m.vw) problems.push('interrupteur coupé à droite');
+    if (m.checked === off) problems.push('état de l\'interrupteur différent de celui du site');
+    if (m.inner.b > m.vh + 1) problems.push(`contenu de ${Math.ceil(m.inner.h)} px plus haut que la popup (${m.vh} px)`);
+    if (m.link.b > m.vh) problems.push('lien « Ouvrir le Security Center » coupé');
+    console.log(`${problems.length ? 'ÉCHEC' : 'OK  '} popup ${name} (${asked.width}×${asked.height}) : ${problems.length ? problems.join(' ; ') : 'interrupteur 40×22, contenu entier'}`);
+    if (problems.length) failed = true;
+    await p.close();
+  }
   await b.close();
   process.exit(failed ? 1 : 0);
 })();
