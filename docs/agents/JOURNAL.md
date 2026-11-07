@@ -4,6 +4,23 @@ Décisions, arbitrages, montées de modèle, refus d'audit et consultations du
 propriétaire, du plus récent au plus ancien. Chaque entrée : date, mission, décision,
 raison, preuves.
 
+## 2026-11-07 — Popup Shield corrigée ; compte castLabs ; lecteur compagnon
+- **Popup Shield** (demande du propriétaire, accord écrit « corrige le bouton dans la
+  popup ») : l'interrupteur mesurait 16×16 px au lieu de 40×22 parce que la règle
+  `input[type=checkbox]` de `nf.css` (spécificité 0,1,1, depuis a4ee186) l'emportait
+  sur `.toggle` (0,1,0) ; le bouton rond débordait de la piste. Le contenu (353 px
+  sur macOS) dépassait aussi la taille d'ouverture (330 px) : lien « Ouvrir le
+  Security Center » coupé jusqu'à l'ajustement par `popup.resize`. Correctif :
+  sélecteurs `input.toggle`, `POPUP_SIZE.shield` = [320, 356]. Test ajouté dans
+  `ci/ui_render_test.js`, à la taille que la popup demande (les polices Linux de la
+  CI donnent 372 px : la première version, à taille fixe, échouait sur Ubuntu).
+  Échoue sur develop, passe avec le correctif (Playwright local). PR #43.
+- **Lecteur compagnon (castLabs ECS + EVS)** : le propriétaire avance la décision du
+  2026-11-06 (« reporté après la 1.0 ») et valide le plan de la tâche 5.
+- **Compte castLabs EVS** : la création du compte et la saisie du mot de passe ne
+  peuvent pas être faites par l'agent ; le Directeur fournit un script que le
+  propriétaire lance lui-même.
+
 ## 2026-11-05 soir — M-0002 et M-0003 ACCEPTÉES (audit final)
 - Corrections du Directeur (autorisées par le propriétaire) : M-0003 0dc8013, M-0002 7729abb.
 - Audit final (Opus, agent neuf) : **ACCEPTÉ** pour les deux, aucun MAJEUR. Mineurs : errata

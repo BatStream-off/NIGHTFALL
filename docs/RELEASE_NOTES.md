@@ -1,3 +1,6 @@
+**0.3.2 (en préparation)**
+- **NIGHTFALL Shield :** l'interrupteur « Shield activé pour ce site » de la fenêtre du bouclier s'affiche de nouveau correctement, et le lien « Ouvrir le Security Center » n'est plus coupé.
+
 **0.3.1**
 - **Copier-coller sur macOS :** Cmd+C, Cmd+V, Cmd+X, Cmd+A et Cmd+Z fonctionnent dans les pages, la barre d'adresse et les Paramètres.
 - **Nouvel onglet :** 7 nouveaux fonds, couleur unie ou votre propre image (gardée chiffrée), réglages pour assombrir et flouter le fond ; horloge, recherche, raccourcis et statistiques déplaçables (9 emplacements, glisser-déposer) avec de nombreuses options.
