@@ -34,15 +34,21 @@ const [out] = await packager({
 const binary = platform === 'darwin'
   ? path.join(out, 'Lecteur NIGHTFALL.app')
   : path.join(out, 'Lecteur NIGHTFALL.exe');
+// Exactement l'ensemble de fuses que la version gratuite d'EVS accepte (FAQ
+// castLabs, « Can I use @electron/fuses with the free version of ECS and
+// EVS? ») : tout autre réglage fait refuser la signature (« Binary signature
+// denied »). GrantFileProtocolExtraPrivileges doit donc rester à true ; le
+// lecteur ne charge aucune page file:// hors auto-test.
 await flipFuses(binary, {
   version: FuseVersion.V1,
   resetAdHocDarwinSignature: platform === 'darwin',
   [FuseV1Options.RunAsNode]: false,
+  [FuseV1Options.EnableCookieEncryption]: true,
   [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
   [FuseV1Options.EnableNodeCliInspectArguments]: false,
-  [FuseV1Options.EnableCookieEncryption]: true,
   [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
   [FuseV1Options.OnlyLoadAppFromAsar]: true,
-  [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
+  [FuseV1Options.LoadBrowserProcessSpecificV8Snapshot]: false,
+  [FuseV1Options.GrantFileProtocolExtraPrivileges]: true,
 });
 console.log('paquet : ' + out);
