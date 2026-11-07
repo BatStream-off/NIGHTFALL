@@ -14,6 +14,7 @@ pub mod omnibox;
 #[cfg(target_os = "macos")]
 pub mod mac;
 pub mod permissions;
+pub mod player;
 pub mod prefs;
 pub mod scheme;
 pub mod scheme_registration;

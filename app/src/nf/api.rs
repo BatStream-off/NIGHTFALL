@@ -231,6 +231,12 @@ pub fn handle(caller: &Caller, cmd: &str, body: &Value) -> Value {
             ok()
         }
         "page.info" => page_info(w),
+        "player.status" => super::player::status(),
+        "player.propose" => super::player::propose(s(body, "url")),
+        "player.open" => super::player::open(s(body, "url")),
+        "player.install" => super::player::install(body.get("url").and_then(Value::as_str).map(str::to_string)),
+        "player.setBar" => super::player::set_bar(body),
+        "player.remove" => super::player::remove(body),
         "update.status" => super::updater::status(),
         "update.set" => super::updater::set(body),
         "update.check" => {
