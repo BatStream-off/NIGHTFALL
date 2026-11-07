@@ -1,5 +1,6 @@
 """Mock of the internal API, to render the interface pages in a plain browser (CI)."""
 import json, http.server, os
+from urllib.parse import urlparse, parse_qs
 os.chdir(os.environ['NF_UI_DIR'])
 UNLOCKED = os.environ.get('NF_UNLOCKED') == '1'
 STATE = {"ok": True, "configured": UNLOCKED, "unlocked": UNLOCKED, "awaitingRecovery": False, "lockStatus": None,
@@ -126,6 +127,13 @@ class H(http.server.SimpleHTTPRequestHandler):
             r = {"ok": True}
         elif cmd == 'zoom.list':
             r = {"ok": True, "sites": [{"host": "fr.wikipedia.org", "percent": 125}, {"host": "www.lemonde.fr", "percent": 110}]}
+        elif cmd == 'page.info' and 'mocksite=' in (self.headers.get('Referer') or ''):
+            # Shield popup on a web site: the page's own address says which site
+            # (?mocksite=lemonde.fr) and whether Shield is off for it (&mockoff=1).
+            q = parse_qs(urlparse(self.headers['Referer']).query)
+            site = q['mocksite'][0]
+            r = {"ok": True, "url": "https://www." + site + "/", "secure": True, "internal": False,
+                 "shieldActive": q.get('mockoff') != ['1'], "bookmarked": False, "passwords": 0, "site": site}
         elif cmd == 'state':
             r = STATE
         else:

@@ -189,7 +189,7 @@ html.popup, html.popup body { background: transparent; }
 .m-head b { font: 500 13px/1 var(--display); letter-spacing: .06em; }
 .m-head span { margin-left: auto; color: var(--mist); font-size: 12px; }
 
-/* Shield panel */
+/* Shield panel (input.toggle: must outweigh nf.css input[type=checkbox], 16 px) */
 .sh-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px 12px; }
 .sh-site { flex: 1; min-width: 0; }
 .sh-site .sh-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -204,11 +204,11 @@ html.popup, html.popup body { background: transparent; }
 .sh-toggle .t { flex: 1; }
 .sh-toggle .t b { display: block; font-weight: 600; font-size: 14px; }
 .sh-toggle .t span { color: var(--mist); font-size: 12px; line-height: 1.4; display: block; margin-top: 2px; }
-.toggle { width: 40px; height: 22px; appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; border-radius: 99px; background: var(--steel-2); position: relative; cursor: pointer; flex: none; transition: background .15s; }
-.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--c-text); transition: transform .15s; }
-.toggle:checked { background: var(--hex); }
-.toggle:checked::after { transform: translateX(18px); background: #fff; }
-.toggle:hover { border: 0; }
+input.toggle { width: 40px; height: 22px; appearance: none; -webkit-appearance: none; margin: 0; padding: 0; border: 0; border-radius: 99px; background: var(--steel-2); position: relative; cursor: pointer; flex: none; transition: background .15s; }
+input.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--c-text); transition: transform .15s; }
+input.toggle:checked { background: var(--hex); }
+input.toggle:checked::after { transform: translateX(18px); background: #fff; }
+input.toggle:hover { border: 0; }
 .p-note { padding: 4px 16px 0; color: var(--mist); font-size: 13px; line-height: 1.45; }
 
 /* Passwords panel */
