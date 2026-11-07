@@ -28,6 +28,7 @@ function trace(msg) {
 }
 trace('démarrage ' + process.versions.electron);
 process.on('uncaughtException', (e) => { trace('exception : ' + (e && e.stack || e)); });
+process.on('unhandledRejection', (e) => { trace('rejet non traité : ' + (e && e.stack || e)); });
 
 app.enableSandbox();
 app.setName('Lecteur NIGHTFALL');

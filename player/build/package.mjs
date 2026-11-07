@@ -26,6 +26,11 @@ const [out] = await packager({
   electronVersion: ecsVersion,
   electronZipDir: path.resolve(zipDir),
   asar: true,
+  // macOS, Electron >= 41 : ne pas inscrire l'empreinte de l'archive dans le
+  // binaire « Electron Framework » (EVS refuse tout binaire ainsi modifié :
+  // « Binary signature denied »). L'intégrité de app.asar reste vérifiée par
+  // Electron grâce à ElectronAsarIntegrity dans Info.plist (fuse activée).
+  asarIntegrityDigest: false,
   prune: false,
   ignore: [/^\/build($|\/)/],
   win32metadata: { CompanyName: 'NIGHTFALL', FileDescription: 'Lecteur NIGHTFALL', ProductName: 'Lecteur NIGHTFALL' },

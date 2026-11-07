@@ -95,7 +95,8 @@ jobs:
         run: python -m castlabs_evs.vmp sign-pkg "$PKG"
 
       # Seulement si EVS refuse le paquet macOS : quelle modification est en cause ?
-      #   A = ECS d'origine + fuses seules ; B = ECS renommé par le packager, sans fuses.
+      #   A = ECS d'origine + fuses seules ; B = renommé par le packager (sans empreinte
+      #   dans le framework), sans fuses.
       - name: Diagnostic EVS macOS (si refus)
         if: failure() && runner.os == 'macOS'
         env:
@@ -116,8 +117,8 @@ jobs:
           node --input-type=module -e "
             import { packager } from '$GITHUB_WORKSPACE/player/build/node_modules/@electron/packager/dist/index.js';
             await packager({ dir: 'diagB/src', out: 'diagB/out', platform: 'darwin', arch: 'arm64', name: 'Lecteur NIGHTFALL',
-              electronVersion: '$ECS_VERSION', electronZipDir: '$RUNNER_TEMP/ecszip', asar: true, prune: false });"
-          echo "=== B : renommé par le packager, sans fuses"; python -m castlabs_evs.vmp sign-pkg diagB/out/*/ 2>&1 | tail -3
+              electronVersion: '$ECS_VERSION', electronZipDir: '$RUNNER_TEMP/ecszip', asar: true, asarIntegrityDigest: false, prune: false });"
+          echo "=== B : renommé par le packager, sans empreinte ni fuses"; python -m castlabs_evs.vmp sign-pkg diagB/out/*/ 2>&1 | tail -3
           exit 1
 
       - name: Signature Apple ad hoc (après EVS)

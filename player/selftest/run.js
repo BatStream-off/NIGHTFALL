@@ -40,7 +40,10 @@ async function run({ partition, status, forwarded, serviceFor, trace = () => {} 
   // 4. Page isolée : ni require ni process dans la page.
   const isolated = await win.webContents.executeJavaScript('typeof require === "undefined" && typeof process === "undefined"');
   check('page-isolee', isolated === true, 'require et process absents de la page');
-  check('sandbox', win.webContents.getOSProcessId() > 0 && win.webContents.getWebPreferences().sandbox === true, 'sandbox du moteur de rendu');
+  // Sandbox du moteur de rendu de cette fenêtre, telle que Chromium la rapporte.
+  const rendererPid = win.webContents.getOSProcessId();
+  const renderer = app.getAppMetrics().find((m) => m.pid === rendererPid);
+  check('sandbox', !!renderer && renderer.sandboxed === true, renderer ? { type: renderer.type, sandboxed: renderer.sandboxed } : 'processus introuvable');
 
   // 5. Lecture Widevine réelle (images décodées après licence).
   const started = Date.now();
@@ -79,4 +82,15 @@ async function run({ partition, status, forwarded, serviceFor, trace = () => {} 
   app.exit(fail.length === 0 ? 0 : 1);
 }
 
-module.exports = { run };
+// Toute erreur inattendue termine l'auto-test en échec, avec sa trace.
+async function safeRun(opts) {
+  try {
+    await run(opts);
+  } catch (e) {
+    (opts.trace || (() => {}))('erreur : ' + (e && e.stack || e));
+    console.log('PLAYER-SELFTEST ' + JSON.stringify({ ok: false, fail: ['erreur'], error: String(e && e.stack || e) }));
+    app.exit(3);
+  }
+}
+
+module.exports = { run: safeRun };
