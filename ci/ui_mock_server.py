@@ -18,7 +18,7 @@ SETTINGS = {"search_engine": "duckduckgo", "search_custom_name": "", "search_cus
     "site_permissions": [{"origin": "https://meet.jit.si", "kind": "camera", "allow": True, "updated": 1767000000},
                          {"origin": "https://meet.jit.si", "kind": "microphone", "allow": True, "updated": 1767000000},
                          {"origin": "https://www.openstreetmap.org", "kind": "geolocation", "allow": False, "updated": 1767000000}],
-    "permission_resets": [], "download_dir": None, "download_ask": False, "accept_languages": "fr-FR,fr,en-US,en", "spellcheck": True}
+    "permission_resets": [], "player_bar": True, "download_dir": None, "download_ask": False, "accept_languages": "fr-FR,fr,en-US,en", "spellcheck": True}
 UIPREFS = {"splash_enabled": True, "hardware_acceleration": True}
 KINDS = [["camera", "la caméra"], ["microphone", "le microphone"], ["geolocation", "votre position"], ["notifications", "les notifications"],
          ["clipboard", "le presse-papiers"], ["downloads", "les téléchargements multiples"],
@@ -126,6 +126,14 @@ class H(http.server.SimpleHTTPRequestHandler):
             r = {"ok": True}
         elif cmd == 'zoom.list':
             r = {"ok": True, "sites": [{"host": "fr.wikipedia.org", "percent": 125}, {"host": "www.lemonde.fr", "percent": 110}]}
+        elif cmd == 'player.propose':
+            u = str(req.get('url', '')) if isinstance(req, dict) else ''
+            r = {"ok": True, "bar": True, "service": "Netflix" if u.startswith('https://www.netflix.com/') else None}
+        elif cmd == 'player.open':
+            r = {"ok": False, "notInstalled": True}
+        elif cmd == 'player.status':
+            r = {"ok": True, "supported": True, "installed": None, "busy": False, "phase": "", "progress": 0, "size": None, "error": None, "bar": True,
+                 "services": ["Netflix", "Disney+", "Prime Video"]}
         elif cmd == 'state':
             r = STATE
         else:

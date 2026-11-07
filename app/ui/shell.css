@@ -159,6 +159,10 @@ button.icon.on { color: var(--arc); }
 
 #banner { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 14px; background: rgba(242, 180, 90, .10); color: #ffdca6; border-bottom: 1px solid rgba(242, 180, 90, .35); font-size: 13px; }
 #banner svg { width: 16px; height: 16px; color: var(--warn); }
+#banner.info { background: rgba(41, 103, 255, .10); color: var(--moon); border-color: rgba(41, 103, 255, .35); }
+#banner.info svg { color: var(--arc); }
+#banner .grow { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#banner button.ghost { margin-left: 0; }
 #banner.danger { background: rgba(255, 93, 108, .12); color: #ffc9ce; border-color: rgba(255, 93, 108, .45); }
 #banner button { height: 26px; padding: 0 10px; }
 #banner button:first-of-type { margin-left: auto; }

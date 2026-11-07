@@ -378,6 +378,67 @@ function pageBanner(a) {
     setWarning(a.warning);
   } else {
     hideBanner(['warning', 'crash', 'unresponsive']);
+    playerBanner(a);
+  }
+}
+
+// ------------------------------------------------------------------ lecteur NIGHTFALL
+// Sites vidéo protégés (Widevine) : NIGHTFALL propose de les ouvrir dans le
+// lecteur NIGHTFALL, une application séparée téléchargée seulement après accord.
+const playerDismissed = new Set(); // « Pas maintenant » : onglet + site, pour cette session
+let playerAsked = '';
+
+async function playerBanner(a) {
+  if (MODE !== 'top' || !a || !/^https:\/\//.test(a.url || '')) { hideBanner(['player', 'player-consent']); return; }
+  if (bannerKind && !['player', 'player-consent'].includes(bannerKind)) return;
+  const key = a.id + ' ' + host(a.url);
+  if (playerDismissed.has(key)) { hideBanner(['player']); return; }
+  if (bannerKind === 'player-consent' && playerAsked === key) return;
+  const r = await api('player.propose', { url: a.url });
+  if (!activeTab || activeTab.id !== a.id || activeTab.url !== a.url) return;
+  if (!r.ok || !r.service || !r.bar) { hideBanner(['player', 'player-consent']); return; }
+  if (bannerKind && !['player', 'player-consent'].includes(bannerKind)) return;
+  playerAsked = key;
+  const url = a.url;
+  showBanner('player', false, svgIcon('play'),
+    el('span', { class: 'grow', text: 'Ce site exige une protection vidéo. Ouvrir avec le lecteur NIGHTFALL ?' }),
+    el('button', { class: 'primary', text: 'Ouvrir avec le lecteur', onclick: () => openInPlayer(url, key) }),
+    el('button', { text: 'Pas maintenant', onclick: () => { playerDismissed.add(key); hideBanner(['player']); } }),
+    el('button', { class: 'ghost', text: 'Ne plus proposer', title: 'Réactivable dans Paramètres › Sécurité', onclick: () => { api('player.setBar', { bar: false }); hideBanner(['player']); } }));
+  $('#banner').className = 'info';
+}
+
+async function openInPlayer(url, key) {
+  const r = await api('player.open', { url });
+  if (r.ok) { hideBanner(['player']); toast('Ouverture dans le lecteur NIGHTFALL'); return; }
+  if (!r.notInstalled) { toast(r.error || 'Le lecteur NIGHTFALL n\'a pas pu s\'ouvrir', true); return; }
+  // Première fois : accord explicite avant tout téléchargement.
+  playerAsked = key;
+  showBanner('player-consent', false, svgIcon('download'),
+    el('span', { class: 'grow', text: 'Télécharger le lecteur NIGHTFALL (application séparée, environ 150 Mo, vérifiée avant installation) ?' }),
+    el('button', { class: 'primary', text: 'Télécharger et ouvrir', onclick: () => installPlayer(url) }),
+    el('button', { text: 'Annuler', onclick: () => { playerDismissed.add(key); hideBanner(['player-consent']); } }));
+  $('#banner').className = 'info';
+}
+
+async function installPlayer(url) {
+  const r = await api('player.install', { url });
+  if (!r.ok) { toast(r.error || 'Installation impossible', true); return; }
+  playerProgress({ busy: true, phase: 'recherche', progress: 0 });
+}
+
+function playerProgress(st) {
+  if (MODE !== 'top') return;
+  if (st.busy) {
+    if (bannerKind && !bannerKind.startsWith('player')) return;
+    const what = st.phase === 'téléchargement' ? `Téléchargement du lecteur NIGHTFALL : ${Math.round((st.progress || 0) * 100)} %`
+      : st.phase === 'installation' ? 'Vérification et installation du lecteur NIGHTFALL…' : 'Recherche du lecteur NIGHTFALL…';
+    showBanner('player-busy', false, svgIcon('download'), el('span', { class: 'grow', text: what }));
+    $('#banner').className = 'info';
+  } else if (bannerKind === 'player-busy') {
+    hideBanner(['player-busy']);
+    if (st.error) toast('Lecteur NIGHTFALL : ' + st.error, true);
+    else if (st.installed) toast('Lecteur NIGHTFALL ' + st.installed + ' installé et vérifié');
   }
 }
 
@@ -859,6 +920,9 @@ if (MODE === 'top' || MODE === 'popup') api('update.status').then(applyUpdateSta
 
 window.nfEvent = (ev) => {
   switch (ev.type) {
+    case 'player':
+      if (ev.status) playerProgress(ev.status);
+      break;
     case 'update':
       applyUpdateState(ev.status);
       break;

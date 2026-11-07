@@ -15,6 +15,11 @@ Le code de NIGHTFALL est publié sous **MPL-2.0** (voir `LICENSE`). Le budget du
 | electron/rcedit | MIT | Outil de compilation en CI (icône de nightfall.exe), non distribué | Aucune |
 | SponsorBlock (API et données) | CC BY-NC-SA 4.0 | Interrogée à l'exécution par NIGHTFALL VideoGuard | Attribution, **usage non commercial** |
 | Extension SponsorBlock | GPL-3.0 ou ultérieure (LGPL-3.0 avant 2020) | Non utilisée : client écrit pour NIGHTFALL, aucun code repris | Aucune |
+| Electron for Content Security (castLabs, `castlabs/electron-releases`) | MIT (Electron) + licences de Chromium | Lecteur NIGHTFALL (`player/`), application séparée téléchargée à la demande, non incluse dans l'installateur | Mentions de licence (fournies dans le paquet ECS) |
+| Module Widevine (CDM) | Licence Google, installé par le Component Updater d'ECS | Lecture protégée dans le lecteur NIGHTFALL seulement | Aucune redistribution par NIGHTFALL |
+| castLabs EVS (signature VMP) | Service gratuit, conditions de castLabs | Signature VMP du lecteur en CI (compte « NIGHTFALL ») | Règles de conduite d'EVS |
+| Shaka Player | Apache-2.0 | Page d'auto-test du lecteur (vidéo de démonstration publique) | Mention de licence |
+| @electron/packager, @electron/fuses | BSD-2-Clause, MIT | Outils de construction du lecteur en CI, non distribués | Aucune |
 | SQLCipher, OpenSSL (intégrés via rusqlite) | BSD-3-Clause / Apache-2.0 | Base de données chiffrée | Mentions de licence |
 | Crates Rust | MIT, Apache-2.0, BSD, ISC, MPL-2.0, Zlib, Unicode | Diverses | Vérifiées par `cargo-deny` (`deny.toml`) |
 
@@ -22,7 +27,7 @@ Le code de NIGHTFALL est publié sous **MPL-2.0** (voir `LICENSE`). Le budget du
 
 | Élément | Raison | Alternative légale actuelle |
 | --- | --- | --- |
-| Widevine (Netflix, Disney+, Prime Video, Max, Spotify) | Licence Google et certification VMP payante (castLabs) | Aucune. Ces services **ne sont pas annoncés comme compatibles**. |
+| Widevine dans NIGHTFALL lui-même (Netflix, Disney+, Prime Video, Max, Spotify) | Licence Google et certification VMP payante pour un moteur modifié | Lecteur NIGHTFALL séparé (Electron for Content Security + EVS gratuit), téléchargé à la demande. Ces services **ne sont pas annoncés comme compatibles** tant qu'ils n'ont pas été vérifiés. |
 | H.264 / AAC logiciels | Brevets (Via LA) et compilation personnalisée de CEF | VP9, AV1, Opus, WebM (YouTube fonctionne). Twitch et certaines vidéos H.264 peuvent ne pas se lire. |
 | Signature Windows et notarisation Apple | Payantes (Azure Artifact Signing 9,99 $/mois, Apple 99 $/an) | Binaires non signés (Windows) et signés ad hoc (macOS) |
 | Google Safe Browsing commercial (Web Risk) | Payant au-delà d'un quota | Analyse anti-phishing locale |

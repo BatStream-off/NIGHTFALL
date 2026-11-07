@@ -578,10 +578,37 @@ function sSecurity() {
     group('Protections de navigation',
       toggle('Avertissements anti-phishing', 'Analyse locale des adresses : homographes, imitations de vos sites et de services connus, sous-domaines trompeurs.', () => S.phishing_warnings, (v) => { S.phishing_warnings = v; }, { keywords: 'hameconnage fraude' }),
       row({ label: 'Navigation sécurisée de Google', desc: 'Non disponible : ce service de Google n\'est pas fourni aux navigateurs construits sur CEF et exigerait d\'envoyer des données à Google. La liste « Sites malveillants » de Shield et l\'analyse anti-phishing locale la remplacent en partie.', cls: 'disabled', keywords: 'safe browsing google malware' })),
+    playerGroup(),
     group('Mots de passe', sPasswords().flatMap((g) => [...g.querySelectorAll('.srow')])),
     ...eventsGroup(),
     ...emergencyGroups(),
   ];
+}
+
+// Lecteur NIGHTFALL : application séparée pour les sites vidéo protégés (Widevine).
+function playerGroup() {
+  const state = el('div', { class: 'desc', text: 'État : vérification…' });
+  const removeBtn = button('Supprimer…', () => {
+    const data = el('input', { type: 'checkbox', id: 'player-data' });
+    openDialog('Supprimer le lecteur NIGHTFALL ?', el('div', {},
+      el('p', { class: 'muted', text: 'Le lecteur est retiré de cet ordinateur. Il sera proposé de nouveau sur les sites vidéo protégés, et téléchargé seulement si vous l\'acceptez.' }),
+      el('label', { class: 'check', for: 'player-data' }, data, ' Supprimer aussi ses données (vos connexions à Netflix, Disney+… dans le lecteur)')),
+      [button('Annuler', closeDialog), button('Supprimer', async () => { check(await api('player.remove', { data: data.checked }), 'Lecteur supprimé'); closeDialog(); refresh(); }, 'danger')]);
+  });
+  const refresh = async () => {
+    const r = await api('player.status');
+    if (!r.ok) return;
+    removeBtn.hidden = !r.installed;
+    state.textContent = !r.supported ? 'Non disponible sur ce système.'
+      : r.busy ? 'Installation en cours…'
+      : r.installed ? `Installé : version ${r.installed}. Mis à jour automatiquement, après vérification de sa signature.`
+      : 'Non installé : il sera téléchargé (environ 150 Mo) seulement si vous l\'acceptez sur un site qui en a besoin.';
+  };
+  refresh();
+  return group('Lecteur NIGHTFALL (vidéos protégées)',
+    row({ label: 'Lecteur NIGHTFALL', desc: 'Application séparée, basée sur Electron for Content Security de castLabs, pour les sites vidéo qui exigent une protection (Widevine) que NIGHTFALL ne peut pas lire lui-même. Verrouillée sur ces sites, sans extension ; ses cookies sont séparés de ceux de NIGHTFALL ; tout autre site s\'ouvre dans NIGHTFALL.',
+      extra: state, ctl: removeBtn, keywords: 'drm widevine netflix disney prime video canal lecteur protection video' }),
+    toggle('Proposer le lecteur sur les sites vidéo protégés', 'Une barre propose d\'ouvrir ces sites dans le lecteur NIGHTFALL.', () => S.player_bar, (v) => { S.player_bar = v; }, { keywords: 'barre drm lecteur widevine' }));
 }
 
 function sPermissions() {

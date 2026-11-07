@@ -80,7 +80,7 @@ pub struct Candidate {
     pub downloads: BTreeMap<String, String>,
 }
 
-fn parse_version(s: &str) -> Option<semver::Version> {
+pub(crate) fn parse_version(s: &str) -> Option<semver::Version> {
     semver::Version::parse(s.trim_start_matches('v')).ok()
 }
 
@@ -172,7 +172,7 @@ fn agent() -> ureq::Agent {
         .build()
 }
 
-fn get_text(url: &str) -> Result<String, UpdateError> {
+pub(crate) fn get_text(url: &str) -> Result<String, UpdateError> {
     let r = agent()
         .get(url)
         .set("User-Agent", USER_AGENT)
@@ -184,7 +184,7 @@ fn get_text(url: &str) -> Result<String, UpdateError> {
     Ok(s)
 }
 
-fn get_bytes(url: &str, limit: u64) -> Result<Vec<u8>, UpdateError> {
+pub(crate) fn get_bytes(url: &str, limit: u64) -> Result<Vec<u8>, UpdateError> {
     let r = agent().get(url).set("User-Agent", USER_AGENT).call().map_err(|e| UpdateError::Network(e.to_string()))?;
     let mut v = Vec::new();
     r.into_reader().take(limit).read_to_end(&mut v)?;
@@ -228,6 +228,15 @@ pub fn download(available: &Available, dir: &Path, progress: &dyn Fn(u64, u64)) 
         return Err(UpdateError::Invalid("fichier".into()));
     }
     let url = available.candidate.downloads.get(&asset.file).ok_or(UpdateError::NoAsset)?;
+    download_asset(url, asset, dir, progress)
+}
+
+/// Download one signed asset into `dir`, then check its size and SHA-256
+/// against the signed manifest; a mismatching file is deleted.
+pub(crate) fn download_asset(url: &str, asset: &AssetInfo, dir: &Path, progress: &dyn Fn(u64, u64)) -> Result<PathBuf, UpdateError> {
+    if asset.size > MAX_DOWNLOAD || asset.file.contains(['/', '\\']) || asset.file.starts_with('.') {
+        return Err(UpdateError::Invalid("fichier".into()));
+    }
     std::fs::create_dir_all(dir)?;
     let dest = dir.join(&asset.file);
     let part = dir.join(format!("{}.part", asset.file));
@@ -255,6 +264,8 @@ pub fn download(available: &Available, dir: &Path, progress: &dyn Fn(u64, u64)) 
     std::fs::rename(&part, &dest)?;
     Ok(dest)
 }
+
+pub mod player;
 
 /// Remove leftovers of previous updates.
 pub fn clean(dir: &Path) {

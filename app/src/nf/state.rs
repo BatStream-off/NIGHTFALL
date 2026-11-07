@@ -55,6 +55,8 @@ pub struct Settings {
     pub tab_accent_line: bool,
     /// « attached » (joined to the toolbar) | « rounded » (floating).
     pub tab_shape: String,
+    /// Propose the NIGHTFALL player (separate app) on protected video sites.
+    pub player_bar: bool,
     /// 0 = never.
     pub auto_lock_minutes: u32,
     pub lock_on_sleep: bool,
@@ -209,6 +211,7 @@ impl Default for Settings {
             vertical_tabs: false,
             tab_accent_line: true,
             tab_shape: "attached".into(),
+            player_bar: true,
             auto_lock_minutes: 15,
             lock_on_sleep: true,
             session_vault: true,
@@ -696,6 +699,8 @@ mod tests {
         assert_eq!((s.min_font_size, s.reduce_motion, s.network_prediction), (0, false, false));
         assert!(!s.clear_on_close_history && !s.clear_on_close_cookies && s.search_engines_custom.is_empty());
         assert!(s.tab_accent_line && s.tab_shape == "attached");
+        // Added in 0.3.2: the player bar is offered by default.
+        assert!(s.player_bar);
     }
 
     #[test]
