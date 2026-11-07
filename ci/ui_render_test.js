@@ -66,8 +66,18 @@ async function brightShare(page) {
     const url = `http://127.0.0.1:${PORT_UNLOCKED}/shell.html?mode=popup&w=1&private=0&panel=shield&mocksite=lemonde.fr${off ? '&mockoff=1' : ''}`;
     await check('popup-' + name, url, shieldSize, 1000);
     const p = await b.newPage({ viewport: shieldSize });
+    // The popup fits itself (fitPopup → popup.resize, clamped to 760 px by
+    // windows.rs:popup_resize): check it at the size it asks for, as in NIGHTFALL
+    // (fonts differ between systems: 353 px on macOS, 372 px on Linux).
+    let asked = null;
+    p.on('request', (r) => { if (r.url().endsWith('/api/popup.resize')) { try { asked = JSON.parse(r.postData()); } catch (e) {} } });
     await p.goto(url);
     await p.waitForSelector('.sh-toggle input.toggle');
+    await p.waitForTimeout(500);
+    if (!asked || asked.width !== shieldSize.width || asked.height < 40 || asked.height > 760) {
+      console.log(`ÉCHEC popup ${name} : taille demandée invalide ${JSON.stringify(asked)}`); failed = true; await p.close(); continue;
+    }
+    await p.setViewportSize({ width: asked.width, height: asked.height });
     await p.waitForTimeout(300);
     const m = await p.evaluate(() => {
       const box = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
@@ -85,7 +95,7 @@ async function brightShare(page) {
     if (m.checked === off) problems.push('état de l\'interrupteur différent de celui du site');
     if (m.inner.b > m.vh + 1) problems.push(`contenu de ${Math.ceil(m.inner.h)} px plus haut que la popup (${m.vh} px)`);
     if (m.link.b > m.vh) problems.push('lien « Ouvrir le Security Center » coupé');
-    console.log(`${problems.length ? 'ÉCHEC' : 'OK  '} popup ${name} : ${problems.length ? problems.join(' ; ') : 'interrupteur 40×22, contenu entier'}`);
+    console.log(`${problems.length ? 'ÉCHEC' : 'OK  '} popup ${name} (${asked.width}×${asked.height}) : ${problems.length ? problems.join(' ; ') : 'interrupteur 40×22, contenu entier'}`);
     if (problems.length) failed = true;
     await p.close();
   }
