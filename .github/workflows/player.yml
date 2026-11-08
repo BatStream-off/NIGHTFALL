@@ -5,8 +5,10 @@
 # Clé Ed25519 : sur les branches et les PR, signature avec une clé JETABLE créée
 # pour l'exécution. La vraie clé de mise à jour (NIGHTFALL_UPDATE_KEY) ne sert
 # qu'à la publication, depuis main, et seulement quand la version du lecteur
-# (player/package.json) n'est pas encore publiée : publication « lecteur-v<version> »,
-# jamais marquée comme dernière version de NIGHTFALL.
+# (player/package.json) n'est pas encore publiée : publication « lecteur-v<version> »
+# en pré-version, comme NIGHTFALL : elle ne doit jamais apparaître comme « dernière
+# version » du dépôt (--latest=false seul ne suffit pas quand toutes les autres
+# publications sont des pré-versions, constaté avec lecteur-v0.1.0).
 name: Lecteur NIGHTFALL
 
 on:
@@ -273,6 +275,6 @@ jobs:
           v="${{ needs.plan.outputs.version }}"
           cd dist && rm -f *.png *.json.part selftest-* trace-* taille-* && ls -la
           gh release create "lecteur-v$v" Lecteur-NIGHTFALL-*.zip player.json player.json.sig \
-            -R "${{ github.repository }}" --target "$GITHUB_SHA" --latest=false \
+            -R "${{ github.repository }}" --target "$GITHUB_SHA" --prerelease --latest=false \
             --title "Lecteur NIGHTFALL $v" \
             --notes "Lecteur NIGHTFALL $v pour les sites vidéo protégés (Widevine), basé sur Electron for Content Security $ECS_VERSION de castLabs (MIT). Téléchargé et vérifié par NIGHTFALL (manifeste signé, SHA-256) seulement après l'accord de l'utilisateur ; ne pas l'installer à la main."
